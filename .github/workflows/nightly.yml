@@ -1,0 +1,59 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  extended-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install GR 3.8 + run full suite
+        run: |
+          sudo add-apt-repository -y ppa:gnuradio/gnuradio-releases-3.8
+          sudo apt-get update && sudo apt-get install -y gnuradio-dev libuhd-dev \
+            libfftw3-dev libboost-all-dev ffmpeg libavcodec-dev libavformat-dev \
+            libavutil-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev \
+            cmake lcov python3-dev python3-numpy
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DATSC3_BUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="--coverage"
+          cmake --build build -j$(nproc)
+          ctest --test-dir build --output-on-failure -j$(nproc)
+
+      - name: Coverage report
+        run: |
+          lcov --capture --directory build --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*/test/*' --output-file coverage.info
+          bash <(curl -s https://codecov.io/bash) -f coverage.info
+
+  gr310-compat:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GR 3.10
+        run: |
+          sudo add-apt-repository -y ppa:gnuradio/gnuradio-releases
+          sudo apt-get update && sudo apt-get install -y gnuradio-dev libuhd-dev \
+            libfftw3-dev libboost-all-dev cmake
+          cmake -B build -DATSC3_GR_VERSION=310 -DATSC3_BUILD_TESTS=ON
+          cmake --build build -j$(nproc)
+          ctest --test-dir build -L unit --output-on-failure
+
+  docs:
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y doxygen graphviz
+      - run: doxygen Doxyfile
+      - uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/html
+

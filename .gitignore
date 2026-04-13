@@ -1,0 +1,73 @@
+# Build artifacts
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+
+# IQ capture files (tracked via git-lfs)
+*.iq
+*.sigmf-data
+*.sigmf-meta
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+venv/
+.venv/
+
+# GNU Radio
+.grc_gnuradio/
+*.grc.bak
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+.ccls-cache/
+compile_commands.json
+
+# Coverage artifacts
+*.gcno
+*.gcda
+*.gcov
+coverage/
+lcov.info
+coverage.info
+htmlcov/
+
+# Documentation build
+docs/_build/
+docs/doxygen/
+
+# Package artifacts
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Credentials and secrets
+*.pem
+*.key
+.env
+.env.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log

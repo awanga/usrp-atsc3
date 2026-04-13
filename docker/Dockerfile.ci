@@ -1,0 +1,65 @@
+# Dockerfile.ci — CI Build Environment for gr-atsc3
+#
+# Ubuntu 22.04 base with pinned package versions for reproducible builds.
+#
+# Usage:
+#   docker build -t gr-atsc3-ci -f docker/Dockerfile.ci .
+#   docker run --rm -v $(pwd):/workspace gr-atsc3-ci
+
+FROM ubuntu:22.04
+
+LABEL maintainer="ATSC3 Project"
+LABEL description="CI build environment for gr-atsc3"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies with pinned versions
+# See docker/versions.lock for version manifest
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools
+    build-essential=12.9ubuntu3 \
+    cmake=3.22.1-1ubuntu1.22.04.2 \
+    ninja-build=1.10.1-1 \
+    pkg-config=0.29.2-1ubuntu3 \
+    git=1:2.34.1-1ubuntu1.11 \
+    git-lfs=3.0.2-1ubuntu0.2 \
+    # Compilers and analysis tools
+    clang=1:14.0-55~exp2 \
+    clang-format=1:14.0-55~exp2 \
+    cppcheck=2.7-1 \
+    # Libraries
+    libfftw3-dev=3.3.8-2ubuntu8 \
+    libboost-dev=1.74.0.3ubuntu7 \
+    libboost-system-dev=1.74.0.3ubuntu7 \
+    # Python for test scripts and pre-commit
+    python3=3.10.6-1~22.04.1 \
+    python3-pip=22.0.2+dfsg-1ubuntu0.5 \
+    python3-venv=3.10.6-1~22.04.1 \
+    # Coverage tools
+    lcov=1.15-1 \
+    gcovr=5.0-2 \
+    # Documentation (optional)
+    doxygen=1.9.1-2ubuntu2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pre-commit hooks
+RUN pip3 install --no-cache-dir \
+    pre-commit==3.6.0 \
+    black==24.1.1 \
+    flake8==7.0.0
+
+# Configure git for CI
+RUN git config --global --add safe.directory /workspace
+
+# Set up working directory
+WORKDIR /workspace
+
+# Default command: run full CI pipeline
+CMD ["bash", "-c", "\
+    mkdir -p build && cd build && \
+    cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release -DATSC3_BUILD_TESTS=ON && \
+    ninja && \
+    ctest --output-on-failure -j$(nproc) && \
+    echo 'CI build completed successfully' \
+"]

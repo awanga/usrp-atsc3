@@ -1,0 +1,25 @@
+# cppcheck suppressions file for gr-atsc3
+# Usage: cppcheck --suppressions-list=.cppcheck ...
+
+# Suppress warnings about missing include files (handled by CMake)
+missingInclude
+missingIncludeSystem
+
+# Suppress style warnings in test files
+*:test/*
+
+# Suppress warnings about GoogleTest macros
+syntaxError:*gtest*
+preprocessorErrorDirective:*gtest*
+
+# Allow C-style casts in low-level DSP code (intentional for performance)
+# cstyleCast:lib/*
+
+# Suppress warnings about unused functions in header-only code
+unusedFunction
+
+# Allow variable shadowing in specific cases (common in DSP loops)
+# shadowVariable:lib/ofdm/*
+
+# Suppress inline suppression warnings
+inlineSuppressionUnmatchedInlineSuppr

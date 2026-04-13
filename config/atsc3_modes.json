@@ -1,0 +1,82 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ATSC 3.0 Physical Layer Mode Tables",
+    "description": "LDPC rates, FFT sizes, CP fractions, and modulation parameters",
+    "version": "1.0.0",
+    "fft_sizes": {
+        "8K": {
+            "nfft": 8192,
+            "active_carriers": 6913,
+            "pilot_pattern": ["SP3_2", "SP3_4", "SP4_2", "SP4_4", "SP6_2", "SP6_4",
+                              "SP8_2", "SP8_4", "SP12_2", "SP12_4", "SP16_2", "SP16_4",
+                              "SP24_2", "SP24_4", "SP32_2", "SP32_4"]
+        },
+        "16K": {
+            "nfft": 16384,
+            "active_carriers": 13825,
+            "pilot_pattern": ["SP3_2", "SP3_4", "SP4_2", "SP4_4", "SP6_2", "SP6_4",
+                              "SP8_2", "SP8_4", "SP12_2", "SP12_4", "SP16_2", "SP16_4",
+                              "SP24_2", "SP24_4", "SP32_2", "SP32_4"]
+        },
+        "32K": {
+            "nfft": 32768,
+            "active_carriers": 27649,
+            "pilot_pattern": ["SP3_2", "SP3_4", "SP4_2", "SP4_4", "SP6_2", "SP6_4",
+                              "SP8_2", "SP8_4", "SP12_2", "SP12_4", "SP16_2", "SP16_4",
+                              "SP24_2", "SP24_4", "SP32_2", "SP32_4"]
+        }
+    },
+    "cyclic_prefix": {
+        "description": "CP length as fraction numerator/8192, scaled by FFT size",
+        "fractions": [192, 384, 512, 768, 1024, 1536, 2048, 2432, 3072, 3648, 4096]
+    },
+    "ldpc_codes": {
+        "short": {
+            "codeword_length": 16200,
+            "rates": {
+                "2/15": {"info_bits": 2160, "parity_bits": 14040},
+                "3/15": {"info_bits": 3240, "parity_bits": 12960},
+                "4/15": {"info_bits": 4320, "parity_bits": 11880},
+                "5/15": {"info_bits": 5400, "parity_bits": 10800},
+                "6/15": {"info_bits": 6480, "parity_bits": 9720},
+                "7/15": {"info_bits": 7560, "parity_bits": 8640},
+                "8/15": {"info_bits": 8640, "parity_bits": 7560},
+                "9/15": {"info_bits": 9720, "parity_bits": 6480},
+                "10/15": {"info_bits": 10800, "parity_bits": 5400},
+                "11/15": {"info_bits": 11880, "parity_bits": 4320},
+                "12/15": {"info_bits": 12960, "parity_bits": 3240},
+                "13/15": {"info_bits": 14040, "parity_bits": 2160}
+            }
+        },
+        "long": {
+            "codeword_length": 64800,
+            "rates": {
+                "2/15": {"info_bits": 8640, "parity_bits": 56160},
+                "3/15": {"info_bits": 12960, "parity_bits": 51840},
+                "4/15": {"info_bits": 17280, "parity_bits": 47520},
+                "5/15": {"info_bits": 21600, "parity_bits": 43200},
+                "6/15": {"info_bits": 25920, "parity_bits": 38880},
+                "7/15": {"info_bits": 30240, "parity_bits": 34560},
+                "8/15": {"info_bits": 34560, "parity_bits": 30240},
+                "9/15": {"info_bits": 38880, "parity_bits": 25920},
+                "10/15": {"info_bits": 43200, "parity_bits": 21600},
+                "11/15": {"info_bits": 47520, "parity_bits": 17280},
+                "12/15": {"info_bits": 51840, "parity_bits": 12960},
+                "13/15": {"info_bits": 56160, "parity_bits": 8640}
+            }
+        }
+    },
+    "modulation": {
+        "QPSK": {"bits_per_symbol": 2, "constellation_size": 4},
+        "16QAM": {"bits_per_symbol": 4, "constellation_size": 16},
+        "64QAM": {"bits_per_symbol": 6, "constellation_size": 64},
+        "256QAM": {"bits_per_symbol": 8, "constellation_size": 256},
+        "1024QAM": {"bits_per_symbol": 10, "constellation_size": 1024},
+        "4096QAM": {"bits_per_symbol": 12, "constellation_size": 4096}
+    },
+    "notes": [
+        "LDPC H matrices are stored sparse (row, col lists) - do not expand to dense",
+        "Bootstrap is always 4K OFDM regardless of data FFT size",
+        "L1-Pre/Post preamble configures all OFDM parameters dynamically"
+    ]
+}

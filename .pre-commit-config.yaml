@@ -1,0 +1,91 @@
+# pre-commit configuration for gr-atsc3
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^test/captures/
+      - id: end-of-file-fixer
+        exclude: ^test/captures/
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+        exclude: ^test/captures/
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+        exclude: ^test/captures/
+
+  # clang-format for C++ files
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v17.0.6
+    hooks:
+      - id: clang-format
+        types_or: [c, c++]
+        files: \.(cc|cpp|h|hpp)$
+        exclude: ^(build/|cmake-build-|hdl/)
+
+  # CMake formatting
+  - repo: https://github.com/cheshirekow/cmake-format-precommit
+    rev: v0.6.13
+    hooks:
+      - id: cmake-format
+        additional_dependencies: [pyyaml>=5.1]
+
+  # Python formatting (for apps/ and test scripts)
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        language_version: python3
+
+  # Python linting
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: ['--max-line-length=100']
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: ['--disable', 'MD013', 'MD033', 'MD041', '--']
+
+# Local hooks for project-specific checks
+  - repo: local
+    hooks:
+      # Verify git-lfs for large files
+      - id: check-lfs
+        name: Check git-lfs tracking
+        entry: bash -c 'git lfs status --porcelain | grep -q "^[^-]" && echo "Error: Large files not tracked by git-lfs" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # cppcheck static analysis
+      - id: cppcheck
+        name: cppcheck static analysis
+        entry: cppcheck
+        args:
+          - '--enable=warning,style,performance,portability'
+          - '--error-exitcode=1'
+          - '--suppressions-list=.cppcheck'
+          - '--inline-suppr'
+          - '-q'
+        language: system
+        types_or: [c, c++]
+        files: \.(cc|cpp|h|hpp)$
+        exclude: ^(build/|cmake-build-|test/)
