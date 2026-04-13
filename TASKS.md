@@ -44,34 +44,34 @@ Goal: Working repo, build system, CI green, HAL testable. No DSP yet.
 
 ---
 
-## Phase 1 — Hardware Abstraction Layer  *(~1 week)*
+## Phase 1 — Hardware Abstraction Layer  *(~1 week)* [x]
 
 Goal: Can acquire IQ samples from USRP and from file. All downstream code uses `IQSource*` only.
 
 ### 1.1 IQSource Interface
-- [ ] `hal/include/iq_source.h` — pure-virtual interface (see `CLAUDE.md` §Key Interfaces)
-- [ ] `hal/include/iq_source_factory.h` — `create_uhd_source()`, `create_file_source()`, `create_null_source()`
-- [ ] Unit test: `NullSource` returns zeros; `read()` fills buffer exactly
+- [x] `hal/include/iq_source.h` — pure-virtual interface (see `CLAUDE.md` §Key Interfaces)
+- [x] `hal/include/iq_source_factory.h` — `create_uhd_source()`, `create_file_source()`, `create_null_source()`
+- [x] Unit test: `NullSource` returns zeros; `read()` fills buffer exactly
 
 ### 1.2 FileSource Implementation
-- [ ] `hal/src/file_source.cc` — reads interleaved `std::complex<float32>` from `.iq` file
-- [ ] Supports looping (for CI replay tests)
-- [ ] `get_rssi_dbm()` returns value computed from signal power when no RSSI register available
-- [ ] Unit test: known 8-sample `.iq` file reads back bit-exact
+- [x] `hal/src/file_source.cc` — reads interleaved `std::complex<float32>` from `.iq` file
+- [x] Supports looping (for CI replay tests)
+- [x] `get_rssi_dbm()` returns value computed from signal power when no RSSI register available
+- [x] Unit test: known 8-sample `.iq` file reads back bit-exact
 
 ### 1.3 UHDSource Implementation
-- [ ] `hal/src/uhd_source.cc` — wraps `uhd::usrp::multi_usrp`
-- [ ] `#if UHD_VERSION < 0x03160000` guards for any API differences between UHD 3.15 and 4.x
-- [ ] `set_frequency()` with TVRX tuning range validation (50–860 MHz); log warning if out of range
-- [ ] `set_gain()` — maps to TVRX gain range (0–95 dB); clamped with warning
-- [ ] `set_sample_rate()` — validates N210 sustainable rates over GigE (≤25 MS/s)
-- [ ] `get_rssi_dbm()` — reads UHD sensor `"rssi"` from TVRX daughterboard
+- [x] `hal/src/uhd_source.cc` — wraps `uhd::usrp::multi_usrp`
+- [x] `#if UHD_VERSION < 0x03160000` guards for any API differences between UHD 3.15 and 4.x
+- [x] `set_frequency()` with TVRX tuning range validation (50–860 MHz); log warning if out of range
+- [x] `set_gain()` — maps to TVRX gain range (0–95 dB); clamped with warning
+- [x] `set_sample_rate()` — validates N210 sustainable rates over GigE (≤25 MS/s)
+- [x] `get_rssi_dbm()` — reads UHD sensor `"rssi"` from TVRX daughterboard
 - [ ] Hardware test (manual, `ctest -L hw`): loopback noise floor, RSSI reads plausible value
 
 ### 1.4 AGC Controller
-- [ ] `hal/src/agc.cc` — power-feedback AGC; target power configurable (default: -20 dBFS)
-- [ ] Integrator with configurable attack/release time constants
-- [ ] Unit test: step input drives gain to within 1 dB of target within 100 iterations
+- [x] `hal/src/agc.cc` — power-feedback AGC; target power configurable (default: -20 dBFS)
+- [x] Integrator with configurable attack/release time constants
+- [x] Unit test: step input drives gain to within 1 dB of target within 100 iterations
 
 ---
 

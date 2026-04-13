@@ -33,10 +33,12 @@ add_compile_options(
     -Wextra
     -Werror
     -Wshadow
-    -Wdouble-promotion
     -fstack-usage
     $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
 )
+
+# -Wdouble-promotion is useful but conflicts with GoogleTest
+# Apply it only to our source directories via target properties
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g -O0)

@@ -2,35 +2,32 @@
 # IQSource interface + UHDSource / FileSource / NullSource implementations
 
 set(HAL_SOURCES
-    # Source files will be added here
-    # src/iq_source.cc
-    # src/uhd_source.cc
-    # src/file_source.cc
-    # src/null_source.cc
+    src/iq_source.cc
+    src/null_source.cc
+    src/file_source.cc
+    src/uhd_source.cc
+    src/agc.cc
 )
 
 set(HAL_HEADERS
-    # Header files will be added here
-    # include/iq_source.h
+    include/iq_source.h
+    include/iq_source_factory.h
+    include/agc.h
 )
 
-if(HAL_SOURCES)
-    add_library(atsc3_hal ${HAL_SOURCES})
+add_library(atsc3_hal ${HAL_SOURCES})
 
-    target_include_directories(atsc3_hal
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
-    )
+target_include_directories(atsc3_hal
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
 
-    target_link_libraries(atsc3_hal
-        PRIVATE
-            atsc3_lib
-    )
+# HAL has no dependency on lib/ - it's a lower layer
+# lib/ may depend on hal/ but not vice versa
 
-    if(UHD_FOUND)
-        target_link_libraries(atsc3_hal PRIVATE ${UHD_LIBRARIES})
-        target_include_directories(atsc3_hal PRIVATE ${UHD_INCLUDE_DIRS})
-        target_compile_definitions(atsc3_hal PRIVATE ATSC3_HAS_UHD=1)
-    endif()
+if(UHD_FOUND)
+    target_link_libraries(atsc3_hal PRIVATE ${UHD_LIBRARIES})
+    target_include_directories(atsc3_hal PRIVATE ${UHD_INCLUDE_DIRS})
+    target_compile_definitions(atsc3_hal PRIVATE ATSC3_HAS_UHD=1)
 endif()
