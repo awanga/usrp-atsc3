@@ -6,41 +6,41 @@
 
 ---
 
-## Phase 0 — Infrastructure & Skeleton  *(~1 week)*
+## Phase 0 — Infrastructure & Skeleton  *(~1 week)* [x]
 
 Goal: Working repo, build system, CI green, HAL testable. No DSP yet.
 
 ### 0.1 Repository Setup
-- [ ] `git init`, initial commit with `.gitignore` (build/, *.iq, __pycache__, .grc_gnuradio)
-- [ ] Configure **git-lfs** for `test/captures/*.iq` and `test/captures/*.sigmf`
-- [ ] Create top-level `CMakeLists.txt` with version `0.1.0-dev`; find_package for GR, UHD, FFTW3, Boost
-- [ ] Add `cmake/Modules/` with `FindFFTW3.cmake` (graceful fail with helpful message)
-- [ ] CMake option scaffold: `ATSC3_FIXED_POINT`, `ATSC3_ENABLE_ML`, `ATSC3_ENABLE_HDL_STUBS`, `ATSC3_BUILD_TESTS`, `ATSC3_GR_VERSION`, `ATSC3_CHANNEL_BW_HZ`
+- [x] `git init`, initial commit with `.gitignore` (build/, *.iq, __pycache__, .grc_gnuradio)
+- [x] Configure **git-lfs** for `test/captures/*.iq` and `test/captures/*.sigmf`
+- [x] Create top-level `CMakeLists.txt` with version `0.1.0-dev`; find_package for GR, UHD, FFTW3, Boost
+- [x] Add `cmake/Modules/` with `FindFFTW3.cmake` (graceful fail with helpful message)
+- [x] CMake option scaffold: `ATSC3_FIXED_POINT`, `ATSC3_ENABLE_ML`, `ATSC3_ENABLE_HDL_STUBS`, `ATSC3_BUILD_TESTS`, `ATSC3_GR_VERSION`, `ATSC3_CHANNEL_BW_HZ`
 - [ ] CMake dependency graph target (`cmake --graphviz`); verify no upward-layer imports
-- [ ] `clang-format` config (`.clang-format`, based on Google style, 100-col)
-- [ ] `cppcheck` suppressions file (`.cppcheck`)
-- [ ] `pre-commit` config (clang-format, trailing whitespace, no large files without LFS)
+- [x] `clang-format` config (`.clang-format`, based on Google style, 100-col)
+- [x] `cppcheck` suppressions file (`.cppcheck`)
+- [x] `pre-commit` config (clang-format, trailing whitespace, no large files without LFS)
 
 ### 0.2 CI/CD Pipelines
-- [ ] `.github/workflows/ci.yml` — Ubuntu 22.04, GR 3.8 PPA, UHD 3.15, build + `ctest -L unit`
-- [ ] `.github/workflows/nightly.yml` — GR 3.10 build, long IQ tests, lcov coverage, Doxygen deploy
-- [ ] `.github/workflows/release.yml` — tag-triggered, cpack `.deb`, GitHub Release
-- [ ] `docker/Dockerfile.ci` — pinned apt packages, pushed to `ghcr.io` on nightly
-- [ ] `docker/versions.lock` — records exact apt package versions for reproducibility
+- [x] `.github/workflows/ci.yml` — Ubuntu 22.04, GR 3.8 PPA, UHD 3.15, build + `ctest -L unit`
+- [x] `.github/workflows/nightly.yml` — GR 3.10 build, long IQ tests, lcov coverage, Doxygen deploy
+- [x] `.github/workflows/release.yml` — tag-triggered, cpack `.deb`, GitHub Release
+- [x] `docker/Dockerfile.ci` — pinned apt packages, pushed to `ghcr.io` on nightly
+- [x] `docker/versions.lock` — records exact apt package versions for reproducibility
 - [ ] Branch protection: require `ci.yml` green; no force-push to `main`
 
 ### 0.3 Directory Skeleton
-- [ ] Create empty `CMakeLists.txt` in each subdirectory: `hal/`, `lib/`, `blocks/`, `apps/`, `av/`, `hdl/`, `ml/`, `test/`
-- [ ] `lib/` subdirectory scaffold: `sync/`, `ofdm/`, `channel/`, `fec/`, `framing/`, `metrics/`
-- [ ] Add `ATSC3_SAMPLE_T` typedef header (`lib/types.h`) switching on `ATSC3_FIXED_POINT`
-- [ ] Add `config/channel_plan_us.json` with US ATSC 3.0 channel 14–51 center frequencies
-- [ ] Add `config/atsc3_modes.json` scaffold (LDPC rates, FFT sizes, CP fractions — populate in Phase 3)
-- [ ] `hdl/stubs/README.md` and AXI4-S Verilog interface template files
+- [x] Create empty `CMakeLists.txt` in each subdirectory: `hal/`, `lib/`, `blocks/`, `apps/`, `av/`, `hdl/`, `ml/`, `test/`
+- [x] `lib/` subdirectory scaffold: `sync/`, `ofdm/`, `channel/`, `fec/`, `framing/`, `metrics/`
+- [x] Add `ATSC3_SAMPLE_T` typedef header (`lib/types.h`) switching on `ATSC3_FIXED_POINT`
+- [x] Add `config/channel_plan_us.json` with US ATSC 3.0 channel 14–51 center frequencies
+- [x] Add `config/atsc3_modes.json` scaffold (LDPC rates, FFT sizes, CP fractions — populate in Phase 3)
+- [x] `hdl/stubs/README.md` and AXI4-S Verilog interface template files
 
 ### 0.4 Test Framework
-- [ ] Add GoogleTest via `FetchContent` (pinned version); target `atsc3_unit_tests`
-- [ ] Add first passing trivial test (`test/unit/test_types.cc`) — verifies `ATSC3_SAMPLE_T` typedef compiles in both modes
-- [ ] CI: `ctest -L unit` runs and reports; badge added to `README.md`
+- [x] Add GoogleTest via `FetchContent` (pinned version); target `atsc3_unit_tests`
+- [x] Add first passing trivial test (`test/unit/test_types.cc`) — verifies `ATSC3_SAMPLE_T` typedef compiles in both modes
+- [~] CI: `ctest -L unit` runs and reports; badge added to `README.md`
 
 ---
 
