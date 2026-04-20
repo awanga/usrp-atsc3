@@ -88,7 +88,7 @@ TEST(TypesTest, SampleArithmetic) {
 
 TEST(TypesTest, Q15Constants) {
     EXPECT_EQ(ATSC3_Q_FRACTIONAL_BITS, 15);
-    EXPECT_EQ(ATSC3_Q_SCALE, 32768);
+    EXPECT_EQ(ATSC3_Q_SCALE, static_cast<int32_t>(32768));
     EXPECT_FLOAT_EQ(ATSC3_Q_SCALE_INV, 1.0f / 32768.0f);
 }
 
@@ -111,10 +111,12 @@ TEST(TypesTest, Q15ToFloatConversion) {
 
 TEST(TypesTest, Q15RoundTrip) {
     // Test that conversion round-trips correctly for representable values
-    for (int16_t i = -32768; i < 32767; i += 1000) {
-        float f = q15_to_float(i);
+    // Use int32_t for loop counter to avoid overflow
+    for (int32_t i = -32768; i < 32767; i += 1000) {
+        int16_t val = static_cast<int16_t>(i);
+        float f = q15_to_float(val);
         int16_t back = float_to_q15(f);
-        EXPECT_EQ(back, i) << "Round-trip failed for " << i;
+        EXPECT_EQ(back, val) << "Round-trip failed for " << val;
     }
 }
 

@@ -6,6 +6,13 @@
 #------------------------------------------------------------------------------
 set(LIB_TEST_SOURCES
     test_types.cc
+    test_bootstrap_detector.cc
+    test_cp_removal.cc
+    test_fft_engine.cc
+    test_freq_correction.cc
+    test_timing_recovery.cc
+    test_frame_sync.cc
+    test_pilot_extractor.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

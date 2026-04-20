@@ -1,16 +1,18 @@
 # lib/sync/ - Synchronization primitives
-# Bootstrap detection, frame sync, timing recovery
+# Bootstrap detection, frame sync, timing recovery, frequency correction
 
 set(SYNC_SOURCES
-    # bootstrap_detector.cc
-    # frame_sync.cc
-    # timing_recovery.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap_detector.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/freq_correction.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/frame_sync.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/timing_recovery.cc
+    PARENT_SCOPE
 )
 
 set(SYNC_HEADERS
-    # bootstrap_detector.h
-    # frame_sync.h
-    # timing_recovery.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap_detector.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/freq_correction.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/frame_sync.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/timing_recovery.h
+    PARENT_SCOPE
 )
-
-# Sources will be added to parent LIB_SOURCES when implemented

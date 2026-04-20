@@ -19,8 +19,8 @@ using real_t = int16_t;
 // Q1.15: 1 sign bit, 0 integer bits, 15 fractional bits
 // Range: [-1.0, 1.0) with resolution 2^-15 = 3.05e-5
 constexpr int ATSC3_Q_FRACTIONAL_BITS = 15;
-constexpr int16_t ATSC3_Q_SCALE = 1 << ATSC3_Q_FRACTIONAL_BITS;
-constexpr float ATSC3_Q_SCALE_INV = 1.0f / ATSC3_Q_SCALE;
+constexpr int32_t ATSC3_Q_SCALE = 1 << ATSC3_Q_FRACTIONAL_BITS;  // 32768
+constexpr float ATSC3_Q_SCALE_INV = 1.0f / static_cast<float>(ATSC3_Q_SCALE);
 
 // Convert float to Q1.15
 inline int16_t float_to_q15(float x) {

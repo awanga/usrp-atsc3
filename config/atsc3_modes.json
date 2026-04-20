@@ -74,6 +74,53 @@
         "1024QAM": {"bits_per_symbol": 10, "constellation_size": 1024},
         "4096QAM": {"bits_per_symbol": 12, "constellation_size": 4096}
     },
+    "pilot_patterns": {
+        "description": "Scattered pilot patterns per ATSC A/322 Section 7.2",
+        "patterns": {
+            "PP1": {"dx": 3, "dy": 4},
+            "PP2": {"dx": 6, "dy": 2},
+            "PP3": {"dx": 6, "dy": 4},
+            "PP4": {"dx": 12, "dy": 2},
+            "PP5": {"dx": 12, "dy": 4},
+            "PP6": {"dx": 24, "dy": 2},
+            "PP7": {"dx": 24, "dy": 4},
+            "PP8": {"dx": 6, "dy": 16}
+        },
+        "continual_pilots_8k": [
+            44, 122, 203, 262, 346, 410, 490, 559, 643, 715, 797, 866,
+            943, 1016, 1094, 1165, 1247, 1318, 1397, 1469, 1550, 1619,
+            1700, 1769, 1850, 1922, 2000, 2069, 2153, 2222, 2299, 2378,
+            2453, 2521, 2602, 2678, 2755, 2823, 2900, 2975, 3053, 3128,
+            3203, 3278, 3353, 3421, 3500, 3575, 3650, 3721, 3800, 3878,
+            3950, 4022, 4097, 4171, 4250, 4318, 4397, 4469, 4547, 4618,
+            4694, 4769, 4844, 4919, 4994, 5065, 5143, 5218, 5294, 5366,
+            5441, 5518, 5594, 5669, 5741, 5818, 5893, 5966, 6044, 6116,
+            6197, 6262, 6343, 6412, 6493, 6562, 6643, 6715, 6793, 6869
+        ],
+        "expected_pilot_counts": {
+            "8K": {
+                "continual": 92,
+                "scattered_per_symbol": {
+                    "PP1": 576, "PP2": 576, "PP3": 288, "PP4": 288,
+                    "PP5": 144, "PP6": 144, "PP7": 72, "PP8": 72
+                }
+            },
+            "16K": {
+                "continual": 184,
+                "scattered_per_symbol": {
+                    "PP1": 1152, "PP2": 1152, "PP3": 576, "PP4": 576,
+                    "PP5": 288, "PP6": 288, "PP7": 144, "PP8": 144
+                }
+            },
+            "32K": {
+                "continual": 368,
+                "scattered_per_symbol": {
+                    "PP1": 2304, "PP2": 2304, "PP3": 1152, "PP4": 1152,
+                    "PP5": 576, "PP6": 576, "PP7": 288, "PP8": 288
+                }
+            }
+        }
+    },
     "notes": [
         "LDPC H matrices are stored sparse (row, col lists) - do not expand to dense",
         "Bootstrap is always 4K OFDM regardless of data FFT size",
