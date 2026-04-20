@@ -2,12 +2,11 @@
 //
 // Tests ZF and MMSE equalization, phase tracking, and EVM computation
 
-#include <gtest/gtest.h>
-
 #include "equalizer.h"
 #include "pilot_extractor.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <random>
 #include <vector>
 
@@ -59,7 +58,8 @@ TEST(EqualizerTest, ValidFftSizes) {
         EXPECT_NO_THROW({
             Equalizer equalizer(config);
             EXPECT_GT(equalizer.get_num_active_carriers(), 0u);
-        }) << "Failed for FFT size " << size;
+        }) << "Failed for FFT size "
+           << size;
     }
 }
 
@@ -107,7 +107,7 @@ TEST(EqualizerTest, ZFUnityChannel) {
     for (size_t k = 0; k < num_carriers; ++k) {
 #ifdef ATSC3_FIXED_POINT
         received[k] = sample_t(16384, 8192);  // 0.5 + 0.25j
-        channel[k] = sample_t(32767, 0);       // 1 + 0j
+        channel[k] = sample_t(32767, 0);      // 1 + 0j
 #else
         received[k] = sample_t(0.5f, 0.25f);
         channel[k] = sample_t(1.0f, 0.0f);
@@ -144,8 +144,8 @@ TEST(EqualizerTest, ZFAttenuatedChannel) {
 
     for (size_t k = 0; k < num_carriers; ++k) {
 #ifdef ATSC3_FIXED_POINT
-        received[k] = sample_t(16384, 0);   // 0.5 + 0j (received)
-        channel[k] = sample_t(16384, 0);    // 0.5 + 0j (channel)
+        received[k] = sample_t(16384, 0);  // 0.5 + 0j (received)
+        channel[k] = sample_t(16384, 0);   // 0.5 + 0j (channel)
 #else
         received[k] = sample_t(0.5f, 0.0f);
         channel[k] = sample_t(0.5f, 0.0f);
@@ -295,7 +295,7 @@ TEST(EqualizerTest, MMSERegularization) {
     // MMSE should regularize and produce smaller output for weak channels
     EqualizerConfig config_mmse;
     config_mmse.mode = EqualizationMode::MMSE;
-    config_mmse.noise_variance = 0.1f;  // High noise
+    config_mmse.noise_variance = 0.1f;           // High noise
     config_mmse.min_channel_magnitude = 0.001f;  // Allow small channels
     Equalizer eq_mmse(config_mmse);
 
@@ -309,8 +309,8 @@ TEST(EqualizerTest, MMSERegularization) {
     std::vector<sample_t> channel(1);
 
 #ifdef ATSC3_FIXED_POINT
-    received[0] = sample_t(1638, 0);   // 0.05
-    channel[0] = sample_t(3277, 0);    // 0.1
+    received[0] = sample_t(1638, 0);  // 0.05
+    channel[0] = sample_t(3277, 0);   // 0.1
 #else
     received[0] = sample_t(0.05f, 0.0f);
     channel[0] = sample_t(0.1f, 0.0f);
@@ -342,7 +342,7 @@ TEST(EqualizerTest, EqualizeSampleZF) {
 
 #ifdef ATSC3_FIXED_POINT
     sample_t y(16384, 8192);  // 0.5 + 0.25j
-    sample_t h(32767, 0);      // 1 + 0j
+    sample_t h(32767, 0);     // 1 + 0j
 #else
     sample_t y(0.5f, 0.25f);
     sample_t h(1.0f, 0.0f);
@@ -455,8 +455,7 @@ TEST(EqualizerTest, EVMWithNoise) {
 
 #ifdef ATSC3_FIXED_POINT
         reference[k] = sample_t(float_to_q15(re), float_to_q15(im));
-        equalized[k] = sample_t(float_to_q15(re + noise(rng)),
-                                 float_to_q15(im + noise(rng)));
+        equalized[k] = sample_t(float_to_q15(re + noise(rng)), float_to_q15(im + noise(rng)));
 #else
         reference[k] = sample_t(re, im);
         equalized[k] = sample_t(re + noise(rng), im + noise(rng));
@@ -567,24 +566,28 @@ TEST(EqualizerTest, FullEqualizationPipeline) {
 
     EqualizerConfig config;
     config.mode = EqualizationMode::MMSE;
-    config.noise_variance = 0.01f;
+    // Total complex noise variance = E[|N|^2] = 2 * stddev^2 = 2 * 0.01^2 = 0.0002
+    // (noise is added independently to real and imag components)
+    config.noise_variance = 0.0002f;
     Equalizer equalizer(config);
 
     std::mt19937 rng(456);
-    std::normal_distribution<float> noise(0.0f, 0.01f);
+    std::normal_distribution<float> noise(0.0f, 0.01f);  // stddev = 0.01 per component
 
     size_t num_carriers = 500;
     std::vector<sample_t> transmitted(num_carriers);
     std::vector<sample_t> received(num_carriers);
     std::vector<sample_t> channel(num_carriers);
 
-    // Frequency-selective channel (multipath)
+    // Frequency-selective channel (multipath) without deep nulls
+    // h_mag ranges from 0.2 to 0.8, avoiding complete fades that would
+    // make -20 dB EVM physically unachievable due to MMSE bias at nulls
     for (size_t k = 0; k < num_carriers; ++k) {
         // Channel varies across frequency
-        float h_mag = 0.5f + 0.5f * std::cos(2.0f * static_cast<float>(M_PI) *
-                                              static_cast<float>(k) / 100.0f);
-        float h_phase = 0.3f * std::sin(2.0f * static_cast<float>(M_PI) *
-                                         static_cast<float>(k) / 50.0f);
+        float h_mag = 0.5f + 0.3f * std::cos(2.0f * static_cast<float>(M_PI) *
+                                             static_cast<float>(k) / 100.0f);
+        float h_phase =
+            0.3f * std::sin(2.0f * static_cast<float>(M_PI) * static_cast<float>(k) / 50.0f);
 
         float h_re = h_mag * std::cos(h_phase);
         float h_im = h_mag * std::sin(h_phase);
