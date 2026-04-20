@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -91,13 +92,11 @@ public:
 
     void process(const sample_t* in, sample_t* out) override {
         // sample_t is complex<float> in float mode
-        process(reinterpret_cast<const std::complex<float>*>(in),
-                reinterpret_cast<std::complex<float>*>(out));
-    }
-
-    void process(const std::complex<float>* in, std::complex<float>* out) override {
-        // Copy input to aligned buffer
-        std::memcpy(in_buf_, in, size_ * sizeof(fftwf_complex));
+        // Copy input to aligned buffer (element-wise to avoid memcpy on non-trivial type)
+        for (size_t i = 0; i < size_; ++i) {
+            in_buf_[i][0] = in[i].real();
+            in_buf_[i][1] = in[i].imag();
+        }
 
         // Execute FFT
         fftwf_execute(plan_);
@@ -106,10 +105,12 @@ public:
         if (normalize_inverse_ && direction_ == FftDirection::kInverse) {
             float scale = 1.0f / static_cast<float>(size_);
             for (size_t i = 0; i < size_; ++i) {
-                out[i] = std::complex<float>(out_buf_[i][0] * scale, out_buf_[i][1] * scale);
+                out[i] = sample_t(out_buf_[i][0] * scale, out_buf_[i][1] * scale);
             }
         } else {
-            std::memcpy(out, out_buf_, size_ * sizeof(fftwf_complex));
+            for (size_t i = 0; i < size_; ++i) {
+                out[i] = sample_t(out_buf_[i][0], out_buf_[i][1]);
+            }
         }
     }
 

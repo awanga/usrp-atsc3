@@ -78,8 +78,11 @@ public:
     // Input and output buffers must not overlap
     virtual void process(const sample_t* in, sample_t* out) = 0;
 
+#ifdef ATSC3_FIXED_POINT
     // Process with float interface (convenience for non-fixed-point paths)
+    // Only needed in fixed-point mode since sample_t != std::complex<float>
     virtual void process(const std::complex<float>* in, std::complex<float>* out) = 0;
+#endif
 
     // Get FFT size
     virtual size_t get_size() const = 0;
