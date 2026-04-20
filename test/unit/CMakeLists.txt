@@ -13,6 +13,9 @@ set(LIB_TEST_SOURCES
     test_timing_recovery.cc
     test_frame_sync.cc
     test_pilot_extractor.cc
+    test_channel_estimator.cc
+    test_wiener_interpolator.cc
+    test_equalizer.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

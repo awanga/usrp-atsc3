@@ -75,6 +75,36 @@ cppcheck --enable=all --error-exitcode=1 lib/ blocks/ hal/
 - **Parameters:** No magic numbers; all ATSC 3.0 mode tables loaded from `config/` JSON at runtime
 - **Error handling:** Use `std::expected` (backported via Boost.Outcome) not exceptions in `lib/`; GR blocks may throw
 
+### Q1.15 Fixed-Point Format (Persistent Requirement)
+
+All fixed-point DSP code must use **16-bit Q1.15 format** for RTL compatibility:
+
+- **Container:** `int16_t` (16 bits total)
+- **Bit layout:** 1 sign bit (MSB) + 15 fractional data bits
+- **Scale factor:** 32768 (2^15)
+- **Range:** [-1.0, +1.0) represented as [-32768, +32767]
+- **Resolution:** 2^-15 ≈ 3.05e-5
+- **Saturation:** Clamp intermediates to `int16_t` range before storage
+- **Complex samples:** `std::complex<int16_t>` (real and imag both Q1.15)
+- **Helpers:** Use `float_to_q15()` / `q15_to_float()` from `lib/types.h`
+
+**Note:** `float_to_q15(1.0f)` overflows — use 32767 for +1.0 representation.
+
+### Q1.15 Fixed-Point Requirements (RTL Compatibility)
+
+All fixed-point code must conform to hardware Q1.15 format for RTL portability:
+
+- **Data type:** `int16_t` only (1 sign bit MSB + 15 fractional bits)
+- **Range:** [-1.0, +1.0) represented as [-32768, +32767]
+- **Max positive value:** 32767 (≈ 0.999969), NOT 32768 (overflows to -32768)
+- **Intermediate calculations:** May use `int32_t` or `int64_t` to prevent overflow, but must be scaled/saturated back to `int16_t` before storage
+- **Saturation:** Always clamp to [-32767, +32767] (symmetric) to avoid asymmetric overflow behavior
+- **Conversion helpers:** Use `float_to_q15()` and `q15_to_float()` from `lib/types.h`; never use `float_to_q15(1.0f)` directly (overflows)
+- **BPSK values:** Use ±32767 (not ±32768) for ±1.0 representation
+- **Complex samples:** `std::complex<int16_t>` with both real and imag in Q1.15
+
+**Rationale:** This matches typical FPGA DSP pipeline widths and enables direct RTL translation without numerical divergence.
+
 ---
 
 ## Key Interfaces

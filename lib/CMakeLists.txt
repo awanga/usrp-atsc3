@@ -13,7 +13,7 @@ add_subdirectory(metrics)
 set(LIB_SOURCES
     ${SYNC_SOURCES}
     ${OFDM_SOURCES}
-    # ${CHANNEL_SOURCES}  -- Phase 3
+    ${CHANNEL_SOURCES}
     # ${FEC_SOURCES}
     # ${FRAMING_SOURCES}
     # ${METRICS_SOURCES}
@@ -23,7 +23,7 @@ set(LIB_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/types.h
     ${SYNC_HEADERS}
     ${OFDM_HEADERS}
-    # ${CHANNEL_HEADERS}  -- Phase 3
+    ${CHANNEL_HEADERS}
 )
 
 # Create static library

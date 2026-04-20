@@ -2,15 +2,15 @@
 # LS estimation, Wiener filtering, FDE equalizer
 
 set(CHANNEL_SOURCES
-    # channel_estimator.cc
-    # wiener_filter.cc
-    # fde_equalizer.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/channel_estimator.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/wiener_interpolator.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/equalizer.cc
+    PARENT_SCOPE
 )
 
 set(CHANNEL_HEADERS
-    # channel_estimator.h  -- has setBackend(EstimatorBackend) slot for ML (post-MVP)
-    # wiener_filter.h
-    # fde_equalizer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/channel_estimator.h  # has setBackend(EstimatorBackend) slot for ML (post-MVP)
+    ${CMAKE_CURRENT_SOURCE_DIR}/wiener_interpolator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/equalizer.h
+    PARENT_SCOPE
 )
-
-# Sources will be added to parent LIB_SOURCES when implemented
