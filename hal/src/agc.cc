@@ -11,9 +11,7 @@ namespace atsc3 {
 namespace hal {
 
 AgcController::AgcController(const AgcConfig& config)
-    : config_(config),
-      current_gain_db_(config.initial_gain_db),
-      measured_power_dbfs_(-100.0) {
+    : config_(config), current_gain_db_(config.initial_gain_db), measured_power_dbfs_(-100.0) {
     update_coefficients();
 }
 
@@ -70,8 +68,7 @@ void AgcController::set_config(const AgcConfig& config) {
     config_ = config;
     update_coefficients();
     // Clamp current gain to new limits
-    current_gain_db_ =
-        std::clamp(current_gain_db_, config_.min_gain_db, config_.max_gain_db);
+    current_gain_db_ = std::clamp(current_gain_db_, config_.min_gain_db, config_.max_gain_db);
 }
 
 const AgcConfig& AgcController::get_config() const {

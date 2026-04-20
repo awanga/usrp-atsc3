@@ -85,10 +85,8 @@ void FreqCorrection::process(const sample_t* in, sample_t* out, size_t n) {
         float in_re = in[i].real();
         float in_im = in[i].imag();
 
-        float out_re = in_re * static_cast<float>(cos_p) -
-                       in_im * static_cast<float>(sin_p);
-        float out_im = in_re * static_cast<float>(sin_p) +
-                       in_im * static_cast<float>(cos_p);
+        float out_re = in_re * static_cast<float>(cos_p) - in_im * static_cast<float>(sin_p);
+        float out_im = in_re * static_cast<float>(sin_p) + in_im * static_cast<float>(cos_p);
 
         out[i] = sample_t(out_re, out_im);
 #endif
@@ -126,10 +124,8 @@ void FreqCorrection::process(sample_t* samples, size_t n) {
         float in_re = samples[i].real();
         float in_im = samples[i].imag();
 
-        float out_re = in_re * static_cast<float>(cos_p) -
-                       in_im * static_cast<float>(sin_p);
-        float out_im = in_re * static_cast<float>(sin_p) +
-                       in_im * static_cast<float>(cos_p);
+        float out_re = in_re * static_cast<float>(cos_p) - in_im * static_cast<float>(sin_p);
+        float out_im = in_re * static_cast<float>(sin_p) + in_im * static_cast<float>(cos_p);
 
         samples[i] = sample_t(out_re, out_im);
 #endif

@@ -23,9 +23,9 @@ namespace {
 // Channel profile parameters for Wiener filter design
 // Values derived from typical ATSC 3.0 reception scenarios
 struct ChannelProfileParams {
-    float max_doppler_hz;     // Maximum Doppler spread
-    float rms_delay_spread_us; // RMS delay spread in microseconds
-    float coherence_bw_hz;    // Approximate coherence bandwidth
+    float max_doppler_hz;       // Maximum Doppler spread
+    float rms_delay_spread_us;  // RMS delay spread in microseconds
+    float coherence_bw_hz;      // Approximate coherence bandwidth
 };
 
 ChannelProfileParams get_profile_params(ChannelProfile profile) {
@@ -58,8 +58,7 @@ float bessel_j0(float x) {
         float y = 3.0f / ax;
         float theta = ax - 0.785398163f;  // pi/4
         return std::sqrt(0.636619772f / ax) *
-               (std::cos(theta) * (1.0f - 0.0625f * y * y) +
-                std::sin(theta) * 0.125f * y);
+               (std::cos(theta) * (1.0f - 0.0625f * y * y) + std::sin(theta) * 0.125f * y);
     }
 }
 
@@ -84,12 +83,9 @@ constexpr float kDefaultSymbolDuration = 1185.0f;     // μs (including CP)
 }  // namespace
 
 // Compute Wiener filter coefficients
-std::vector<float> compute_wiener_coefficients(
-    float /*doppler_hz*/,  // Reserved for time-direction filtering
-    float delay_spread_us,
-    float snr_db,
-    size_t num_taps) {
-
+std::vector<float>
+compute_wiener_coefficients(float /*doppler_hz*/,  // Reserved for time-direction filtering
+                            float delay_spread_us, float snr_db, size_t num_taps) {
     std::vector<float> coeffs(num_taps);
 
     // Convert SNR to linear
@@ -114,8 +110,8 @@ std::vector<float> compute_wiener_coefficients(
         int delta = static_cast<int>(i) - static_cast<int>(num_taps / 2);
 
         // Frequency correlation
-        corr[i] = sinc(static_cast<float>(delta) * 6.0f *
-                       kDefaultSubcarrierSpacing * delay_spread_us * 1e-6f);
+        corr[i] = sinc(static_cast<float>(delta) * 6.0f * kDefaultSubcarrierSpacing *
+                       delay_spread_us * 1e-6f);
         corr[i] = std::max(0.0f, corr[i]);  // Ensure non-negative
         sum_corr += corr[i];
     }
@@ -134,16 +130,17 @@ std::vector<float> compute_wiener_coefficients(
 
     // Normalize to sum to 1
     float coeff_sum = 0.0f;
-    for (float c : coeffs) coeff_sum += c;
+    for (float c : coeffs)
+        coeff_sum += c;
     if (coeff_sum > 0.0f) {
-        for (float& c : coeffs) c /= coeff_sum;
+        for (float& c : coeffs)
+            c /= coeff_sum;
     }
 
     return coeffs;
 }
 
-WienerInterpolator::WienerInterpolator(const WienerInterpolatorConfig& config)
-    : config_(config) {
+WienerInterpolator::WienerInterpolator(const WienerInterpolatorConfig& config) : config_(config) {
     init();
 }
 
@@ -166,11 +163,8 @@ void WienerInterpolator::compute_filter_coefficients() {
 
     // Frequency-direction coefficients
     float snr_db = -10.0f * std::log10(config_.noise_variance + 1e-10f);
-    freq_coeffs_ = compute_wiener_coefficients(
-        params.max_doppler_hz,
-        params.rms_delay_spread_us,
-        snr_db,
-        config_.freq_taps);
+    freq_coeffs_ = compute_wiener_coefficients(params.max_doppler_hz, params.rms_delay_spread_us,
+                                               snr_db, config_.freq_taps);
 
     // Time-direction coefficients (using Doppler correlation)
     time_coeffs_.resize(config_.time_taps);
@@ -180,18 +174,17 @@ void WienerInterpolator::compute_filter_coefficients() {
         int delta = static_cast<int>(i) - static_cast<int>(config_.time_taps / 2);
 
         // Time correlation: J0(2π * fd * Δl * Tsym)
-        time_coeffs_[i] = bessel_j0(2.0f * static_cast<float>(M_PI) *
-                                     params.max_doppler_hz *
-                                     static_cast<float>(delta) *
-                                     static_cast<float>(config_.pilot_spacing_time) *
-                                     kDefaultSymbolDuration * 1e-6f);
+        time_coeffs_[i] = bessel_j0(
+            2.0f * static_cast<float>(M_PI) * params.max_doppler_hz * static_cast<float>(delta) *
+            static_cast<float>(config_.pilot_spacing_time) * kDefaultSymbolDuration * 1e-6f);
         time_coeffs_[i] = std::max(0.0f, time_coeffs_[i]);
         time_sum += time_coeffs_[i];
     }
 
     // Normalize time coefficients
     if (time_sum > 0.0f) {
-        for (float& c : time_coeffs_) c /= time_sum;
+        for (float& c : time_coeffs_)
+            c /= time_sum;
     }
 }
 
@@ -208,20 +201,18 @@ void WienerInterpolator::set_config(const WienerInterpolatorConfig& config) {
     init();
 }
 
-std::vector<sample_t> WienerInterpolator::interpolate(
-    const std::vector<sample_t>& pilot_estimates,
-    const std::vector<size_t>& pilot_positions) const {
-
+std::vector<sample_t>
+WienerInterpolator::interpolate(const std::vector<sample_t>& pilot_estimates,
+                                const std::vector<size_t>& pilot_positions) const {
     std::vector<sample_t> output(config_.num_active_carriers);
     interpolate_frequency(pilot_estimates, pilot_positions, output);
     return output;
 }
 
-std::vector<sample_t> WienerInterpolator::interpolate_with_history(
-    const std::vector<sample_t>& pilot_estimates,
-    const std::vector<size_t>& pilot_positions,
-    size_t /*symbol_index*/) {
-
+std::vector<sample_t>
+WienerInterpolator::interpolate_with_history(const std::vector<sample_t>& pilot_estimates,
+                                             const std::vector<size_t>& pilot_positions,
+                                             size_t /*symbol_index*/) {
     // First do frequency interpolation
     std::vector<sample_t> freq_interp(config_.num_active_carriers);
     interpolate_frequency(pilot_estimates, pilot_positions, freq_interp);
@@ -242,11 +233,9 @@ std::vector<sample_t> WienerInterpolator::interpolate_with_history(
     return freq_interp;
 }
 
-void WienerInterpolator::interpolate_frequency(
-    const std::vector<sample_t>& pilot_estimates,
-    const std::vector<size_t>& pilot_positions,
-    std::vector<sample_t>& output) const {
-
+void WienerInterpolator::interpolate_frequency(const std::vector<sample_t>& pilot_estimates,
+                                               const std::vector<size_t>& pilot_positions,
+                                               std::vector<sample_t>& output) const {
     if (pilot_estimates.empty() || pilot_positions.empty()) {
         std::fill(output.begin(), output.end(), sample_t(0, 0));
         return;
@@ -323,8 +312,7 @@ void WienerInterpolator::interpolate_frequency(
             int32_t out_im = static_cast<int32_t>(static_cast<float>(sum_im) / weight_sum);
             out_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_re));
             out_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_im));
-            output[k] = sample_t(static_cast<int16_t>(out_re),
-                                  static_cast<int16_t>(out_im));
+            output[k] = sample_t(static_cast<int16_t>(out_re), static_cast<int16_t>(out_im));
 #else
             output[k] = sample_t(sum_re / weight_sum, sum_im / weight_sum);
 #endif
@@ -369,19 +357,15 @@ void WienerInterpolator::filter_time(std::vector<sample_t>& estimate) {
 #ifdef ATSC3_FIXED_POINT
         sum_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, sum_re));
         sum_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, sum_im));
-        estimate[k] = sample_t(static_cast<int16_t>(sum_re),
-                                static_cast<int16_t>(sum_im));
+        estimate[k] = sample_t(static_cast<int16_t>(sum_re), static_cast<int16_t>(sum_im));
 #else
         estimate[k] = sample_t(sum_re, sum_im);
 #endif
     }
 }
 
-sample_t WienerInterpolator::apply_fir(
-    const std::vector<sample_t>& input,
-    size_t center_idx,
-    const std::vector<float>& coeffs) const {
-
+sample_t WienerInterpolator::apply_fir(const std::vector<sample_t>& input, size_t center_idx,
+                                       const std::vector<float>& coeffs) const {
     size_t num_taps = coeffs.size();
     size_t half_taps = num_taps / 2;
     size_t input_size = input.size();
@@ -395,8 +379,7 @@ sample_t WienerInterpolator::apply_fir(
 #endif
 
     for (size_t i = 0; i < num_taps; ++i) {
-        int64_t idx = static_cast<int64_t>(center_idx) -
-                      static_cast<int64_t>(half_taps) +
+        int64_t idx = static_cast<int64_t>(center_idx) - static_cast<int64_t>(half_taps) +
                       static_cast<int64_t>(i);
 
         // Handle boundary conditions (zero-padding)

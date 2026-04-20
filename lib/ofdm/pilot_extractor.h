@@ -44,10 +44,10 @@ enum class PilotType {
 
 // Single pilot observation
 struct PilotSymbol {
-    size_t subcarrier_index;    // FFT bin index
-    sample_t reference_value;   // Known pilot value (BPSK sequence)
-    sample_t received_value;    // Observed value from FFT output
-    PilotType type;             // Type of pilot
+    size_t subcarrier_index;   // FFT bin index
+    sample_t reference_value;  // Known pilot value (BPSK sequence)
+    sample_t received_value;   // Observed value from FFT output
+    PilotType type;            // Type of pilot
 
     // Compute channel estimate at this pilot (H = Y / X)
     sample_t estimate_channel() const;
@@ -120,7 +120,7 @@ public:
 
     // Extract only scattered pilots
     std::vector<PilotSymbol> extract_scattered(const sample_t* fft_output,
-                                                size_t symbol_index) const;
+                                               size_t symbol_index) const;
 
     // Extract only continual pilots
     std::vector<PilotSymbol> extract_continual(const sample_t* fft_output) const;
@@ -153,7 +153,9 @@ public:
     void set_config(const PilotExtractorConfig& config);
 
     // Get current configuration
-    const PilotExtractorConfig& get_config() const { return config_; }
+    const PilotExtractorConfig& get_config() const {
+        return config_;
+    }
 
 private:
     PilotExtractorConfig config_;
@@ -187,8 +189,8 @@ private:
 PilotPatternParams get_pilot_pattern_params(PilotPattern pattern, size_t fft_size);
 
 // Utility: Get scattered pilot count for pattern
-size_t get_scattered_pilot_count(PilotPattern pattern, size_t fft_size,
-                                  size_t first_active, size_t num_active);
+size_t get_scattered_pilot_count(PilotPattern pattern, size_t fft_size, size_t first_active,
+                                 size_t num_active);
 
 }  // namespace ofdm
 }  // namespace atsc3

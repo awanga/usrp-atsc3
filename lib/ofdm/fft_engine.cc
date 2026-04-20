@@ -114,9 +114,15 @@ public:
         }
     }
 
-    size_t get_size() const override { return size_; }
-    FftDirection get_direction() const override { return direction_; }
-    bool is_fftw_backend() const override { return true; }
+    size_t get_size() const override {
+        return size_;
+    }
+    FftDirection get_direction() const override {
+        return direction_;
+    }
+    bool is_fftw_backend() const override {
+        return true;
+    }
 
 private:
     size_t size_;
@@ -212,9 +218,15 @@ public:
         }
     }
 
-    size_t get_size() const override { return size_; }
-    FftDirection get_direction() const override { return direction_; }
-    bool is_fftw_backend() const override { return false; }
+    size_t get_size() const override {
+        return size_;
+    }
+    FftDirection get_direction() const override {
+        return direction_;
+    }
+    bool is_fftw_backend() const override {
+        return false;
+    }
 
 private:
     void compute_twiddles() {
@@ -259,8 +271,8 @@ private:
     void cooley_tukey_dit() {
         // Radix-2 decimation-in-time FFT
         for (size_t stage = 1; stage <= static_cast<size_t>(log2_size()); ++stage) {
-            size_t m = 1u << stage;       // Butterfly span
-            size_t m2 = m >> 1;           // Half span
+            size_t m = 1u << stage;  // Butterfly span
+            size_t m2 = m >> 1;      // Half span
             size_t twiddle_step = size_ / m;
 
             for (size_t k = 0; k < size_; k += m) {
@@ -285,10 +297,8 @@ private:
 
                     // Butterfly
                     sample_t even = work_buf_[idx_even];
-                    work_buf_[idx_even] =
-                        sample_t(even.real() + t.real(), even.imag() + t.imag());
-                    work_buf_[idx_odd] =
-                        sample_t(even.real() - t.real(), even.imag() - t.imag());
+                    work_buf_[idx_even] = sample_t(even.real() + t.real(), even.imag() + t.imag());
+                    work_buf_[idx_odd] = sample_t(even.real() - t.real(), even.imag() - t.imag());
                 }
             }
         }

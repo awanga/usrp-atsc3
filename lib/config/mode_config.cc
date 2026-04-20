@@ -78,8 +78,7 @@ bool ModeConfig::load(const std::string& json_path) {
                 auto scattered = fft.second.get_child_optional("scattered_per_symbol");
                 if (scattered) {
                     for (const auto& s : *scattered) {
-                        counts.scattered_per_symbol[s.first] =
-                            s.second.get_value<size_t>();
+                        counts.scattered_per_symbol[s.first] = s.second.get_value<size_t>();
                     }
                 }
 
@@ -129,13 +128,10 @@ const ExpectedPilotCounts* ModeConfig::get_expected_counts(size_t fft_size) cons
 
 std::string get_default_config_path() {
     // Try common locations
-    std::vector<std::string> paths = {
-        "config/atsc3_modes.json",
-        "../config/atsc3_modes.json",
-        "../../config/atsc3_modes.json",
-        "/usr/share/atsc3/config/atsc3_modes.json",
-        "/usr/local/share/atsc3/config/atsc3_modes.json"
-    };
+    std::vector<std::string> paths = {"config/atsc3_modes.json", "../config/atsc3_modes.json",
+                                      "../../config/atsc3_modes.json",
+                                      "/usr/share/atsc3/config/atsc3_modes.json",
+                                      "/usr/local/share/atsc3/config/atsc3_modes.json"};
 
     for (const auto& path : paths) {
         std::ifstream f(path);

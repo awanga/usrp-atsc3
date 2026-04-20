@@ -207,9 +207,7 @@ void FrameSync::handle_acquiring(const sample_t* symbols, size_t n) {
     size_t search_end = n;
 
     // Limit search to window around expected boundary
-    if (expected_boundary_ >= sample_counter_ &&
-        expected_boundary_ < sample_counter_ + n) {
-
+    if (expected_boundary_ >= sample_counter_ && expected_boundary_ < sample_counter_ + n) {
         size_t expected_offset = expected_boundary_ - sample_counter_;
         size_t half_window = config_.search_window / 2;
 
@@ -220,8 +218,7 @@ void FrameSync::handle_acquiring(const sample_t* symbols, size_t n) {
     double best_corr = 0.0;
     size_t best_offset = 0;
 
-    for (size_t offset = search_start;
-         offset + preamble_ref_.size() <= search_end && offset < n;
+    for (size_t offset = search_start; offset + preamble_ref_.size() <= search_end && offset < n;
          ++offset) {
         double corr = correlate_preamble(symbols, n, offset);
         if (corr > best_corr) {
@@ -251,23 +248,19 @@ void FrameSync::handle_locked(const sample_t* symbols, size_t n) {
     // Track frame boundaries
     // Check correlation at expected boundary
 
-    if (expected_boundary_ >= sample_counter_ &&
-        expected_boundary_ < sample_counter_ + n) {
-
+    if (expected_boundary_ >= sample_counter_ && expected_boundary_ < sample_counter_ + n) {
         size_t expected_offset = expected_boundary_ - sample_counter_;
 
         // Fine correlation search
         size_t half_window = config_.search_window / 2;
-        size_t search_start = (expected_offset > half_window) ?
-                              expected_offset - half_window : 0;
+        size_t search_start = (expected_offset > half_window) ? expected_offset - half_window : 0;
         size_t search_end = std::min(expected_offset + half_window + 1, n);
 
         double best_corr = 0.0;
         size_t best_offset = expected_offset;
 
         for (size_t offset = search_start;
-             offset + preamble_ref_.size() <= n && offset < search_end;
-             ++offset) {
+             offset + preamble_ref_.size() <= n && offset < search_end; ++offset) {
             double corr = correlate_preamble(symbols, n, offset);
             if (corr > best_corr) {
                 best_corr = corr;
@@ -307,9 +300,7 @@ void FrameSync::handle_holdover(const sample_t* symbols, size_t n) {
     ++holdover_counter_;
 
     // Try to reacquire
-    if (expected_boundary_ >= sample_counter_ &&
-        expected_boundary_ < sample_counter_ + n) {
-
+    if (expected_boundary_ >= sample_counter_ && expected_boundary_ < sample_counter_ + n) {
         size_t expected_offset = expected_boundary_ - sample_counter_;
         double corr = correlate_preamble(symbols, n, expected_offset);
 

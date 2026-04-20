@@ -115,18 +115,15 @@ public:
     // channel_estimate: Channel estimate H for all active subcarriers
     // symbol_index: OFDM symbol index
     // Returns: Equalized QAM symbols
-    EqualizationResult equalize(
-        const sample_t* received,
-        const std::vector<sample_t>& channel_estimate,
-        size_t symbol_index);
+    EqualizationResult equalize(const sample_t* received,
+                                const std::vector<sample_t>& channel_estimate, size_t symbol_index);
 
     // Equalize with explicit pilot symbols for phase tracking
     // pilots: Continual pilot observations for residual phase estimation
-    EqualizationResult equalize_with_pilots(
-        const sample_t* received,
-        const std::vector<sample_t>& channel_estimate,
-        const std::vector<ofdm::PilotSymbol>& pilots,
-        size_t symbol_index);
+    EqualizationResult equalize_with_pilots(const sample_t* received,
+                                            const std::vector<sample_t>& channel_estimate,
+                                            const std::vector<ofdm::PilotSymbol>& pilots,
+                                            size_t symbol_index);
 
     // Equalize a single subcarrier (for external use)
     // y: Received symbol
@@ -135,14 +132,18 @@ public:
     sample_t equalize_sample(sample_t y, sample_t h) const;
 
     // Get estimated residual phase from last equalization
-    float get_residual_phase() const { return residual_phase_; }
+    float get_residual_phase() const {
+        return residual_phase_;
+    }
 
     // Reset internal state
     void reset();
 
     // Update configuration
     void set_config(const EqualizerConfig& config);
-    const EqualizerConfig& get_config() const { return config_; }
+    const EqualizerConfig& get_config() const {
+        return config_;
+    }
 
     // Get number of active carriers
     size_t get_num_active_carriers() const;
@@ -169,10 +170,9 @@ private:
     sample_t equalize_mmse(sample_t y, sample_t h) const;
 
     // Estimate residual phase from continual pilots
-    float estimate_residual_phase(
-        const sample_t* received,
-        const std::vector<sample_t>& channel_estimate,
-        const std::vector<ofdm::PilotSymbol>& pilots) const;
+    float estimate_residual_phase(const sample_t* received,
+                                  const std::vector<sample_t>& channel_estimate,
+                                  const std::vector<ofdm::PilotSymbol>& pilots) const;
 
     // Apply phase correction to output symbols
     void apply_phase_correction(std::vector<sample_t>& symbols, float phase);

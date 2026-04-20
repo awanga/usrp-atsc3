@@ -41,9 +41,9 @@ enum class EstimatorBackend {
 
 // Interpolation method for filling gaps between pilots
 enum class InterpolationMethod {
-    LINEAR,      // Simple linear interpolation
-    CUBIC,       // Cubic spline interpolation
-    WIENER       // Optimal Wiener filter (requires noise estimate)
+    LINEAR,  // Simple linear interpolation
+    CUBIC,   // Cubic spline interpolation
+    WIENER   // Optimal Wiener filter (requires noise estimate)
 };
 
 // Channel estimator configuration
@@ -120,27 +120,31 @@ public:
     // pilots: Vector of pilot symbols from PilotExtractor
     // symbol_index: OFDM symbol index
     // Returns: Channel estimate for all active subcarriers
-    ChannelEstimate estimate(const std::vector<ofdm::PilotSymbol>& pilots,
-                              size_t symbol_index);
+    ChannelEstimate estimate(const std::vector<ofdm::PilotSymbol>& pilots, size_t symbol_index);
 
     // Estimate channel at pilot positions only (no interpolation)
     // Returns: Channel estimate only at pilot subcarrier positions
-    std::vector<sample_t> estimate_at_pilots(
-        const std::vector<ofdm::PilotSymbol>& pilots) const;
+    std::vector<sample_t> estimate_at_pilots(const std::vector<ofdm::PilotSymbol>& pilots) const;
 
     // Get estimated SNR from most recent estimation
-    float get_estimated_snr_db() const { return last_snr_db_; }
+    float get_estimated_snr_db() const {
+        return last_snr_db_;
+    }
 
     // Reset internal state (averaging buffers, etc.)
     void reset();
 
     // Update configuration
     void set_config(const ChannelEstimatorConfig& config);
-    const ChannelEstimatorConfig& get_config() const { return config_; }
+    const ChannelEstimatorConfig& get_config() const {
+        return config_;
+    }
 
     // Set backend (runtime switching)
     void set_backend(EstimatorBackend backend);
-    EstimatorBackend get_backend() const { return config_.backend; }
+    EstimatorBackend get_backend() const {
+        return config_.backend;
+    }
 
     // Get number of active carriers
     size_t get_num_active_carriers() const;
@@ -163,8 +167,7 @@ private:
 
     // Compute LS estimate at pilot positions
     // H_hat[k] = Y[k] / X[k] where Y is received, X is reference
-    std::vector<sample_t> compute_ls_estimate(
-        const std::vector<ofdm::PilotSymbol>& pilots) const;
+    std::vector<sample_t> compute_ls_estimate(const std::vector<ofdm::PilotSymbol>& pilots) const;
 
     // Interpolate channel estimate to all active subcarriers
     void interpolate(const std::vector<sample_t>& pilot_estimates,
@@ -184,8 +187,7 @@ private:
                        const std::vector<sample_t>& h_estimates) const;
 
     // Compute mean phase error from pilots
-    float compute_mean_phase_error(
-        const std::vector<ofdm::PilotSymbol>& pilots) const;
+    float compute_mean_phase_error(const std::vector<ofdm::PilotSymbol>& pilots) const;
 };
 
 // Utility: Complex division with saturation for fixed-point

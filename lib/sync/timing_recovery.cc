@@ -45,8 +45,7 @@ inline double raised_cosine(double t, double rolloff, double T) {
 // PolyphaseInterpolator Implementation
 //==============================================================================
 
-PolyphaseInterpolator::PolyphaseInterpolator(const PolyphaseConfig& config)
-    : config_(config) {
+PolyphaseInterpolator::PolyphaseInterpolator(const PolyphaseConfig& config) : config_(config) {
     if (config_.num_phases == 0 || config_.taps_per_phase == 0) {
         throw std::invalid_argument("Invalid polyphase config: phases and taps must be > 0");
     }
@@ -107,8 +106,7 @@ void PolyphaseInterpolator::init_coefficients() {
     }
 }
 
-sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
-                                             double mu) const {
+sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx, double mu) const {
     // Clamp mu to [0, 1)
     mu = mu - std::floor(mu);
 
@@ -154,8 +152,7 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
 // GardnerTed Implementation
 //==============================================================================
 
-GardnerTed::GardnerTed()
-    : prev_symbol_(0, 0), prev_mid_(0, 0), have_prev_(false) {}
+GardnerTed::GardnerTed() : prev_symbol_(0, 0), prev_mid_(0, 0), have_prev_(false) {}
 
 GardnerTed::~GardnerTed() = default;
 

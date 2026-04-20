@@ -36,7 +36,9 @@ public:
         return last_error_;
     }
 
-    double get_frequency() const override { return frequency_; }
+    double get_frequency() const override {
+        return frequency_;
+    }
 
     IQSourceError set_gain(double db) override {
         // Accept any gain in a reasonable range
@@ -49,7 +51,9 @@ public:
         return last_error_;
     }
 
-    double get_gain() const override { return gain_; }
+    double get_gain() const override {
+        return gain_;
+    }
 
     IQSourceError set_sample_rate(double sps) override {
         // Accept any reasonable sample rate
@@ -62,7 +66,9 @@ public:
         return last_error_;
     }
 
-    double get_sample_rate() const override { return sample_rate_; }
+    double get_sample_rate() const override {
+        return sample_rate_;
+    }
 
     //--------------------------------------------------------------------------
     // Data acquisition
@@ -75,7 +81,9 @@ public:
         return n;
     }
 
-    IQSourceError get_last_error() const override { return last_error_; }
+    IQSourceError get_last_error() const override {
+        return last_error_;
+    }
 
     //--------------------------------------------------------------------------
     // Signal quality
@@ -90,18 +98,34 @@ public:
     // Device info
     //--------------------------------------------------------------------------
 
-    std::string get_device_name() const override { return "NullSource (test)"; }
+    std::string get_device_name() const override {
+        return "NullSource (test)";
+    }
 
-    bool is_connected() const override { return true; }
+    bool is_connected() const override {
+        return true;
+    }
 
-    double get_min_frequency() const override { return 1e6; }
-    double get_max_frequency() const override { return 10e9; }
+    double get_min_frequency() const override {
+        return 1e6;
+    }
+    double get_max_frequency() const override {
+        return 10e9;
+    }
 
-    double get_min_gain() const override { return 0.0; }
-    double get_max_gain() const override { return 100.0; }
+    double get_min_gain() const override {
+        return 0.0;
+    }
+    double get_max_gain() const override {
+        return 100.0;
+    }
 
-    double get_min_sample_rate() const override { return 1e3; }
-    double get_max_sample_rate() const override { return 100e6; }
+    double get_min_sample_rate() const override {
+        return 1e3;
+    }
+    double get_max_sample_rate() const override {
+        return 100e6;
+    }
 
 private:
     double sample_rate_;

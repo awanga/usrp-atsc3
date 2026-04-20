@@ -6,6 +6,7 @@
 // Reference: ATSC A/322 Section 7
 
 #include "equalizer.h"
+
 #include "../ofdm/pilot_extractor.h"
 
 #include <algorithm>
@@ -30,10 +31,14 @@ size_t compute_first_active(size_t fft_size, size_t num_active) {
 // Get active carrier count for FFT size
 size_t get_active_carriers(size_t fft_size) {
     switch (fft_size) {
-        case 8192: return kActiveCarriers8K;
-        case 16384: return kActiveCarriers16K;
-        case 32768: return kActiveCarriers32K;
-        default: return 0;
+        case 8192:
+            return kActiveCarriers8K;
+        case 16384:
+            return kActiveCarriers16K;
+        case 32768:
+            return kActiveCarriers32K;
+        default:
+            return 0;
     }
 }
 
@@ -46,8 +51,7 @@ constexpr float kMinMagnitudeSqDefault = 1e-6f;
 
 }  // namespace
 
-Equalizer::Equalizer(const EqualizerConfig& config)
-    : config_(config) {
+Equalizer::Equalizer(const EqualizerConfig& config) : config_(config) {
     init();
 }
 
@@ -63,8 +67,8 @@ void Equalizer::init() {
     }
 
     if (config_.first_active_carrier == 0) {
-        config_.first_active_carrier = compute_first_active(
-            config_.fft_size, config_.num_active_carriers);
+        config_.first_active_carrier =
+            compute_first_active(config_.fft_size, config_.num_active_carriers);
     }
 
     reset();
@@ -104,9 +108,9 @@ sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     int32_t mag_sq = h_re * h_re + h_im * h_im;
 
     // Check for very small channel (deep fade)
-    int32_t min_mag_sq = static_cast<int32_t>(
-        config_.min_channel_magnitude * config_.min_channel_magnitude *
-        static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
+    int32_t min_mag_sq =
+        static_cast<int32_t>(config_.min_channel_magnitude * config_.min_channel_magnitude *
+                             static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
     if (mag_sq < min_mag_sq || mag_sq < kMinMagnitudeSqDefault) {
         return sample_t(0, 0);
     }
@@ -123,7 +127,8 @@ sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     // So we compute (num << 15) / mag_sq, but to avoid overflow
     // we do num / (mag_sq >> 15)
     int32_t denom = mag_sq >> 15;
-    if (denom == 0) denom = 1;
+    if (denom == 0)
+        denom = 1;
 
     int32_t out_re = num_re / denom;
     int32_t out_im = num_im / denom;
@@ -132,16 +137,14 @@ sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     out_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_re));
     out_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_im));
 
-    return sample_t(static_cast<int16_t>(out_re),
-                     static_cast<int16_t>(out_im));
+    return sample_t(static_cast<int16_t>(out_re), static_cast<int16_t>(out_im));
 #else
     float h_re = h.real();
     float h_im = h.imag();
     float mag_sq = h_re * h_re + h_im * h_im;
 
     // Check for very small channel
-    float min_mag_sq = config_.min_channel_magnitude *
-                       config_.min_channel_magnitude;
+    float min_mag_sq = config_.min_channel_magnitude * config_.min_channel_magnitude;
     if (mag_sq < min_mag_sq || mag_sq < kMinMagnitudeSqDefault) {
         return sample_t(0.0f, 0.0f);
     }
@@ -167,8 +170,8 @@ sample_t Equalizer::equalize_mmse(sample_t y, sample_t h) const {
 
     // Add noise variance (convert to Q30 equivalent)
     // noise_variance is in float, scale to Q30
-    int32_t noise_q30 = static_cast<int32_t>(
-        config_.noise_variance * static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
+    int32_t noise_q30 = static_cast<int32_t>(config_.noise_variance *
+                                             static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
     int32_t denom_q30 = mag_sq + noise_q30;
 
     // Check for very small denominator
@@ -185,7 +188,8 @@ sample_t Equalizer::equalize_mmse(sample_t y, sample_t h) const {
 
     // Divide: (Q30 / Q30) → need Q15
     int32_t denom = denom_q30 >> 15;
-    if (denom == 0) denom = 1;
+    if (denom == 0)
+        denom = 1;
 
     int32_t out_re = num_re / denom;
     int32_t out_im = num_im / denom;
@@ -194,8 +198,7 @@ sample_t Equalizer::equalize_mmse(sample_t y, sample_t h) const {
     out_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_re));
     out_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_im));
 
-    return sample_t(static_cast<int16_t>(out_re),
-                     static_cast<int16_t>(out_im));
+    return sample_t(static_cast<int16_t>(out_re), static_cast<int16_t>(out_im));
 #else
     float h_re = h.real();
     float h_im = h.imag();
@@ -227,11 +230,9 @@ sample_t Equalizer::equalize_sample(sample_t y, sample_t h) const {
     }
 }
 
-EqualizationResult Equalizer::equalize(
-    const sample_t* received,
-    const std::vector<sample_t>& channel_estimate,
-    size_t symbol_index) {
-
+EqualizationResult Equalizer::equalize(const sample_t* received,
+                                       const std::vector<sample_t>& channel_estimate,
+                                       size_t symbol_index) {
     EqualizationResult result;
     result.symbol_index = symbol_index;
 
@@ -240,8 +241,7 @@ EqualizationResult Equalizer::equalize(
         return result;
     }
 
-    size_t num_carriers = std::min(config_.num_active_carriers,
-                                    channel_estimate.size());
+    size_t num_carriers = std::min(config_.num_active_carriers, channel_estimate.size());
     result.symbols.resize(num_carriers);
     result.num_zeroed_carriers = 0;
 
@@ -255,8 +255,7 @@ EqualizationResult Equalizer::equalize(
             ++result.num_zeroed_carriers;
         }
 #else
-        if (result.symbols[k].real() == 0.0f &&
-            result.symbols[k].imag() == 0.0f) {
+        if (result.symbols[k].real() == 0.0f && result.symbols[k].imag() == 0.0f) {
             ++result.num_zeroed_carriers;
         }
 #endif
@@ -267,12 +266,10 @@ EqualizationResult Equalizer::equalize(
     return result;
 }
 
-EqualizationResult Equalizer::equalize_with_pilots(
-    const sample_t* received,
-    const std::vector<sample_t>& channel_estimate,
-    const std::vector<ofdm::PilotSymbol>& pilots,
-    size_t symbol_index) {
-
+EqualizationResult Equalizer::equalize_with_pilots(const sample_t* received,
+                                                   const std::vector<sample_t>& channel_estimate,
+                                                   const std::vector<ofdm::PilotSymbol>& pilots,
+                                                   size_t symbol_index) {
     EqualizationResult result;
     result.symbol_index = symbol_index;
 
@@ -281,8 +278,7 @@ EqualizationResult Equalizer::equalize_with_pilots(
         return result;
     }
 
-    size_t num_carriers = std::min(config_.num_active_carriers,
-                                    channel_estimate.size());
+    size_t num_carriers = std::min(config_.num_active_carriers, channel_estimate.size());
     result.symbols.resize(num_carriers);
     result.num_zeroed_carriers = 0;
 
@@ -307,8 +303,7 @@ EqualizationResult Equalizer::equalize_with_pilots(
             ++result.num_zeroed_carriers;
         }
 #else
-        if (result.symbols[k].real() == 0.0f &&
-            result.symbols[k].imag() == 0.0f) {
+        if (result.symbols[k].real() == 0.0f && result.symbols[k].imag() == 0.0f) {
             ++result.num_zeroed_carriers;
         }
 #endif
@@ -324,11 +319,9 @@ EqualizationResult Equalizer::equalize_with_pilots(
     return result;
 }
 
-float Equalizer::estimate_residual_phase(
-    const sample_t* received,
-    const std::vector<sample_t>& channel_estimate,
-    const std::vector<ofdm::PilotSymbol>& pilots) const {
-
+float Equalizer::estimate_residual_phase(const sample_t* received,
+                                         const std::vector<sample_t>& channel_estimate,
+                                         const std::vector<ofdm::PilotSymbol>& pilots) const {
     if (pilots.empty()) {
         return 0.0f;
     }
@@ -391,8 +384,7 @@ float Equalizer::estimate_residual_phase(
     return std::atan2(sin_sum, cos_sum);
 }
 
-void Equalizer::apply_phase_correction(std::vector<sample_t>& symbols,
-                                        float phase) {
+void Equalizer::apply_phase_correction(std::vector<sample_t>& symbols, float phase) {
     if (std::abs(phase) < 1e-6f) {
         return;
     }

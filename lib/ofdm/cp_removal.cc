@@ -17,8 +17,7 @@ CpRemoval::CpRemoval(const CpRemovalConfig& config)
       buffer_idx_(0),
       callback_(nullptr),
       symbol_count_(0) {
-    if (config.fft_size != 8192 && config.fft_size != 16384 &&
-        config.fft_size != 32768) {
+    if (config.fft_size != 8192 && config.fft_size != 16384 && config.fft_size != 32768) {
         throw std::invalid_argument("Invalid FFT size for CP removal");
     }
 }
@@ -55,8 +54,7 @@ void CpRemoval::reset() {
 }
 
 void CpRemoval::reconfigure(const CpRemovalConfig& config) {
-    if (config.fft_size != 8192 && config.fft_size != 16384 &&
-        config.fft_size != 32768) {
+    if (config.fft_size != 8192 && config.fft_size != 16384 && config.fft_size != 32768) {
         throw std::invalid_argument("Invalid FFT size for CP removal");
     }
 

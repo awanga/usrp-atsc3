@@ -91,13 +91,17 @@ public:
     void reset();
 
     // Get current configuration
-    const BootstrapConfig& get_config() const { return config_; }
+    const BootstrapConfig& get_config() const {
+        return config_;
+    }
 
     // Update configuration
     void set_config(const BootstrapConfig& config);
 
     // Get current sample count (since reset)
-    size_t get_sample_count() const { return sample_count_; }
+    size_t get_sample_count() const {
+        return sample_count_;
+    }
 
 private:
     BootstrapConfig config_;

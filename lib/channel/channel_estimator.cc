@@ -6,6 +6,7 @@
 // Reference: ATSC A/322 Section 7, Edfors et al. IEEE Trans. Comm. 1998
 
 #include "channel_estimator.h"
+
 #include "../ofdm/pilot_extractor.h"
 
 #include <algorithm>
@@ -30,10 +31,14 @@ size_t compute_first_active(size_t fft_size, size_t num_active) {
 // Get active carrier count for FFT size
 size_t get_active_carriers(size_t fft_size) {
     switch (fft_size) {
-        case 8192: return kActiveCarriers8K;
-        case 16384: return kActiveCarriers16K;
-        case 32768: return kActiveCarriers32K;
-        default: return 0;
+        case 8192:
+            return kActiveCarriers8K;
+        case 16384:
+            return kActiveCarriers16K;
+        case 32768:
+            return kActiveCarriers32K;
+        default:
+            return 0;
     }
 }
 
@@ -83,8 +88,7 @@ sample_t safe_complex_divide(sample_t a, sample_t b) {
     result_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, result_re));
     result_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, result_im));
 
-    return sample_t(static_cast<int16_t>(result_re),
-                    static_cast<int16_t>(result_im));
+    return sample_t(static_cast<int16_t>(result_re), static_cast<int16_t>(result_im));
 #else
     // Float division
     float mag_sq = b.real() * b.real() + b.imag() * b.imag();
@@ -101,8 +105,7 @@ sample_t safe_complex_divide(sample_t a, sample_t b) {
 #endif
 }
 
-ChannelEstimator::ChannelEstimator(const ChannelEstimatorConfig& config)
-    : config_(config) {
+ChannelEstimator::ChannelEstimator(const ChannelEstimatorConfig& config) : config_(config) {
     init();
 }
 
@@ -113,14 +116,13 @@ void ChannelEstimator::init() {
     if (config_.num_active_carriers == 0) {
         config_.num_active_carriers = get_active_carriers(config_.fft_size);
         if (config_.num_active_carriers == 0) {
-            throw std::invalid_argument(
-                "Invalid FFT size for channel estimation");
+            throw std::invalid_argument("Invalid FFT size for channel estimation");
         }
     }
 
     if (config_.first_active_carrier == 0) {
-        config_.first_active_carrier = compute_first_active(
-            config_.fft_size, config_.num_active_carriers);
+        config_.first_active_carrier =
+            compute_first_active(config_.fft_size, config_.num_active_carriers);
     }
 
     // Pre-allocate averaging buffer
@@ -142,8 +144,7 @@ void ChannelEstimator::set_config(const ChannelEstimatorConfig& config) {
 
 void ChannelEstimator::set_backend(EstimatorBackend backend) {
     if (backend == EstimatorBackend::ML_ONNX) {
-        throw std::runtime_error(
-            "ML_ONNX backend not implemented (post-MVP)");
+        throw std::runtime_error("ML_ONNX backend not implemented (post-MVP)");
     }
     config_.backend = backend;
 }
@@ -156,10 +157,8 @@ size_t ChannelEstimator::get_first_active_carrier() const {
     return config_.first_active_carrier;
 }
 
-ChannelEstimate ChannelEstimator::estimate(
-    const std::vector<ofdm::PilotSymbol>& pilots,
-    size_t symbol_index) {
-
+ChannelEstimate ChannelEstimator::estimate(const std::vector<ofdm::PilotSymbol>& pilots,
+                                           size_t symbol_index) {
     ChannelEstimate result;
     result.symbol_index = symbol_index;
 
@@ -176,8 +175,7 @@ ChannelEstimate ChannelEstimator::estimate(
     pilot_positions.reserve(pilots.size());
     for (const auto& pilot : pilots) {
         if (pilot.subcarrier_index >= config_.first_active_carrier) {
-            pilot_positions.push_back(
-                pilot.subcarrier_index - config_.first_active_carrier);
+            pilot_positions.push_back(pilot.subcarrier_index - config_.first_active_carrier);
         }
     }
 
@@ -199,33 +197,29 @@ ChannelEstimate ChannelEstimator::estimate(
     return result;
 }
 
-std::vector<sample_t> ChannelEstimator::estimate_at_pilots(
-    const std::vector<ofdm::PilotSymbol>& pilots) const {
+std::vector<sample_t>
+ChannelEstimator::estimate_at_pilots(const std::vector<ofdm::PilotSymbol>& pilots) const {
     return compute_ls_estimate(pilots);
 }
 
-std::vector<sample_t> ChannelEstimator::compute_ls_estimate(
-    const std::vector<ofdm::PilotSymbol>& pilots) const {
-
+std::vector<sample_t>
+ChannelEstimator::compute_ls_estimate(const std::vector<ofdm::PilotSymbol>& pilots) const {
     std::vector<sample_t> h_estimates;
     h_estimates.reserve(pilots.size());
 
     for (const auto& pilot : pilots) {
         // LS estimate: H = Y / X (received / reference)
         // For BPSK pilots, reference is real-valued, so this simplifies
-        sample_t h = safe_complex_divide(pilot.received_value,
-                                          pilot.reference_value);
+        sample_t h = safe_complex_divide(pilot.received_value, pilot.reference_value);
         h_estimates.push_back(h);
     }
 
     return h_estimates;
 }
 
-void ChannelEstimator::interpolate(
-    const std::vector<sample_t>& pilot_estimates,
-    const std::vector<size_t>& pilot_positions,
-    std::vector<sample_t>& full_estimate) const {
-
+void ChannelEstimator::interpolate(const std::vector<sample_t>& pilot_estimates,
+                                   const std::vector<size_t>& pilot_positions,
+                                   std::vector<sample_t>& full_estimate) const {
     if (pilot_estimates.empty() || pilot_positions.empty()) {
         std::fill(full_estimate.begin(), full_estimate.end(), sample_t(0, 0));
         return;
@@ -233,18 +227,16 @@ void ChannelEstimator::interpolate(
 
     switch (config_.interpolation) {
         case InterpolationMethod::LINEAR:
-        case InterpolationMethod::CUBIC:  // Fall back to linear for now
-        case InterpolationMethod::WIENER: // Fall back to linear for now
+        case InterpolationMethod::CUBIC:   // Fall back to linear for now
+        case InterpolationMethod::WIENER:  // Fall back to linear for now
             interpolate_linear(pilot_estimates, pilot_positions, full_estimate);
             break;
     }
 }
 
-void ChannelEstimator::interpolate_linear(
-    const std::vector<sample_t>& pilot_estimates,
-    const std::vector<size_t>& pilot_positions,
-    std::vector<sample_t>& full_estimate) const {
-
+void ChannelEstimator::interpolate_linear(const std::vector<sample_t>& pilot_estimates,
+                                          const std::vector<size_t>& pilot_positions,
+                                          std::vector<sample_t>& full_estimate) const {
     size_t num_pilots = pilot_estimates.size();
     size_t num_carriers = full_estimate.size();
 
@@ -270,8 +262,7 @@ void ChannelEstimator::interpolate_linear(
 
     for (size_t k = 0; k < num_carriers; ++k) {
         // Find surrounding pilots
-        while (pilot_idx < num_pilots - 1 &&
-               sorted_indices[pilot_idx + 1].first <= k) {
+        while (pilot_idx < num_pilots - 1 && sorted_indices[pilot_idx + 1].first <= k) {
             ++pilot_idx;
         }
 
@@ -291,20 +282,20 @@ void ChannelEstimator::interpolate_linear(
 #ifdef ATSC3_FIXED_POINT
                     int32_t denom = static_cast<int32_t>(pos_right - pos_left);
                     int32_t numer = static_cast<int32_t>(k - pos_left);
-                    int32_t h_re = h_left.real() +
-                        ((h_right.real() - h_left.real()) * numer) / denom;
-                    int32_t h_im = h_left.imag() +
-                        ((h_right.imag() - h_left.imag()) * numer) / denom;
+                    int32_t h_re =
+                        h_left.real() + ((h_right.real() - h_left.real()) * numer) / denom;
+                    int32_t h_im =
+                        h_left.imag() + ((h_right.imag() - h_left.imag()) * numer) / denom;
                     h_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_re));
                     h_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_im));
-                    full_estimate[k] = sample_t(static_cast<int16_t>(h_re),
-                                                 static_cast<int16_t>(h_im));
+                    full_estimate[k] =
+                        sample_t(static_cast<int16_t>(h_re), static_cast<int16_t>(h_im));
 #else
-                    float alpha = static_cast<float>(k - pos_left) /
-                                  static_cast<float>(pos_right - pos_left);
-                    full_estimate[k] = sample_t(
-                        h_left.real() + alpha * (h_right.real() - h_left.real()),
-                        h_left.imag() + alpha * (h_right.imag() - h_left.imag()));
+                    float alpha =
+                        static_cast<float>(k - pos_left) / static_cast<float>(pos_right - pos_left);
+                    full_estimate[k] =
+                        sample_t(h_left.real() + alpha * (h_right.real() - h_left.real()),
+                                 h_left.imag() + alpha * (h_right.imag() - h_left.imag()));
 #endif
                 } else {
                     full_estimate[k] = h_left;
@@ -347,16 +338,13 @@ void ChannelEstimator::interpolate_linear(
         h_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_re));
         h_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_im));
 
-        full_estimate[k] = sample_t(static_cast<int16_t>(h_re),
-                                     static_cast<int16_t>(h_im));
+        full_estimate[k] = sample_t(static_cast<int16_t>(h_re), static_cast<int16_t>(h_im));
 #else
         // Float linear interpolation
-        float alpha = static_cast<float>(k - pos_left) /
-                      static_cast<float>(pos_right - pos_left);
+        float alpha = static_cast<float>(k - pos_left) / static_cast<float>(pos_right - pos_left);
 
-        full_estimate[k] = sample_t(
-            h_left.real() + alpha * (h_right.real() - h_left.real()),
-            h_left.imag() + alpha * (h_right.imag() - h_left.imag()));
+        full_estimate[k] = sample_t(h_left.real() + alpha * (h_right.real() - h_left.real()),
+                                    h_left.imag() + alpha * (h_right.imag() - h_left.imag()));
 #endif
     }
 }
@@ -379,32 +367,29 @@ void ChannelEstimator::apply_averaging(std::vector<sample_t>& estimate) {
         int32_t alpha_q15 = static_cast<int32_t>(alpha * 32768.0f);
         int32_t one_minus_alpha_q15 = 32768 - alpha_q15;
 
-        int32_t new_re = (alpha_q15 * estimate[k].real() +
-                          one_minus_alpha_q15 * avg_estimate_[k].real()) >> 15;
-        int32_t new_im = (alpha_q15 * estimate[k].imag() +
-                          one_minus_alpha_q15 * avg_estimate_[k].imag()) >> 15;
+        int32_t new_re =
+            (alpha_q15 * estimate[k].real() + one_minus_alpha_q15 * avg_estimate_[k].real()) >> 15;
+        int32_t new_im =
+            (alpha_q15 * estimate[k].imag() + one_minus_alpha_q15 * avg_estimate_[k].imag()) >> 15;
 
         // Clamp
         new_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, new_re));
         new_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, new_im));
 
-        avg_estimate_[k] = sample_t(static_cast<int16_t>(new_re),
-                                     static_cast<int16_t>(new_im));
+        avg_estimate_[k] = sample_t(static_cast<int16_t>(new_re), static_cast<int16_t>(new_im));
 #else
         float one_minus_alpha = 1.0f - alpha;
-        avg_estimate_[k] = sample_t(
-            alpha * estimate[k].real() + one_minus_alpha * avg_estimate_[k].real(),
-            alpha * estimate[k].imag() + one_minus_alpha * avg_estimate_[k].imag());
+        avg_estimate_[k] =
+            sample_t(alpha * estimate[k].real() + one_minus_alpha * avg_estimate_[k].real(),
+                     alpha * estimate[k].imag() + one_minus_alpha * avg_estimate_[k].imag());
 #endif
     }
 
     estimate = avg_estimate_;
 }
 
-float ChannelEstimator::estimate_snr(
-    const std::vector<ofdm::PilotSymbol>& pilots,
-    const std::vector<sample_t>& h_estimates) const {
-
+float ChannelEstimator::estimate_snr(const std::vector<ofdm::PilotSymbol>& pilots,
+                                     const std::vector<sample_t>& h_estimates) const {
     if (pilots.size() < 2 || h_estimates.size() < 2) {
         return 0.0f;
     }
@@ -471,7 +456,6 @@ float ChannelEstimator::estimate_snr(
 
 float ChannelEstimator::compute_mean_phase_error(
     const std::vector<ofdm::PilotSymbol>& pilots) const {
-
     if (pilots.empty()) {
         return 0.0f;
     }

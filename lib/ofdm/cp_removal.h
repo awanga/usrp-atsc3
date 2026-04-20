@@ -91,16 +91,24 @@ public:
     void reconfigure(const CpRemovalConfig& config);
 
     // Get current configuration
-    const CpRemovalConfig& get_config() const { return config_; }
+    const CpRemovalConfig& get_config() const {
+        return config_;
+    }
 
     // Get computed CP length
-    size_t get_cp_length() const { return cp_length_; }
+    size_t get_cp_length() const {
+        return cp_length_;
+    }
 
     // Get symbol length (CP + FFT)
-    size_t get_symbol_length() const { return cp_length_ + config_.fft_size; }
+    size_t get_symbol_length() const {
+        return cp_length_ + config_.fft_size;
+    }
 
     // Get count of complete symbols output
-    size_t get_symbol_count() const { return symbol_count_; }
+    size_t get_symbol_count() const {
+        return symbol_count_;
+    }
 
 private:
     CpRemovalConfig config_;

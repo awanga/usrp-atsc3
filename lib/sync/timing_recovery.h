@@ -72,10 +72,14 @@ public:
     sample_t interpolate(const sample_t* buf, size_t buf_idx, double mu) const;
 
     // Get configuration
-    const PolyphaseConfig& get_config() const { return config_; }
+    const PolyphaseConfig& get_config() const {
+        return config_;
+    }
 
     // Get total number of taps
-    size_t get_total_taps() const { return config_.num_phases * config_.taps_per_phase; }
+    size_t get_total_taps() const {
+        return config_.num_phases * config_.taps_per_phase;
+    }
 
 private:
     PolyphaseConfig config_;
@@ -149,29 +153,43 @@ public:
     void process_sample(const sample_t& sample);
 
     // Set callback for output symbols
-    void set_symbol_callback(SymbolCallback cb) { symbol_callback_ = std::move(cb); }
+    void set_symbol_callback(SymbolCallback cb) {
+        symbol_callback_ = std::move(cb);
+    }
 
     // Reset timing recovery state
     void reset();
 
     // Get current timing estimate (fractional samples)
-    double get_timing_offset() const { return mu_; }
+    double get_timing_offset() const {
+        return mu_;
+    }
 
     // Get current timing error (filtered)
-    double get_timing_error() const { return timing_error_; }
+    double get_timing_error() const {
+        return timing_error_;
+    }
 
     // Get symbol count
-    size_t get_symbol_count() const { return symbol_count_; }
+    size_t get_symbol_count() const {
+        return symbol_count_;
+    }
 
     // Get configuration
-    const TimingRecoveryConfig& get_config() const { return config_; }
+    const TimingRecoveryConfig& get_config() const {
+        return config_;
+    }
 
     // Set timing offset manually (for fast acquisition)
     void set_timing_offset(double mu);
 
     // Lock/unlock timing loop (for training vs. tracking modes)
-    void set_locked(bool locked) { locked_ = locked; }
-    bool is_locked() const { return locked_; }
+    void set_locked(bool locked) {
+        locked_ = locked;
+    }
+    bool is_locked() const {
+        return locked_;
+    }
 
 private:
     TimingRecoveryConfig config_;
@@ -187,9 +205,9 @@ private:
     size_t buf_count_;
 
     // Timing loop state
-    double mu_;              // Fractional timing offset [0, 1)
-    double timing_error_;    // Filtered timing error
-    double loop_integrator_; // Second-order loop integrator
+    double mu_;               // Fractional timing offset [0, 1)
+    double timing_error_;     // Filtered timing error
+    double loop_integrator_;  // Second-order loop integrator
 
     // Loop filter gains (computed from bandwidth and damping)
     double kp_;  // Proportional gain

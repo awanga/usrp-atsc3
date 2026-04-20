@@ -23,10 +23,10 @@ namespace sync {
 
 // Frame sync state
 enum class FrameSyncState {
-    SEARCHING,   // Looking for bootstrap/preamble
-    ACQUIRING,   // Found candidate, confirming
-    LOCKED,      // Tracking frame boundaries
-    HOLDOVER     // Lost lock, using last known timing
+    SEARCHING,  // Looking for bootstrap/preamble
+    ACQUIRING,  // Found candidate, confirming
+    LOCKED,     // Tracking frame boundaries
+    HOLDOVER    // Lost lock, using last known timing
 };
 
 // Frame structure parameters (from L1 signaling or defaults)
@@ -47,7 +47,9 @@ struct FrameParams {
     size_t preamble_symbols = 1;
 
     // Total samples per symbol (FFT + CP)
-    size_t samples_per_symbol() const { return fft_size + cp_length; }
+    size_t samples_per_symbol() const {
+        return fft_size + cp_length;
+    }
 
     // Total samples per subframe
     size_t samples_per_subframe() const {
@@ -93,11 +95,11 @@ struct FrameEvent {
     };
 
     Type type;
-    size_t sample_index;      // Global sample index
-    size_t frame_number;      // Frame counter
-    size_t subframe_number;   // Subframe within frame
-    size_t symbol_number;     // Symbol within subframe
-    double confidence;        // Detection confidence [0, 1]
+    size_t sample_index;     // Global sample index
+    size_t frame_number;     // Frame counter
+    size_t subframe_number;  // Subframe within frame
+    size_t symbol_number;    // Symbol within subframe
+    double confidence;       // Detection confidence [0, 1]
 };
 
 // Frame Synchronizer
@@ -131,7 +133,9 @@ public:
     void set_bootstrap_offset(size_t sample_index, double confidence = 1.0);
 
     // Set callback for frame events
-    void set_frame_callback(FrameCallback cb) { frame_callback_ = std::move(cb); }
+    void set_frame_callback(FrameCallback cb) {
+        frame_callback_ = std::move(cb);
+    }
 
     // Update frame parameters (from L1 decode)
     void update_frame_params(const FrameParams& params);
@@ -140,25 +144,37 @@ public:
     void reset();
 
     // Get current state
-    FrameSyncState get_state() const { return state_; }
+    FrameSyncState get_state() const {
+        return state_;
+    }
 
     // Get current frame number
-    size_t get_frame_number() const { return frame_number_; }
+    size_t get_frame_number() const {
+        return frame_number_;
+    }
 
     // Get current symbol position within frame
-    size_t get_symbol_position() const { return symbol_position_; }
+    size_t get_symbol_position() const {
+        return symbol_position_;
+    }
 
     // Get samples until next expected boundary
     size_t get_samples_to_boundary() const;
 
     // Get lock confidence
-    double get_confidence() const { return confidence_; }
+    double get_confidence() const {
+        return confidence_;
+    }
 
     // Is locked?
-    bool is_locked() const { return state_ == FrameSyncState::LOCKED; }
+    bool is_locked() const {
+        return state_ == FrameSyncState::LOCKED;
+    }
 
     // Get configuration
-    const FrameSyncConfig& get_config() const { return config_; }
+    const FrameSyncConfig& get_config() const {
+        return config_;
+    }
 
 private:
     FrameSyncConfig config_;
@@ -167,17 +183,17 @@ private:
     // Frame tracking
     size_t frame_number_;
     size_t subframe_number_;
-    size_t symbol_position_;      // Symbol within current subframe
-    size_t sample_counter_;       // Global sample counter
+    size_t symbol_position_;  // Symbol within current subframe
+    size_t sample_counter_;   // Global sample counter
 
     // Lock tracking
-    size_t consecutive_hits_;     // Consecutive successful detections
-    size_t consecutive_misses_;   // Consecutive missed detections
-    size_t holdover_counter_;     // Frames in holdover
+    size_t consecutive_hits_;    // Consecutive successful detections
+    size_t consecutive_misses_;  // Consecutive missed detections
+    size_t holdover_counter_;    // Frames in holdover
 
     // Expected boundary
-    size_t expected_boundary_;    // Next expected frame boundary
-    double confidence_;           // Current lock confidence
+    size_t expected_boundary_;  // Next expected frame boundary
+    double confidence_;         // Current lock confidence
 
     // Preamble reference for correlation
     std::vector<sample_t> preamble_ref_;

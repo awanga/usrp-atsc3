@@ -8,13 +8,12 @@
 
 #ifdef ATSC3_HAS_UHD
 
-#include <uhd/usrp/multi_usrp.hpp>
-#include <uhd/utils/safe_main.hpp>
-#include <uhd/version.hpp>
-
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <uhd/usrp/multi_usrp.hpp>
+#include <uhd/utils/safe_main.hpp>
+#include <uhd/version.hpp>
 
 namespace atsc3 {
 namespace hal {
@@ -101,8 +100,8 @@ public:
         // Validate against TVRX range
         if (hz < kTvrxMinFreqHz || hz > kTvrxMaxFreqHz) {
             std::cerr << "Warning: Frequency " << hz / 1e6 << " MHz is outside "
-                      << "TVRX range (" << kTvrxMinFreqHz / 1e6 << "-"
-                      << kTvrxMaxFreqHz / 1e6 << " MHz)" << std::endl;
+                      << "TVRX range (" << kTvrxMinFreqHz / 1e6 << "-" << kTvrxMaxFreqHz / 1e6
+                      << " MHz)" << std::endl;
         }
 
         // Also check device's actual range
@@ -122,7 +121,9 @@ public:
         return last_error_;
     }
 
-    double get_frequency() const override { return frequency_; }
+    double get_frequency() const override {
+        return frequency_;
+    }
 
     IQSourceError set_gain(double db) override {
         if (!connected_) {
@@ -133,12 +134,12 @@ public:
         // Clamp gain to TVRX range with warning
         double clamped_gain = db;
         if (db < kTvrxMinGainDb) {
-            std::cerr << "Warning: Gain " << db << " dB clamped to "
-                      << kTvrxMinGainDb << " dB (TVRX minimum)" << std::endl;
+            std::cerr << "Warning: Gain " << db << " dB clamped to " << kTvrxMinGainDb
+                      << " dB (TVRX minimum)" << std::endl;
             clamped_gain = kTvrxMinGainDb;
         } else if (db > kTvrxMaxGainDb) {
-            std::cerr << "Warning: Gain " << db << " dB clamped to "
-                      << kTvrxMaxGainDb << " dB (TVRX maximum)" << std::endl;
+            std::cerr << "Warning: Gain " << db << " dB clamped to " << kTvrxMaxGainDb
+                      << " dB (TVRX maximum)" << std::endl;
             clamped_gain = kTvrxMaxGainDb;
         }
 
@@ -157,7 +158,9 @@ public:
         return last_error_;
     }
 
-    double get_gain() const override { return gain_; }
+    double get_gain() const override {
+        return gain_;
+    }
 
     IQSourceError set_sample_rate(double sps) override {
         if (!connected_) {
@@ -183,8 +186,7 @@ public:
 
             // Reconfigure streaming for new sample rate
             if (rx_stream_) {
-                uhd::stream_cmd_t stream_cmd(
-                    uhd::stream_cmd_t::STREAM_MODE_STOP_CONTINUOUS);
+                uhd::stream_cmd_t stream_cmd(uhd::stream_cmd_t::STREAM_MODE_STOP_CONTINUOUS);
                 rx_stream_->issue_stream_cmd(stream_cmd);
             }
             setup_streaming();
@@ -197,7 +199,9 @@ public:
         return last_error_;
     }
 
-    double get_sample_rate() const override { return sample_rate_; }
+    double get_sample_rate() const override {
+        return sample_rate_;
+    }
 
     //--------------------------------------------------------------------------
     // Data acquisition
@@ -238,7 +242,9 @@ public:
         }
     }
 
-    IQSourceError get_last_error() const override { return last_error_; }
+    IQSourceError get_last_error() const override {
+        return last_error_;
+    }
 
     //--------------------------------------------------------------------------
     // Signal quality
@@ -281,16 +287,30 @@ public:
         return "UHDSource: " + device_name_;
     }
 
-    bool is_connected() const override { return connected_; }
+    bool is_connected() const override {
+        return connected_;
+    }
 
-    double get_min_frequency() const override { return actual_min_freq_; }
-    double get_max_frequency() const override { return actual_max_freq_; }
+    double get_min_frequency() const override {
+        return actual_min_freq_;
+    }
+    double get_max_frequency() const override {
+        return actual_max_freq_;
+    }
 
-    double get_min_gain() const override { return actual_min_gain_; }
-    double get_max_gain() const override { return actual_max_gain_; }
+    double get_min_gain() const override {
+        return actual_min_gain_;
+    }
+    double get_max_gain() const override {
+        return actual_max_gain_;
+    }
 
-    double get_min_sample_rate() const override { return kMinSampleRate; }
-    double get_max_sample_rate() const override { return kN210MaxSampleRate; }
+    double get_min_sample_rate() const override {
+        return kMinSampleRate;
+    }
+    double get_max_sample_rate() const override {
+        return kN210MaxSampleRate;
+    }
 
 private:
     void setup_streaming() {

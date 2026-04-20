@@ -52,7 +52,9 @@ public:
         return last_error_;
     }
 
-    double get_frequency() const override { return frequency_; }
+    double get_frequency() const override {
+        return frequency_;
+    }
 
     IQSourceError set_gain(double db) override {
         // FileSource doesn't have real gain control
@@ -62,7 +64,9 @@ public:
         return last_error_;
     }
 
-    double get_gain() const override { return gain_; }
+    double get_gain() const override {
+        return gain_;
+    }
 
     IQSourceError set_sample_rate(double sps) override {
         // Sample rate should match the file's actual sample rate
@@ -76,7 +80,9 @@ public:
         return last_error_;
     }
 
-    double get_sample_rate() const override { return sample_rate_; }
+    double get_sample_rate() const override {
+        return sample_rate_;
+    }
 
     //--------------------------------------------------------------------------
     // Data acquisition
@@ -128,7 +134,9 @@ public:
         return samples_read;
     }
 
-    IQSourceError get_last_error() const override { return last_error_; }
+    IQSourceError get_last_error() const override {
+        return last_error_;
+    }
 
     //--------------------------------------------------------------------------
     // Signal quality
@@ -148,16 +156,30 @@ public:
         return "FileSource: " + file_path_;
     }
 
-    bool is_connected() const override { return file_.is_open(); }
+    bool is_connected() const override {
+        return file_.is_open();
+    }
 
-    double get_min_frequency() const override { return 1e6; }
-    double get_max_frequency() const override { return 10e9; }
+    double get_min_frequency() const override {
+        return 1e6;
+    }
+    double get_max_frequency() const override {
+        return 10e9;
+    }
 
-    double get_min_gain() const override { return 0.0; }
-    double get_max_gain() const override { return 100.0; }
+    double get_min_gain() const override {
+        return 0.0;
+    }
+    double get_max_gain() const override {
+        return 100.0;
+    }
 
-    double get_min_sample_rate() const override { return 1e3; }
-    double get_max_sample_rate() const override { return 100e6; }
+    double get_min_sample_rate() const override {
+        return 1e3;
+    }
+    double get_max_sample_rate() const override {
+        return 100e6;
+    }
 
 private:
     // Update RSSI estimate from sample buffer
@@ -195,9 +217,7 @@ private:
     std::ifstream file_;
 };
 
-IQSourcePtr create_file_source(const std::string& file_path,
-                               double sample_rate,
-                               bool loop) {
+IQSourcePtr create_file_source(const std::string& file_path, double sample_rate, bool loop) {
     auto source = std::make_unique<FileSource>(file_path, sample_rate, loop);
     if (!source->is_connected()) {
         return nullptr;

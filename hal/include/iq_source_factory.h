@@ -34,9 +34,7 @@ IQSourcePtr create_null_source(double sample_rate = 6.25e6);
 //   loop:        If true, restart from beginning when EOF reached (default: false)
 //
 // Returns nullptr on failure (file not found, etc.)
-IQSourcePtr create_file_source(const std::string& file_path,
-                               double sample_rate,
-                               bool loop = false);
+IQSourcePtr create_file_source(const std::string& file_path, double sample_rate, bool loop = false);
 
 // Create a UHDSource that acquires samples from USRP hardware
 //

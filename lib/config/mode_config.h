@@ -45,7 +45,9 @@ public:
     bool load(const std::string& json_path);
 
     // Check if configuration is loaded
-    bool is_loaded() const { return loaded_; }
+    bool is_loaded() const {
+        return loaded_;
+    }
 
     // Get pilot pattern definition by name (PP1-PP8)
     // Returns nullptr if pattern not found

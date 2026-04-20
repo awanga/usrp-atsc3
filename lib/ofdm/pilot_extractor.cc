@@ -24,15 +24,15 @@ struct PatternDef {
 };
 
 constexpr PatternDef kPatternTable[] = {
-    {0, 0},    // Placeholder for index 0
-    {3, 4},    // PP1: Dx=3, Dy=4
-    {6, 2},    // PP2: Dx=6, Dy=2
-    {6, 4},    // PP3: Dx=6, Dy=4
-    {12, 2},   // PP4: Dx=12, Dy=2
-    {12, 4},   // PP5: Dx=12, Dy=4
-    {24, 2},   // PP6: Dx=24, Dy=2
-    {24, 4},   // PP7: Dx=24, Dy=4
-    {6, 16},   // PP8: Dx=6, Dy=16
+    {0, 0},   // Placeholder for index 0
+    {3, 4},   // PP1: Dx=3, Dy=4
+    {6, 2},   // PP2: Dx=6, Dy=2
+    {6, 4},   // PP3: Dx=6, Dy=4
+    {12, 2},  // PP4: Dx=12, Dy=2
+    {12, 4},  // PP5: Dx=12, Dy=4
+    {24, 2},  // PP6: Dx=24, Dy=2
+    {24, 4},  // PP7: Dx=24, Dy=4
+    {6, 16},  // PP8: Dx=6, Dy=16
 };
 
 // Active carrier counts per FFT size (from ATSC A/322)
@@ -43,19 +43,12 @@ constexpr size_t kActiveCarriers32K = 27649;
 // Continual pilot positions for 8K FFT (ATSC A/322 Table 7.5)
 // These are the carrier indices within the active region
 const std::vector<size_t> kContinualPilots8K = {
-    44,   122,  203,  262,  346,  410,  490,  559,
-    643,  715,  797,  866,  943,  1016, 1094, 1165,
-    1247, 1318, 1397, 1469, 1550, 1619, 1700, 1769,
-    1850, 1922, 2000, 2069, 2153, 2222, 2299, 2378,
-    2453, 2521, 2602, 2678, 2755, 2823, 2900, 2975,
-    3053, 3128, 3203, 3278, 3353, 3421, 3500, 3575,
-    3650, 3721, 3800, 3878, 3950, 4022, 4097, 4171,
-    4250, 4318, 4397, 4469, 4547, 4618, 4694, 4769,
-    4844, 4919, 4994, 5065, 5143, 5218, 5294, 5366,
-    5441, 5518, 5594, 5669, 5741, 5818, 5893, 5966,
-    6044, 6116, 6197, 6262, 6343, 6412, 6493, 6562,
-    6643, 6715, 6793, 6869
-};
+    44,   122,  203,  262,  346,  410,  490,  559,  643,  715,  797,  866,  943,  1016, 1094, 1165,
+    1247, 1318, 1397, 1469, 1550, 1619, 1700, 1769, 1850, 1922, 2000, 2069, 2153, 2222, 2299, 2378,
+    2453, 2521, 2602, 2678, 2755, 2823, 2900, 2975, 3053, 3128, 3203, 3278, 3353, 3421, 3500, 3575,
+    3650, 3721, 3800, 3878, 3950, 4022, 4097, 4171, 4250, 4318, 4397, 4469, 4547, 4618, 4694, 4769,
+    4844, 4919, 4994, 5065, 5143, 5218, 5294, 5366, 5441, 5518, 5594, 5669, 5741, 5818, 5893, 5966,
+    6044, 6116, 6197, 6262, 6343, 6412, 6493, 6562, 6643, 6715, 6793, 6869};
 
 // Compute first active subcarrier (center FFT around DC)
 size_t compute_first_active(size_t fft_size, size_t num_active) {
@@ -68,7 +61,9 @@ class PrbsGenerator {
 public:
     PrbsGenerator() : state_(0x7FF) {}  // All ones initial state
 
-    void reset() { state_ = 0x7FF; }
+    void reset() {
+        state_ = 0x7FF;
+    }
 
     int8_t next() {
         // Output is bit 0
@@ -150,8 +145,7 @@ double PilotSymbol::get_phase_error() const {
 }
 
 // PilotExtractor implementation
-PilotExtractor::PilotExtractor(const PilotExtractorConfig& config)
-    : config_(config) {
+PilotExtractor::PilotExtractor(const PilotExtractorConfig& config) : config_(config) {
     init();
 }
 
@@ -198,8 +192,8 @@ void PilotExtractor::compute_pattern_params() {
 
     // Compute first active carrier if not set
     if (config_.first_active_carrier == 0) {
-        config_.first_active_carrier = compute_first_active(
-            config_.fft_size, config_.num_active_carriers);
+        config_.first_active_carrier =
+            compute_first_active(config_.fft_size, config_.num_active_carriers);
     }
 
     params_.first_active = config_.first_active_carrier;
@@ -245,14 +239,13 @@ void PilotExtractor::generate_continual_positions() {
             }
         }
 
-        continual_positions_.insert(continual_positions_.end(),
-                                     additional.begin(), additional.end());
+        continual_positions_.insert(continual_positions_.end(), additional.begin(),
+                                    additional.end());
     }
 
     // Sort and remove duplicates
     std::sort(continual_positions_.begin(), continual_positions_.end());
-    auto last = std::unique(continual_positions_.begin(),
-                            continual_positions_.end());
+    auto last = std::unique(continual_positions_.begin(), continual_positions_.end());
     continual_positions_.erase(last, continual_positions_.end());
 }
 
@@ -274,7 +267,7 @@ int8_t PilotExtractor::get_prbs_bit(size_t position) const {
 }
 
 std::vector<PilotSymbol> PilotExtractor::extract(const sample_t* fft_output,
-                                                  size_t symbol_index) const {
+                                                 size_t symbol_index) const {
     std::vector<PilotSymbol> pilots;
 
     // Extract scattered pilots
@@ -290,15 +283,13 @@ std::vector<PilotSymbol> PilotExtractor::extract(const sample_t* fft_output,
     pilots.insert(pilots.end(), edge.begin(), edge.end());
 
     // Sort by subcarrier index
-    std::sort(pilots.begin(), pilots.end(),
-              [](const PilotSymbol& a, const PilotSymbol& b) {
-                  return a.subcarrier_index < b.subcarrier_index;
-              });
+    std::sort(pilots.begin(), pilots.end(), [](const PilotSymbol& a, const PilotSymbol& b) {
+        return a.subcarrier_index < b.subcarrier_index;
+    });
 
     // Remove duplicates (some positions may be both scattered and continual)
-    auto last = std::unique(
-        pilots.begin(), pilots.end(),
-        [](const PilotSymbol& a, const PilotSymbol& b) {
+    auto last =
+        std::unique(pilots.begin(), pilots.end(), [](const PilotSymbol& a, const PilotSymbol& b) {
             return a.subcarrier_index == b.subcarrier_index;
         });
     pilots.erase(last, pilots.end());
@@ -306,8 +297,8 @@ std::vector<PilotSymbol> PilotExtractor::extract(const sample_t* fft_output,
     return pilots;
 }
 
-std::vector<PilotSymbol> PilotExtractor::extract_scattered(
-    const sample_t* fft_output, size_t symbol_index) const {
+std::vector<PilotSymbol> PilotExtractor::extract_scattered(const sample_t* fft_output,
+                                                           size_t symbol_index) const {
     std::vector<PilotSymbol> pilots;
 
     // Scattered pilot offset varies with symbol index
@@ -315,8 +306,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_scattered(
     size_t offset = (symbol_index % params_.dy) * params_.dx;
 
     // Iterate through active carriers with Dx*Dy spacing, offset by symbol
-    for (size_t k = params_.first_active + offset;
-         k <= params_.last_active;
+    for (size_t k = params_.first_active + offset; k <= params_.last_active;
          k += params_.dx * params_.dy) {
         PilotSymbol pilot;
         pilot.subcarrier_index = k;
@@ -333,8 +323,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_scattered(
     return pilots;
 }
 
-std::vector<PilotSymbol> PilotExtractor::extract_continual(
-    const sample_t* fft_output) const {
+std::vector<PilotSymbol> PilotExtractor::extract_continual(const sample_t* fft_output) const {
     std::vector<PilotSymbol> pilots;
     pilots.reserve(continual_positions_.size());
 
@@ -354,8 +343,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_continual(
     return pilots;
 }
 
-std::vector<PilotSymbol> PilotExtractor::extract_edge(
-    const sample_t* fft_output) const {
+std::vector<PilotSymbol> PilotExtractor::extract_edge(const sample_t* fft_output) const {
     std::vector<PilotSymbol> pilots;
 
     if (!params_.has_edge_pilots) {
@@ -363,10 +351,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_edge(
     }
 
     // Edge pilots at first and last active carriers
-    std::array<size_t, 2> edge_positions = {
-        params_.first_active,
-        params_.last_active
-    };
+    std::array<size_t, 2> edge_positions = {params_.first_active, params_.last_active};
 
     for (size_t k : edge_positions) {
         PilotSymbol pilot;
@@ -393,8 +378,7 @@ size_t PilotExtractor::get_scattered_pilot_count(size_t symbol_index) const {
     size_t offset = (symbol_index % params_.dy) * params_.dx;
     size_t count = 0;
 
-    for (size_t k = params_.first_active + offset;
-         k <= params_.last_active;
+    for (size_t k = params_.first_active + offset; k <= params_.last_active;
          k += params_.dx * params_.dy) {
         ++count;
     }
@@ -407,14 +391,11 @@ size_t PilotExtractor::get_continual_pilot_count() const {
 }
 
 bool PilotExtractor::is_pilot(size_t subcarrier, size_t symbol_index) const {
-    return is_scattered_pilot(subcarrier, symbol_index) ||
-           is_continual_pilot(subcarrier) ||
-           subcarrier == params_.first_active ||
-           subcarrier == params_.last_active;
+    return is_scattered_pilot(subcarrier, symbol_index) || is_continual_pilot(subcarrier) ||
+           subcarrier == params_.first_active || subcarrier == params_.last_active;
 }
 
-bool PilotExtractor::is_scattered_pilot(size_t subcarrier,
-                                         size_t symbol_index) const {
+bool PilotExtractor::is_scattered_pilot(size_t subcarrier, size_t symbol_index) const {
     if (subcarrier < params_.first_active || subcarrier > params_.last_active) {
         return false;
     }
@@ -431,13 +412,10 @@ bool PilotExtractor::is_scattered_pilot(size_t subcarrier,
 }
 
 bool PilotExtractor::is_continual_pilot(size_t subcarrier) const {
-    return std::binary_search(continual_positions_.begin(),
-                              continual_positions_.end(),
-                              subcarrier);
+    return std::binary_search(continual_positions_.begin(), continual_positions_.end(), subcarrier);
 }
 
-sample_t PilotExtractor::get_reference(size_t subcarrier,
-                                        size_t /* symbol_index */) const {
+sample_t PilotExtractor::get_reference(size_t subcarrier, size_t /* symbol_index */) const {
     int8_t prbs = get_prbs_bit(subcarrier);
     return make_bpsk_sample(prbs);
 }
@@ -448,8 +426,7 @@ void PilotExtractor::set_config(const PilotExtractorConfig& config) {
 }
 
 // Utility functions
-PilotPatternParams get_pilot_pattern_params(PilotPattern pattern,
-                                             size_t fft_size) {
+PilotPatternParams get_pilot_pattern_params(PilotPattern pattern, size_t fft_size) {
     PilotExtractorConfig config;
     config.fft_size = fft_size;
     config.pattern = pattern;
@@ -458,8 +435,8 @@ PilotPatternParams get_pilot_pattern_params(PilotPattern pattern,
     return extractor.get_pattern_params();
 }
 
-size_t get_scattered_pilot_count(PilotPattern pattern, size_t fft_size,
-                                  size_t first_active, size_t num_active) {
+size_t get_scattered_pilot_count(PilotPattern pattern, size_t fft_size, size_t first_active,
+                                 size_t num_active) {
     PilotExtractorConfig config;
     config.fft_size = fft_size;
     config.pattern = pattern;

@@ -77,13 +77,19 @@ public:
     double get_total_cfo() const;
 
     // Get current phase accumulator value
-    double get_phase() const { return phase_; }
+    double get_phase() const {
+        return phase_;
+    }
 
     // Get configuration
-    const FreqCorrectionConfig& get_config() const { return config_; }
+    const FreqCorrectionConfig& get_config() const {
+        return config_;
+    }
 
     // Get sample count processed
-    size_t get_sample_count() const { return sample_count_; }
+    size_t get_sample_count() const {
+        return sample_count_;
+    }
 
 private:
     FreqCorrectionConfig config_;
@@ -152,7 +158,9 @@ public:
     void reset();
 
     // Get symbol count
-    size_t get_symbol_count() const { return symbol_count_; }
+    size_t get_symbol_count() const {
+        return symbol_count_;
+    }
 
 private:
     PilotPhaseTrackerConfig config_;
