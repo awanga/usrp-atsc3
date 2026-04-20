@@ -22,7 +22,7 @@ Goal: Working repo, build system, CI green, HAL testable. No DSP yet.
 - [x] `pre-commit` config (clang-format, trailing whitespace, no large files without LFS)
 
 ### 0.2 CI/CD Pipelines
-- [x] `.github/workflows/ci.yml` — Ubuntu 22.04, GR 3.8 PPA, UHD 3.15, build + `ctest -L unit`
+- [x] `.github/workflows/ci.yml` — Ubuntu 22.04, GR 3.10, UHD 3.15, build + `ctest -L unit`
 - [x] `.github/workflows/nightly.yml` — GR 3.10 build, long IQ tests, lcov coverage, Doxygen deploy
 - [x] `.github/workflows/release.yml` — tag-triggered, cpack `.deb`, GitHub Release
 - [x] `docker/Dockerfile.ci` — pinned apt packages, pushed to `ghcr.io` on nightly
