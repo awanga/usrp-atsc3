@@ -21,6 +21,7 @@ set(LIB_TEST_SOURCES
     test_cell_deinterleaver.cc
     test_time_deinterleaver.cc
     test_freq_deinterleaver.cc
+    test_ldpc_decoder.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

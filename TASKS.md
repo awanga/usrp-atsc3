@@ -174,15 +174,15 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [x] `lib/ofdm/freq_deinterleaver.h/.cc` (FDI) — per ATSC A/322 §8.3
 - [x] Unit test for each: apply interleaver (reference Python), verify C++ de-interleaver round-trips
 
-### 4.3 LDPC Decoder
-- [ ] `lib/fec/ldpc_decoder.h/.cc`
-- [ ] Min-sum belief propagation; configurable iteration count (default 50)
+### 4.3 LDPC Decoder [~]
+- [x] `lib/fec/ldpc_decoder.h/.cc`
+- [x] Min-sum belief propagation; configurable iteration count (default 50)
 - [ ] Parity check matrices for all ATSC 3.0 code rates (2/15 through 13/15) as sparse arrays in `config/ldpc_tables/`
-- [ ] Both codeword lengths: 64800 bits and 16200 bits
-- [ ] No GR/UHD/FFTW3 dependency; builds standalone
-- [ ] AXI4-S: TDATA=int8(LLR), TLAST=codeword boundary
+- [x] Both codeword lengths: 64800 bits and 16200 bits
+- [x] No GR/UHD/FFTW3 dependency; builds standalone
+- [x] AXI4-S: TDATA=int8(LLR), TLAST=codeword boundary
 - [ ] Performance target: ≥ 1 Mb/s throughput on CI runner (single thread)
-- [ ] Unit test: encode with reference encoder → decode all-zero codeword; BER=0 above waterfall
+- [x] Unit test: encode with reference encoder → decode all-zero codeword; BER=0 above waterfall
 - [ ] Fixed-point equivalence test
 
 ### 4.4 BCH Decoder

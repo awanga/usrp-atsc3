@@ -14,7 +14,7 @@ set(LIB_SOURCES
     ${SYNC_SOURCES}
     ${OFDM_SOURCES}
     ${CHANNEL_SOURCES}
-    # ${FEC_SOURCES}
+    ${FEC_SOURCES}
     # ${FRAMING_SOURCES}
     # ${METRICS_SOURCES}
 )
@@ -24,6 +24,7 @@ set(LIB_HEADERS
     ${SYNC_HEADERS}
     ${OFDM_HEADERS}
     ${CHANNEL_HEADERS}
+    ${FEC_HEADERS}
 )
 
 # Create static library
