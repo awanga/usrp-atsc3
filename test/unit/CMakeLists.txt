@@ -16,6 +16,7 @@ set(LIB_TEST_SOURCES
     test_channel_estimator.cc
     test_wiener_interpolator.cc
     test_equalizer.cc
+    test_constellation_demapper.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

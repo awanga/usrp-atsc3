@@ -160,13 +160,13 @@ Goal: Output equalized QAM symbols suitable for demapping.
 
 Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring.
 
-### 4.1 Constellation Demapper
-- [ ] `lib/ofdm/constellation_demapper.h/.cc`
-- [ ] Soft LLR output for: QPSK, 16/64/256/1024/4096-QAM (uniform)
+### 4.1 Constellation Demapper [~]
+- [x] `lib/ofdm/constellation_demapper.h/.cc`
+- [x] Soft LLR output for: QPSK, 16/64/256/1024/4096-QAM (uniform)
 - [ ] NUC (non-uniform constellation) lookup tables for NUC-QAM variants per ATSC A/322 §7.5
 - [ ] Load NUC tables from `config/atsc3_modes.json`
-- [ ] Output: `int8_t` LLRs (clamped ±127)
-- [ ] Unit test: QPSK, AWGN SNR=10 dB → LLR sign correct > 99.9%
+- [x] Output: `int8_t` LLRs (clamped ±127)
+- [x] Unit test: QPSK, AWGN SNR=10 dB → LLR sign correct > 99.9%
 
 ### 4.2 De-interleavers
 - [ ] `lib/ofdm/cell_deinterleaver.h/.cc` — per ATSC A/322 §8.1
