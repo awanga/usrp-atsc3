@@ -23,6 +23,7 @@ set(LIB_TEST_SOURCES
     test_freq_deinterleaver.cc
     test_ldpc_decoder.cc
     test_bch_decoder.cc
+    test_l1_decoder.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

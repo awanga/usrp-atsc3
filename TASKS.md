@@ -190,12 +190,12 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [x] Uses LDPC output as input; corrects residual errors
 - [x] Unit test: inject 6 bit errors → all corrected; 13 errors → failure flagged
 
-### 4.5 L1 Preamble Decoder
-- [ ] `lib/framing/l1_decoder.h/.cc`
-- [ ] L1-Pre parsing (bootstrap payload): FFT size, CP length, L1-Post size/modulation
-- [ ] L1-Post parsing: PLP count, modulation, code rate, interleaver config per PLP
-- [ ] Populates `Atsc3Config` struct; broadcasts to all downstream blocks via observer pattern
-- [ ] Unit test: known L1 bits (from ATSC A/322 §5 example) → correct config struct
+### 4.5 L1 Preamble Decoder [x]
+- [x] `lib/framing/l1_decoder.h/.cc`
+- [x] L1-Pre parsing (bootstrap payload): FFT size, CP length, L1-Post size/modulation
+- [x] L1-Post parsing: PLP count, modulation, code rate, interleaver config per PLP
+- [x] Populates `Atsc3Config` struct; broadcasts to all downstream blocks via observer pattern
+- [x] Unit test: known L1 bits (from ATSC A/322 §5 example) → correct config struct
 
 ### 4.6 Dynamic Reconfiguration [~]
 - [x] `Atsc3Config` struct with all runtime parameters

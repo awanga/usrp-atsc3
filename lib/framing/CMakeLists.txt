@@ -2,15 +2,13 @@
 # L1 preamble parsing, de-interleaving, ALP demux
 
 set(FRAMING_SOURCES
-    # l1_parser.cc
-    # deinterleaver.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/l1_decoder.cc
     # alp_demux.cc
+    PARENT_SCOPE
 )
 
 set(FRAMING_HEADERS
-    # l1_parser.h
-    # deinterleaver.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/l1_decoder.h  # AXI4-S: TDATA=int8(LLR) TVALID TREADY TLAST
     # alp_demux.h
+    PARENT_SCOPE
 )
-
-# Sources will be added to parent LIB_SOURCES when implemented
