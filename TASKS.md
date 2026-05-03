@@ -185,10 +185,10 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [x] Unit test: encode with reference encoder → decode all-zero codeword; BER=0 above waterfall
 - [ ] Fixed-point equivalence test
 
-### 4.4 BCH Decoder
-- [ ] `lib/fec/bch_decoder.h/.cc` — GF(2^16), t=12 error correction
-- [ ] Uses LDPC output as input; corrects residual errors
-- [ ] Unit test: inject 6 bit errors → all corrected; 13 errors → failure flagged
+### 4.4 BCH Decoder [x]
+- [x] `lib/fec/bch_decoder.h/.cc` — GF(2^16), t=12 error correction
+- [x] Uses LDPC output as input; corrects residual errors
+- [x] Unit test: inject 6 bit errors → all corrected; 13 errors → failure flagged
 
 ### 4.5 L1 Preamble Decoder
 - [ ] `lib/framing/l1_decoder.h/.cc`
