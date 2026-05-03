@@ -11,6 +11,7 @@ add_subdirectory(metrics)
 
 # Collect all sources
 set(LIB_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/config_bus.cc
     ${SYNC_SOURCES}
     ${OFDM_SOURCES}
     ${CHANNEL_SOURCES}
