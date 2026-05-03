@@ -283,8 +283,34 @@ Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flow
 
 ---
 
-## Phase 7 — Hardening & Performance  *(post-MVP, ongoing)*
+## Phase 7 — Hardening, Compliance & Performance  *(post-MVP, ongoing)*
 
+### 7.1 Full ATSC 3.0 H Matrix Support
+- [ ] Generate all LDPC H matrices per ATSC A/322 §12.2 for both codeword lengths (64800, 16200)
+- [ ] Validate H matrices for all 12 code rates: 2/15, 3/15, 4/15, 5/15, 6/15, 7/15, 8/15, 9/15, 10/15, 11/15, 12/15, 13/15
+- [ ] Store H matrices in sparse CSR format in `config/ldpc_tables/` (row indices, column indices per rate/length)
+- [ ] Add H matrix loader with runtime selection based on L1 signaling
+- [ ] Unit test: verify H matrix dimensions and sparsity match ATSC spec tables
+- [ ] Unit test: syndrome check with known codewords for each code rate
+
+### 7.2 Interleaver Optimizations
+- [ ] Cell deinterleaver: replace modular arithmetic with bit-masking for power-of-2 sizes
+- [ ] Time deinterleaver: implement double-buffered memory access pattern for cache efficiency
+- [ ] Frequency deinterleaver: precompute permutation tables at init (eliminate runtime address calculation)
+- [ ] SIMD vectorization for interleaver copy loops (`-mavx2` / `-msse4.2`)
+- [ ] Benchmark: measure cycles/cell for each interleaver; target < 10 cycles/cell
+- [ ] Memory layout optimization: ensure deinterleaver buffers are 64-byte aligned for cache line efficiency
+
+### 7.3 ATSC 3.0 Compliance Testing
+- [ ] Conformance test suite against ATSC A/322 reference vectors (obtain from ATSC or implement generator)
+- [ ] Bootstrap detection: verify all 128 bootstrap symbol variants decode correctly
+- [ ] L1 signaling: verify L1-Pre and L1-Post CRC checks pass for all valid configurations
+- [ ] LDPC: verify BER vs Eb/N0 waterfall curves match ATSC spec Figure 12.x within 0.1 dB
+- [ ] NUC constellations: verify all NUC tables match ATSC A/322 §7.5 exactly
+- [ ] Interleaver round-trip: verify bit-exact match with ATSC reference interleaver for all modes
+- [ ] Document compliance status in `docs/compliance.md` with pass/fail matrix per ATSC requirement
+
+### 7.4 Performance Profiling & Optimization
 - [ ] Profile with `perf` / `gprof`; identify bottleneck block
 - [ ] LDPC: vectorize min-sum inner loop with SIMD intrinsics (`-mavx2`)
 - [ ] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
