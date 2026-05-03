@@ -168,11 +168,11 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [x] Output: `int8_t` LLRs (clamped ±127)
 - [x] Unit test: QPSK, AWGN SNR=10 dB → LLR sign correct > 99.9%
 
-### 4.2 De-interleavers
-- [ ] `lib/ofdm/cell_deinterleaver.h/.cc` — per ATSC A/322 §8.1
-- [ ] `lib/ofdm/time_deinterleaver.h/.cc` (TDI) — convolutional; configurable depth
-- [ ] `lib/ofdm/freq_deinterleaver.h/.cc` (FDI) — per ATSC A/322 §8.3
-- [ ] Unit test for each: apply interleaver (reference Python), verify C++ de-interleaver round-trips
+### 4.2 De-interleavers [x]
+- [x] `lib/ofdm/cell_deinterleaver.h/.cc` — per ATSC A/322 §8.1
+- [x] `lib/ofdm/time_deinterleaver.h/.cc` (TDI) — convolutional; configurable depth
+- [x] `lib/ofdm/freq_deinterleaver.h/.cc` (FDI) — per ATSC A/322 §8.3
+- [x] Unit test for each: apply interleaver (reference Python), verify C++ de-interleaver round-trips
 
 ### 4.3 LDPC Decoder
 - [ ] `lib/fec/ldpc_decoder.h/.cc`

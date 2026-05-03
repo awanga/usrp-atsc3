@@ -18,6 +18,9 @@ set(LIB_TEST_SOURCES
     test_wiener_interpolator.cc
     test_equalizer.cc
     test_constellation_demapper.cc
+    test_cell_deinterleaver.cc
+    test_time_deinterleaver.cc
+    test_freq_deinterleaver.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})
