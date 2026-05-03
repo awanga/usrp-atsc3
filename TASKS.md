@@ -197,8 +197,8 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [ ] Populates `Atsc3Config` struct; broadcasts to all downstream blocks via observer pattern
 - [ ] Unit test: known L1 bits (from ATSC A/322 §5 example) → correct config struct
 
-### 4.6 Dynamic Reconfiguration
-- [ ] `Atsc3Config` struct with all runtime parameters
+### 4.6 Dynamic Reconfiguration [~]
+- [x] `Atsc3Config` struct with all runtime parameters
 - [ ] `ConfigBus` (simple pub/sub, no dynamic alloc) wiring L1 decoder output to all dependent blocks
 - [ ] Integration test: FileSource with real ATSC 3.0 capture → L1 parses correctly, blocks reconfigure
 

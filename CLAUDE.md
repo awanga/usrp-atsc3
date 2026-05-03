@@ -74,6 +74,7 @@ cppcheck --enable=all --error-exitcode=1 lib/ blocks/ hal/
 - **Tests:** One `.cc` file per `lib/` class in `test/unit/`; use GoogleTest
 - **Parameters:** No magic numbers; all ATSC 3.0 mode tables loaded from `config/` JSON at runtime
 - **Error handling:** Use `std::expected` (backported via Boost.Outcome) not exceptions in `lib/`; GR blocks may throw
+- **Formatting:** Always run `clang-format` on changed files before committing: `find lib blocks hal -name '*.cc' -o -name '*.h' | xargs clang-format -i`
 
 ### Q1.15 Fixed-Point Format (Persistent Requirement)
 

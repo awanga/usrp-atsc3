@@ -32,6 +32,7 @@ add_library(atsc3_lib STATIC ${LIB_SOURCES})
 target_include_directories(atsc3_lib
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/config>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sync>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ofdm>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/channel>

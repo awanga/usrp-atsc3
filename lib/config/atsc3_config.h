@@ -51,11 +51,7 @@ enum class CodeRate : uint8_t {
 };
 
 // FFT sizes per ATSC A/322 §7.1
-enum class FftSize : uint8_t {
-    FFT_8K = 0,
-    FFT_16K = 1,
-    FFT_32K = 2
-};
+enum class FftSize : uint8_t { FFT_8K = 0, FFT_16K = 1, FFT_32K = 2 };
 
 // Cyclic prefix lengths (as index into table)
 enum class CpLength : uint8_t {
@@ -87,21 +83,18 @@ enum class PilotPattern : uint8_t {
 // Time interleaver mode
 enum class TimeInterleaveMode : uint8_t {
     NONE = 0,
-    CTI = 1,   // Convolutional time interleaving
-    HTI = 2    // Hybrid time interleaving
+    CTI = 1,  // Convolutional time interleaving
+    HTI = 2   // Hybrid time interleaving
 };
 
 // Codeword length
 enum class CodewordLength : uint8_t {
-    SHORT = 0,   // 16200 bits
-    LONG = 1     // 64800 bits
+    SHORT = 0,  // 16200 bits
+    LONG = 1    // 64800 bits
 };
 
 // PLP type
-enum class PlpType : uint8_t {
-    NON_DISPERSED = 0,
-    DISPERSED = 1
-};
+enum class PlpType : uint8_t { NON_DISPERSED = 0, DISPERSED = 1 };
 
 // Physical Layer Pipe configuration
 // Extracted from L1-Post for each PLP
@@ -118,13 +111,13 @@ struct PlpConfig {
 
     // Interleaving parameters
     TimeInterleaveMode ti_mode = TimeInterleaveMode::CTI;
-    uint8_t ti_depth = 0;           // TI depth (0-15)
-    uint16_t ti_num_blocks = 0;     // Number of TI blocks
-    bool ti_extended = false;       // Extended interleaving
+    uint8_t ti_depth = 0;        // TI depth (0-15)
+    uint16_t ti_num_blocks = 0;  // Number of TI blocks
+    bool ti_extended = false;    // Extended interleaving
 
     // FEC parameters
-    uint16_t num_fec_blocks = 0;    // FEC blocks per interleaver unit
-    uint32_t fec_block_start = 0;   // Start address in frame
+    uint16_t num_fec_blocks = 0;   // FEC blocks per interleaver unit
+    uint32_t fec_block_start = 0;  // Start address in frame
 
     // LDM (Layered Division Multiplexing) parameters
     uint8_t ldm_injection_level = 0;  // dB below upper layer
@@ -137,17 +130,17 @@ struct PlpConfig {
 // This struct is populated by L1Decoder and distributed via ConfigBus
 struct Atsc3Config {
     // ===== L1-Basic (from bootstrap) =====
-    uint8_t version = 0;              // L1-Basic version
+    uint8_t version = 0;  // L1-Basic version
 
     // ===== L1-Pre (preamble OFDM config) =====
     FftSize fft_size = FftSize::FFT_8K;
     CpLength cp_length = CpLength::CP_1024_8192;
     PilotPattern pilot_pattern = PilotPattern::PP3;
-    uint8_t gi_fraction = 0;          // Guard interval fraction index
+    uint8_t gi_fraction = 0;  // Guard interval fraction index
     bool preamble_reduced_carriers = false;
 
     // L1-Post configuration
-    uint16_t l1_post_size = 0;        // L1-Post size in cells
+    uint16_t l1_post_size = 0;  // L1-Post size in cells
     Modulation l1_post_modulation = Modulation::QPSK;
     CodeRate l1_post_code_rate = CodeRate::RATE_5_15;
     bool l1_post_scrambled = false;
@@ -170,18 +163,21 @@ struct Atsc3Config {
     // FFT size in samples
     size_t get_fft_samples() const {
         switch (fft_size) {
-            case FftSize::FFT_8K:  return 8192;
-            case FftSize::FFT_16K: return 16384;
-            case FftSize::FFT_32K: return 32768;
-            default: return 8192;
+            case FftSize::FFT_8K:
+                return 8192;
+            case FftSize::FFT_16K:
+                return 16384;
+            case FftSize::FFT_32K:
+                return 32768;
+            default:
+                return 8192;
         }
     }
 
     // CP length in samples (for current FFT size)
     size_t get_cp_samples() const {
-        static constexpr size_t cp_numerators[] = {
-            192, 384, 512, 768, 1024, 1536, 2048, 2432, 3072, 3648, 4096
-        };
+        static constexpr size_t cp_numerators[] = {192,  384,  512,  768,  1024, 1536,
+                                                   2048, 2432, 3072, 3648, 4096};
         size_t fft = get_fft_samples();
         size_t num = cp_numerators[static_cast<size_t>(cp_length)];
         return (num * fft) / 8192;
@@ -190,10 +186,14 @@ struct Atsc3Config {
     // Active carriers for current FFT size
     size_t get_active_carriers() const {
         switch (fft_size) {
-            case FftSize::FFT_8K:  return 6913;
-            case FftSize::FFT_16K: return 13825;
-            case FftSize::FFT_32K: return 27649;
-            default: return 6913;
+            case FftSize::FFT_8K:
+                return 6913;
+            case FftSize::FFT_16K:
+                return 13825;
+            case FftSize::FFT_32K:
+                return 27649;
+            default:
+                return 6913;
         }
     }
 
@@ -204,17 +204,16 @@ struct Atsc3Config {
 
     // LDPC codeword length in bits
     size_t get_codeword_bits(size_t plp_idx) const {
-        if (plp_idx >= num_plps) return 0;
+        if (plp_idx >= num_plps)
+            return 0;
         return plps[plp_idx].codeword_length == CodewordLength::SHORT ? 16200 : 64800;
     }
 
     // Code rate as float (for SNR calculations)
     static float code_rate_value(CodeRate rate) {
         static constexpr float rates[] = {
-            2.0f/15.0f, 3.0f/15.0f, 4.0f/15.0f, 5.0f/15.0f,
-            6.0f/15.0f, 7.0f/15.0f, 8.0f/15.0f, 9.0f/15.0f,
-            10.0f/15.0f, 11.0f/15.0f, 12.0f/15.0f, 13.0f/15.0f
-        };
+            2.0f / 15.0f, 3.0f / 15.0f, 4.0f / 15.0f,  5.0f / 15.0f,  6.0f / 15.0f,  7.0f / 15.0f,
+            8.0f / 15.0f, 9.0f / 15.0f, 10.0f / 15.0f, 11.0f / 15.0f, 12.0f / 15.0f, 13.0f / 15.0f};
         return rates[static_cast<size_t>(rate)];
     }
 
