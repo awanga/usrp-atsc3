@@ -8,6 +8,7 @@ set(GRC_FLOWGRAPHS
 
 # Install Python applications
 set(PYTHON_APPS
+    capture_iq.py
     # scanner.py
     # metrics_server.py
 )
