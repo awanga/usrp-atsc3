@@ -2,7 +2,7 @@
 # Tests that may require IQ captures from test/captures/ (git-lfs)
 
 set(INTEGRATION_TEST_SOURCES
-    # test_signal_chain.cc
+    test_signal_chain.cc
     # test_iq_replay.cc
 )
 
@@ -22,8 +22,22 @@ foreach(test_source ${INTEGRATION_TEST_SOURCES})
     target_link_libraries(${test_name}
         PRIVATE
             atsc3_lib
+            atsc3_hal
             GTest::gtest
             GTest::gtest_main
+    )
+
+    target_include_directories(${test_name}
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/lib/sync
+            ${CMAKE_SOURCE_DIR}/lib/config
+            ${CMAKE_SOURCE_DIR}/lib
+            ${CMAKE_SOURCE_DIR}/hal/include
+    )
+
+    target_compile_definitions(${test_name}
+        PRIVATE
+            SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
     # Register with CTest

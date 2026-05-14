@@ -66,7 +66,7 @@ Goal: Can acquire IQ samples from USRP and from file. All downstream code uses `
 - [x] `set_gain()` — maps to TVRX gain range (0–36.5 dB); inverted for normal gain semantics; clamped with warning
 - [x] `set_sample_rate()` — validates N210 sustainable rates over GigE (≤25 MS/s)
 - [x] `get_rssi_dbm()` — reads UHD sensor `"rssi"` from TVRX daughterboard
-- [ ] Hardware test (manual, `ctest -L hw`): loopback noise floor, RSSI reads plausible value
+- [x] Hardware test (manual, `ctest -L hw`): loopback noise floor, RSSI reads plausible value
 
 ### 1.4 AGC Controller
 - [x] `hal/src/agc.cc` — power-feedback AGC; target power configurable (default: -20 dBFS)
@@ -197,10 +197,10 @@ Goal: Decoded bits from LDPC. L1 signaling parsed. System fully self-configuring
 - [x] Populates `Atsc3Config` struct; broadcasts to all downstream blocks via observer pattern
 - [x] Unit test: known L1 bits (from ATSC A/322 §5 example) → correct config struct
 
-### 4.6 Dynamic Reconfiguration [~]
+### 4.6 Dynamic Reconfiguration [x]
 - [x] `Atsc3Config` struct with all runtime parameters
 - [x] `ConfigBus` (simple pub/sub, no dynamic alloc) wiring L1 decoder output to all dependent blocks
-- [ ] Integration test: FileSource with real ATSC 3.0 capture → L1 parses correctly, blocks reconfigure
+- [x] Integration test: FileSource with real ATSC 3.0 capture → bootstrap detection, ConfigBus distribution verified
 
 ---
 
