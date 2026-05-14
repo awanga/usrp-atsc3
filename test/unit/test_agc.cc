@@ -36,14 +36,14 @@ TEST(AgcTest, DefaultConstruction) {
 TEST(AgcTest, CustomConfig) {
     AgcConfig config;
     config.target_power_dbfs = -10.0;
-    config.initial_gain_db = 50.0;
+    config.initial_gain_db = 25.0;
     config.attack_samples = 500.0;
     config.release_samples = 5000.0;
 
     AgcController agc(config);
 
     EXPECT_DOUBLE_EQ(agc.get_config().target_power_dbfs, -10.0);
-    EXPECT_DOUBLE_EQ(agc.get_gain(), 50.0);
+    EXPECT_DOUBLE_EQ(agc.get_gain(), 25.0);
 }
 
 TEST(AgcTest, ProcessEmptyBuffer) {
@@ -58,7 +58,7 @@ TEST(AgcTest, ProcessEmptyBuffer) {
 TEST(AgcTest, StrongSignalReducesGain) {
     AgcConfig config;
     config.target_power_dbfs = -20.0;
-    config.initial_gain_db = 50.0;
+    config.initial_gain_db = 30.0;
     config.attack_samples = 100.0;  // Fast attack for testing
     config.deadband_db = 0.5;
 
@@ -81,7 +81,7 @@ TEST(AgcTest, StrongSignalReducesGain) {
 TEST(AgcTest, WeakSignalIncreasesGain) {
     AgcConfig config;
     config.target_power_dbfs = -20.0;
-    config.initial_gain_db = 30.0;
+    config.initial_gain_db = 10.0;  // Start low to allow room for increase
     config.release_samples = 100.0;  // Fast release for testing
     config.deadband_db = 0.5;
 
@@ -109,7 +109,7 @@ TEST(AgcTest, ConvergesToTarget) {
     config.release_samples = 50.0;
     config.deadband_db = 1.0;
     config.min_gain_db = 0.0;
-    config.max_gain_db = 95.0;
+    config.max_gain_db = 36.5;
 
     AgcController agc(config);
 
@@ -151,8 +151,8 @@ TEST(AgcTest, GainClampedToMin) {
 TEST(AgcTest, GainClampedToMax) {
     AgcConfig config;
     config.target_power_dbfs = -20.0;
-    config.initial_gain_db = 90.0;  // Start near maximum
-    config.max_gain_db = 95.0;
+    config.initial_gain_db = 35.0;  // Start near maximum
+    config.max_gain_db = 36.5;
     config.release_samples = 10.0;  // Very fast
     config.deadband_db = 0.1;
 
@@ -224,7 +224,7 @@ TEST(AgcTest, StepInputConvergence) {
     config.release_samples = 100.0;
     config.deadband_db = 0.5;
     config.min_gain_db = 0.0;
-    config.max_gain_db = 95.0;
+    config.max_gain_db = 36.5;
 
     AgcController agc(config);
 
@@ -254,7 +254,7 @@ TEST(AgcTest, AsymmetricAttackRelease) {
     // Test that attack is faster than release
     AgcConfig config;
     config.target_power_dbfs = -20.0;
-    config.initial_gain_db = 50.0;
+    config.initial_gain_db = 25.0;
     config.attack_samples = 100.0;    // Fast attack
     config.release_samples = 1000.0;  // Slow release
     config.deadband_db = 0.5;

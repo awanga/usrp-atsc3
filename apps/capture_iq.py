@@ -65,7 +65,7 @@ DEFAULT_OUTPUT_DIR = "test/captures"
 TVRX_FREQ_MIN = 50e6
 TVRX_FREQ_MAX = 860e6
 TVRX_GAIN_MIN = 0.0
-TVRX_GAIN_MAX = 95.0
+TVRX_GAIN_MAX = 36.5
 
 # Bootstrap correlation parameters
 BOOTSTRAP_FFT_SIZE = 4096  # Bootstrap always 4K OFDM
@@ -316,15 +316,10 @@ class USRPCapture:
             return False
         try:
             self.usrp = uhd.usrp.MultiUSRP(self.device_args)
+            rx_info = self.usrp.get_usrp_rx_info()
             print(f"Connected to: {self.usrp.get_mboard_name()}")
-            print(f"  Serial: {self.usrp.get_mboard_serial()}")
-
-            # Check for TVRX
-            try:
-                db_name = self.usrp.get_dboard_name(uhd.types.Direction.RX, 0)
-                print(f"  Daughterboard: {db_name}")
-            except Exception:
-                print("  Daughterboard: Unknown")
+            print(f"  Serial: {rx_info.get('mboard_serial', 'Unknown')}")
+            print(f"  Daughterboard: {rx_info.get('rx_subdev_name', 'Unknown')}")
 
             return True
 

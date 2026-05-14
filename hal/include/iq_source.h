@@ -64,7 +64,7 @@ public:
 
     // Set gain in dB
     // Returns error if gain is outside device range
-    // Note: TVRX gain range is 0-95 dB
+    // Note: TVRX gain range is 0-36.5 dB
     virtual IQSourceError set_gain(double db) = 0;
 
     // Get current gain in dB

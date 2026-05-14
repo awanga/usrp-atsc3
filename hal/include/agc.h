@@ -30,7 +30,7 @@ struct AgcConfig {
 
     // Gain limits in dB
     double min_gain_db = 0.0;
-    double max_gain_db = 95.0;  // TVRX maximum
+    double max_gain_db = 36.5;  // TVRX maximum
 
     // Initial gain in dB
     double initial_gain_db = 30.0;

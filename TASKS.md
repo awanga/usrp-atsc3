@@ -63,7 +63,7 @@ Goal: Can acquire IQ samples from USRP and from file. All downstream code uses `
 - [x] `hal/src/uhd_source.cc` — wraps `uhd::usrp::multi_usrp`
 - [x] `#if UHD_VERSION < 0x03160000` guards for any API differences between UHD 3.15 and 4.x
 - [x] `set_frequency()` with TVRX tuning range validation (50–860 MHz); log warning if out of range
-- [x] `set_gain()` — maps to TVRX gain range (0–95 dB); clamped with warning
+- [x] `set_gain()` — maps to TVRX gain range (0–36.5 dB); inverted for normal gain semantics; clamped with warning
 - [x] `set_sample_rate()` — validates N210 sustainable rates over GigE (≤25 MS/s)
 - [x] `get_rssi_dbm()` — reads UHD sensor `"rssi"` from TVRX daughterboard
 - [ ] Hardware test (manual, `ctest -L hw`): loopback noise floor, RSSI reads plausible value

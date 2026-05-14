@@ -22,7 +22,14 @@ namespace hal {
 constexpr double kTvrxMinFreqHz = 50e6;
 constexpr double kTvrxMaxFreqHz = 860e6;
 constexpr double kTvrxMinGainDb = 0.0;
-constexpr double kTvrxMaxGainDb = 95.0;
+constexpr double kTvrxMaxGainDb = 36.5;
+
+// TVRX gain model: The UHD "gain" parameter controls an IF attenuator.
+// UHD gain 0 dB = no attenuation = maximum signal power
+// UHD gain 36.5 dB = max attenuation = minimum signal power
+// We invert this so user-facing gain follows normal semantics:
+// User gain 0 dB = minimum signal, user gain 36.5 dB = maximum signal
+constexpr bool kTvrxGainInverted = true;
 
 // N210 over GigE maximum sustainable sample rate
 constexpr double kN210MaxSampleRate = 25e6;
@@ -60,7 +67,14 @@ public:
             // Set initial parameters
             usrp_->set_rx_rate(sample_rate_);
             usrp_->set_rx_freq(frequency_);
-            usrp_->set_rx_gain(gain_);
+
+            // Apply gain inversion for initial gain setting
+            // User gain 30 dB -> UHD gain (max - 30) for TVRX
+            double initial_uhd_gain = gain_;
+            if (kTvrxGainInverted) {
+                initial_uhd_gain = actual_max_gain_ - gain_;
+            }
+            usrp_->set_rx_gain(initial_uhd_gain);
 
             // Set up streaming
             setup_streaming();
@@ -131,7 +145,7 @@ public:
             return last_error_;
         }
 
-        // Clamp gain to TVRX range with warning
+        // Clamp user-facing gain to TVRX range with warning
         double clamped_gain = db;
         if (db < kTvrxMinGainDb) {
             std::cerr << "Warning: Gain " << db << " dB clamped to " << kTvrxMinGainDb
@@ -147,9 +161,22 @@ public:
         clamped_gain = std::max(clamped_gain, actual_min_gain_);
         clamped_gain = std::min(clamped_gain, actual_max_gain_);
 
+        // TVRX gain inversion: user gain is inverted before setting UHD gain.
+        // User high gain -> low UHD attenuation -> more signal
+        double uhd_gain = clamped_gain;
+        if (kTvrxGainInverted) {
+            uhd_gain = actual_max_gain_ - clamped_gain;
+        }
+
         try {
-            usrp_->set_rx_gain(clamped_gain);
-            gain_ = usrp_->get_rx_gain();
+            usrp_->set_rx_gain(uhd_gain);
+            // Store user-facing gain (not the inverted UHD value)
+            double actual_uhd_gain = usrp_->get_rx_gain();
+            if (kTvrxGainInverted) {
+                gain_ = actual_max_gain_ - actual_uhd_gain;
+            } else {
+                gain_ = actual_uhd_gain;
+            }
             last_error_ = IQSourceError::kSuccess;
         } catch (const uhd::exception& e) {
             std::cerr << "UHD error setting gain: " << e.what() << std::endl;
