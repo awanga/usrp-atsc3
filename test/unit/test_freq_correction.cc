@@ -2,11 +2,10 @@
 //
 // Tests CFO correction and pilot phase tracking
 
-#include <gtest/gtest.h>
-
 #include "freq_correction.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -316,10 +315,8 @@ TEST(FreqCorrectionTest, CorrectionOf500HzCfo) {
 
     double phase_start, phase_end;
 #ifdef ATSC3_FIXED_POINT
-    phase_start = std::atan2(q15_to_float(out[start].imag()),
-                             q15_to_float(out[start].real()));
-    phase_end = std::atan2(q15_to_float(out[end].imag()),
-                           q15_to_float(out[end].real()));
+    phase_start = std::atan2(q15_to_float(out[start].imag()), q15_to_float(out[start].real()));
+    phase_end = std::atan2(q15_to_float(out[end].imag()), q15_to_float(out[end].real()));
 #else
     phase_start = std::atan2(out[start].imag(), out[start].real());
     phase_end = std::atan2(out[end].imag(), out[end].real());
@@ -328,12 +325,13 @@ TEST(FreqCorrectionTest, CorrectionOf500HzCfo) {
     // Phase change over (end - start) samples
     double phase_change = phase_end - phase_start;
     // Unwrap if needed
-    while (phase_change > kPi) phase_change -= 2.0 * kPi;
-    while (phase_change < -kPi) phase_change += 2.0 * kPi;
+    while (phase_change > kPi)
+        phase_change -= 2.0 * kPi;
+    while (phase_change < -kPi)
+        phase_change += 2.0 * kPi;
 
     // Convert to frequency
-    double residual_freq_hz =
-        phase_change / (2.0 * kPi) * config.sample_rate_hz / (end - start);
+    double residual_freq_hz = phase_change / (2.0 * kPi) * config.sample_rate_hz / (end - start);
 
     // Residual should be < 10 Hz
     EXPECT_LT(std::abs(residual_freq_hz), 10.0)
@@ -374,21 +372,20 @@ TEST(FreqCorrectionTest, CorrectionOfNegative500HzCfo) {
 
     double phase_start, phase_end;
 #ifdef ATSC3_FIXED_POINT
-    phase_start = std::atan2(q15_to_float(out[start].imag()),
-                             q15_to_float(out[start].real()));
-    phase_end = std::atan2(q15_to_float(out[end].imag()),
-                           q15_to_float(out[end].real()));
+    phase_start = std::atan2(q15_to_float(out[start].imag()), q15_to_float(out[start].real()));
+    phase_end = std::atan2(q15_to_float(out[end].imag()), q15_to_float(out[end].real()));
 #else
     phase_start = std::atan2(out[start].imag(), out[start].real());
     phase_end = std::atan2(out[end].imag(), out[end].real());
 #endif
 
     double phase_change = phase_end - phase_start;
-    while (phase_change > kPi) phase_change -= 2.0 * kPi;
-    while (phase_change < -kPi) phase_change += 2.0 * kPi;
+    while (phase_change > kPi)
+        phase_change -= 2.0 * kPi;
+    while (phase_change < -kPi)
+        phase_change += 2.0 * kPi;
 
-    double residual_freq_hz =
-        phase_change / (2.0 * kPi) * config.sample_rate_hz / (end - start);
+    double residual_freq_hz = phase_change / (2.0 * kPi) * config.sample_rate_hz / (end - start);
 
     EXPECT_LT(std::abs(residual_freq_hz), 10.0)
         << "Residual frequency " << residual_freq_hz << " Hz exceeds 10 Hz limit";

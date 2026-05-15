@@ -2,11 +2,10 @@
 //
 // Tests polyphase interpolator, Gardner TED, and timing recovery loop
 
-#include <gtest/gtest.h>
-
 #include "timing_recovery.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -253,9 +252,7 @@ TEST(TimingRecoveryTest, SymbolCallback) {
     TimingRecovery timing(config);
 
     size_t callback_count = 0;
-    timing.set_symbol_callback([&callback_count](const sample_t&, double) {
-        ++callback_count;
-    });
+    timing.set_symbol_callback([&callback_count](const sample_t&, double) { ++callback_count; });
 
     // Generate 2x oversampled signal
     std::vector<sample_t> data(100);

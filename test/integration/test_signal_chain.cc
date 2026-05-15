@@ -5,8 +5,6 @@
 //
 // Requires real ATSC 3.0 IQ captures in test/captures/ (via git-lfs)
 
-#include <gtest/gtest.h>
-
 #include "bootstrap_detector.h"
 #include "config_bus.h"
 #include "iq_source.h"
@@ -15,6 +13,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <gtest/gtest.h>
 #include <iostream>
 #include <string>
 #include <vector>

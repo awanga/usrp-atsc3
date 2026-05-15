@@ -2,12 +2,11 @@
 //
 // Tests LS channel estimation, interpolation, and SNR estimation
 
-#include <gtest/gtest.h>
-
 #include "channel_estimator.h"
 #include "pilot_extractor.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -58,7 +57,8 @@ TEST(ChannelEstimatorTest, ValidFftSizes) {
         EXPECT_NO_THROW({
             ChannelEstimator estimator(config);
             EXPECT_GT(estimator.get_num_active_carriers(), 0u);
-        }) << "Failed for FFT size " << size;
+        }) << "Failed for FFT size "
+           << size;
     }
 }
 
@@ -105,8 +105,7 @@ TEST(ChannelEstimatorTest, SetBackend) {
 TEST(ChannelEstimatorTest, MLBackendNotImplemented) {
     ChannelEstimator estimator;
 
-    EXPECT_THROW(estimator.set_backend(EstimatorBackend::ML_ONNX),
-                 std::runtime_error);
+    EXPECT_THROW(estimator.set_backend(EstimatorBackend::ML_ONNX), std::runtime_error);
 }
 
 //==============================================================================
@@ -191,8 +190,8 @@ TEST(ChannelEstimatorTest, EstimateWithPhaseRotation) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);   // +1
-    pilot.received_value = sample_t(0, 32767);    // +j (received = H * ref = j * 1)
+    pilot.reference_value = sample_t(32767, 0);  // +1
+    pilot.received_value = sample_t(0, 32767);   // +j (received = H * ref = j * 1)
 #else
     pilot.reference_value = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, 1.0f);
@@ -222,8 +221,8 @@ TEST(ChannelEstimatorTest, EstimateWithAttenuation) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);         // +1
-    pilot.received_value = sample_t(16384, 0);          // +0.5
+    pilot.reference_value = sample_t(32767, 0);  // +1
+    pilot.received_value = sample_t(16384, 0);   // +0.5
 #else
     pilot.reference_value = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.5f, 0.0f);
@@ -253,8 +252,8 @@ TEST(ChannelEstimatorTest, EstimateWithNegativeReference) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(-32767, 0);        // -1
-    pilot.received_value = sample_t(-26214, 0);         // -0.8 (~-0.8 * 32768)
+    pilot.reference_value = sample_t(-32767, 0);  // -1
+    pilot.received_value = sample_t(-26214, 0);   // -0.8 (~-0.8 * 32768)
 #else
     pilot.reference_value = sample_t(-1.0f, 0.0f);
     pilot.received_value = sample_t(-0.8f, 0.0f);
@@ -363,8 +362,7 @@ TEST(ChannelEstimatorTest, InterpolationFlatChannel) {
         EXPECT_NEAR(q15_to_float(result.h_estimate[k].real()), 1.0f, 0.1f)
             << "Mismatch at subcarrier " << k;
 #else
-        EXPECT_NEAR(result.h_estimate[k].real(), 1.0f, 0.01f)
-            << "Mismatch at subcarrier " << k;
+        EXPECT_NEAR(result.h_estimate[k].real(), 1.0f, 0.01f) << "Mismatch at subcarrier " << k;
 #endif
     }
 }
@@ -615,7 +613,7 @@ TEST(ChannelEstimatorTest, SafeDivideBySmallValue) {
 
 #ifdef ATSC3_FIXED_POINT
     a = sample_t(16384, 8192);  // 0.5 + 0.25j
-    b = sample_t(1, 0);          // Very small
+    b = sample_t(1, 0);         // Very small
 #else
     a = sample_t(0.5f, 0.25f);
     b = sample_t(1e-8f, 0.0f);  // Very small

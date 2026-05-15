@@ -261,9 +261,8 @@ TEST_F(UHDSourceHWTest, GainAffectsPower) {
     //
     // We require any positive power increase (monotonicity) rather than
     // a specific ratio, since environmental factors vary.
-    EXPECT_GT(gain_diff, 0.0)
-        << "Gain increase should increase signal power. "
-        << "Got " << gain_diff << " dB difference.";
+    EXPECT_GT(gain_diff, 0.0) << "Gain increase should increase signal power. "
+                              << "Got " << gain_diff << " dB difference.";
 
     // If power at low gain is already near saturation (> -10 dBFS), warn but don't fail
     // since compression will limit the observable gain effect.

@@ -2,12 +2,11 @@
 //
 // Tests FFT correctness, FFTW/fixed-point backends, and wisdom caching
 
-#include <gtest/gtest.h>
-
 #include "fft_engine.h"
 
 #include <cmath>
 #include <complex>
+#include <gtest/gtest.h>
 #include <numeric>
 #include <vector>
 
@@ -28,16 +27,14 @@ size_t expected_bin(double freq_hz, double sample_rate, size_t fft_size) {
 
 // Helper to generate complex sinusoid
 [[maybe_unused]]
-std::vector<std::complex<float>> generate_sinusoid(size_t n, double freq_hz,
-                                                    double sample_rate,
-                                                    double amplitude = 1.0) {
+std::vector<std::complex<float>> generate_sinusoid(size_t n, double freq_hz, double sample_rate,
+                                                   double amplitude = 1.0) {
     std::vector<std::complex<float>> signal(n);
     double phase_step = 2.0 * kPi * freq_hz / sample_rate;
 
     for (size_t i = 0; i < n; ++i) {
         double phase = phase_step * static_cast<double>(i);
-        signal[i] = std::complex<float>(amplitude * std::cos(phase),
-                                        amplitude * std::sin(phase));
+        signal[i] = std::complex<float>(amplitude * std::cos(phase), amplitude * std::sin(phase));
     }
     return signal;
 }
@@ -80,8 +77,8 @@ TEST(FftEngineTest, SupportedSizes) {
         config.size = size;
 
         auto engine = FftEngine::create(config);
-        ASSERT_NE(engine, nullptr) << "Failed to create engine for size "
-                                   << static_cast<size_t>(size);
+        ASSERT_NE(engine, nullptr)
+            << "Failed to create engine for size " << static_cast<size_t>(size);
         EXPECT_EQ(engine->get_size(), static_cast<size_t>(size));
     }
 }
@@ -108,8 +105,7 @@ TEST(FftEngineTest, ForwardFftDcSignal) {
 
     // All other bins should be near zero
     for (size_t i = 1; i < n; ++i) {
-        EXPECT_LT(std::abs(out[i]), 1.0f)
-            << "Non-zero energy in bin " << i << " for DC input";
+        EXPECT_LT(std::abs(out[i]), 1.0f) << "Non-zero energy in bin " << i << " for DC input";
     }
 }
 #endif  // !ATSC3_FIXED_POINT
@@ -295,8 +291,8 @@ TEST(FftEngineTest, ParsevalsTheorem) {
     // Generate random-ish signal
     std::vector<std::complex<float>> in(n);
     for (size_t i = 0; i < n; ++i) {
-        float phase = 2.0f * static_cast<float>(kPi) * static_cast<float>(i * 7) /
-                      static_cast<float>(n);
+        float phase =
+            2.0f * static_cast<float>(kPi) * static_cast<float>(i * 7) / static_cast<float>(n);
         in[i] = std::complex<float>(std::cos(phase), std::sin(phase));
     }
 
@@ -317,8 +313,7 @@ TEST(FftEngineTest, ParsevalsTheorem) {
     freq_energy /= static_cast<double>(n);
 
     // Parseval: sum|x|^2 = (1/N) * sum|X|^2
-    EXPECT_NEAR(time_energy, freq_energy, time_energy * 0.001)
-        << "Parseval's theorem violated";
+    EXPECT_NEAR(time_energy, freq_energy, time_energy * 0.001) << "Parseval's theorem violated";
 }
 #endif  // !ATSC3_FIXED_POINT
 

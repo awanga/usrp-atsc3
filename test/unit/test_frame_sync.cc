@@ -2,11 +2,10 @@
 //
 // Tests frame synchronization state machine and boundary detection
 
-#include <gtest/gtest.h>
-
 #include "frame_sync.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -110,7 +109,7 @@ TEST(FrameSyncTest, BootstrapOffsetTriggersAcquisition) {
 
 TEST(FrameSyncTest, FrameCallbackInvoked) {
     FrameSyncConfig config;
-    config.lock_acquire_count = 1;  // Lock immediately for test
+    config.lock_acquire_count = 1;     // Lock immediately for test
     config.detection_threshold = 0.1;  // Low threshold for test
 
     FrameSync sync(config);
@@ -181,8 +180,7 @@ TEST(FrameSyncTest, ProcessWithoutCallback) {
 
     std::vector<sample_t> symbols(1000);
 #ifdef ATSC3_FIXED_POINT
-    std::fill(symbols.begin(), symbols.end(),
-              sample_t(float_to_q15(0.5f), float_to_q15(0.0f)));
+    std::fill(symbols.begin(), symbols.end(), sample_t(float_to_q15(0.5f), float_to_q15(0.0f)));
 #else
     std::fill(symbols.begin(), symbols.end(), sample_t(0.5f, 0.0f));
 #endif

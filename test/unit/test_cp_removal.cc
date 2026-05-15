@@ -2,11 +2,10 @@
 //
 // Tests cyclic prefix stripping for all defined CP fractions
 
-#include <gtest/gtest.h>
-
 #include "cp_removal.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -105,8 +104,8 @@ TEST(CpRemovalTest, CallbackInvocation) {
     }
     for (size_t i = 0; i < 8192; ++i) {
 #ifdef ATSC3_FIXED_POINT
-        input[1024 + i] = sample_t(static_cast<int16_t>(i % 1000),
-                                   static_cast<int16_t>((i + 500) % 1000));
+        input[1024 + i] =
+            sample_t(static_cast<int16_t>(i % 1000), static_cast<int16_t>((i + 500) % 1000));
 #else
         input[1024 + i] = sample_t(static_cast<float>(i), static_cast<float>(i + 1));
 #endif
@@ -372,9 +371,8 @@ TEST(CpRemovalTest, DataIntegrity) {
     CpRemoval cp_removal(config);
 
     std::vector<sample_t> received;
-    cp_removal.set_output_callback([&](const sample_t* symbol, size_t len) {
-        received.assign(symbol, symbol + len);
-    });
+    cp_removal.set_output_callback(
+        [&](const sample_t* symbol, size_t len) { received.assign(symbol, symbol + len); });
 
     // Create symbol with known pattern
     std::vector<sample_t> input(9216);
@@ -391,8 +389,8 @@ TEST(CpRemovalTest, DataIntegrity) {
     // FFT data: fill with index values
     for (size_t i = 0; i < 8192; ++i) {
 #ifdef ATSC3_FIXED_POINT
-        input[1024 + i] = sample_t(static_cast<int16_t>(i % 32767),
-                                   static_cast<int16_t>((i * 2) % 32767));
+        input[1024 + i] =
+            sample_t(static_cast<int16_t>(i % 32767), static_cast<int16_t>((i * 2) % 32767));
 #else
         input[1024 + i] = sample_t(static_cast<float>(i), static_cast<float>(i * 2));
 #endif

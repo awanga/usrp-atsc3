@@ -1,11 +1,10 @@
 // test_null_source.cc — Unit tests for NullSource
 
-#include <gtest/gtest.h>
-
 #include "iq_source.h"
 #include "iq_source_factory.h"
 
 #include <complex>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -134,8 +133,7 @@ TEST(NullSourceTest, DeviceInfo) {
 
 TEST(NullSourceTest, ErrorStringConversion) {
     EXPECT_STREQ(iq_source_error_string(IQSourceError::kSuccess), "Success");
-    EXPECT_STREQ(iq_source_error_string(IQSourceError::kDeviceNotFound),
-                 "Device not found");
+    EXPECT_STREQ(iq_source_error_string(IQSourceError::kDeviceNotFound), "Device not found");
     EXPECT_STREQ(iq_source_error_string(IQSourceError::kFrequencyOutOfRange),
                  "Frequency out of range");
 }

@@ -3,6 +3,7 @@
 
 set(INTEGRATION_TEST_SOURCES
     test_signal_chain.cc
+    test_end_to_end.cc
     # test_iq_replay.cc
 )
 
@@ -31,6 +32,7 @@ foreach(test_source ${INTEGRATION_TEST_SOURCES})
         PRIVATE
             ${CMAKE_SOURCE_DIR}/lib/sync
             ${CMAKE_SOURCE_DIR}/lib/config
+            ${CMAKE_SOURCE_DIR}/lib/framing
             ${CMAKE_SOURCE_DIR}/lib
             ${CMAKE_SOURCE_DIR}/hal/include
     )

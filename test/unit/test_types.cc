@@ -3,9 +3,9 @@
 // Verifies ATSC3_SAMPLE_T compiles correctly in both float and fixed-point
 // modes, and validates size/alignment expectations.
 
-#include <gtest/gtest.h>
-
 #include "types.h"
+
+#include <gtest/gtest.h>
 
 namespace atsc3 {
 namespace {
@@ -48,8 +48,7 @@ TEST(TypesTest, SampleTypeAlias) {
 
 // Test real_t alias
 TEST(TypesTest, RealTypeAlias) {
-    static_assert(std::is_same_v<real_t, ATSC3_REAL_T>,
-                  "ATSC3_REAL_T must be an alias for real_t");
+    static_assert(std::is_same_v<real_t, ATSC3_REAL_T>, "ATSC3_REAL_T must be an alias for real_t");
     SUCCEED();
 }
 
@@ -139,10 +138,10 @@ TEST(ConstantsTest, LdpcCodewordLengths) {
 // Test cyclic prefix fractions
 TEST(ConstantsTest, CyclicPrefixFractions) {
     // Verify some key CP fractions
-    EXPECT_EQ(constants::CP_FRACTION_512_8192, 512u);   // 1/16
-    EXPECT_EQ(constants::CP_FRACTION_1024_8192, 1024u); // 1/8
-    EXPECT_EQ(constants::CP_FRACTION_2048_8192, 2048u); // 1/4
-    EXPECT_EQ(constants::CP_FRACTION_4096_8192, 4096u); // 1/2
+    EXPECT_EQ(constants::CP_FRACTION_512_8192, 512u);    // 1/16
+    EXPECT_EQ(constants::CP_FRACTION_1024_8192, 1024u);  // 1/8
+    EXPECT_EQ(constants::CP_FRACTION_2048_8192, 2048u);  // 1/4
+    EXPECT_EQ(constants::CP_FRACTION_4096_8192, 4096u);  // 1/2
 }
 
 // Test that CP fractions are in ascending order

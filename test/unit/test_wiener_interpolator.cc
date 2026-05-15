@@ -2,11 +2,10 @@
 //
 // Tests 2D Wiener interpolation for channel estimation
 
-#include <gtest/gtest.h>
-
 #include "wiener_interpolator.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <random>
 #include <vector>
 
@@ -54,11 +53,13 @@ TEST(WienerInterpolatorTest, FilterCoefficientsComputed) {
 
     // Coefficients should sum to approximately 1
     float freq_sum = 0.0f;
-    for (float c : freq_coeffs) freq_sum += c;
+    for (float c : freq_coeffs)
+        freq_sum += c;
     EXPECT_NEAR(freq_sum, 1.0f, 0.01f);
 
     float time_sum = 0.0f;
-    for (float c : time_coeffs) time_sum += c;
+    for (float c : time_coeffs)
+        time_sum += c;
     EXPECT_NEAR(time_sum, 1.0f, 0.01f);
 }
 
@@ -118,8 +119,7 @@ TEST(WienerInterpolatorTest, InterpolateFlatChannel) {
 
     for (size_t i = 6; i < 200; i += 12) {
 #ifdef ATSC3_FIXED_POINT
-        pilot_estimates.push_back(sample_t(
-            float_to_q15(0.7f), float_to_q15(0.3f)));
+        pilot_estimates.push_back(sample_t(float_to_q15(0.7f), float_to_q15(0.3f)));
 #else
         pilot_estimates.push_back(sample_t(0.7f, 0.3f));
 #endif
@@ -223,8 +223,7 @@ TEST(WienerInterpolatorTest, InterpolateWithHistoryFirstSymbol) {
     }
 
     // First symbol - no time filtering yet
-    auto result = interpolator.interpolate_with_history(
-        pilot_estimates, pilot_positions, 0);
+    auto result = interpolator.interpolate_with_history(pilot_estimates, pilot_positions, 0);
 
     EXPECT_EQ(result.size(), 50u);
 }
@@ -250,8 +249,7 @@ TEST(WienerInterpolatorTest, InterpolateWithHistoryMultipleSymbols) {
 
     // Process multiple symbols to fill history
     for (size_t sym = 0; sym < 8; ++sym) {
-        auto result = interpolator.interpolate_with_history(
-            pilot_estimates, pilot_positions, sym);
+        auto result = interpolator.interpolate_with_history(pilot_estimates, pilot_positions, sym);
         EXPECT_EQ(result.size(), 50u);
     }
 
@@ -277,16 +275,14 @@ TEST(WienerInterpolatorTest, Reset) {
 
     // Fill some history
     for (size_t sym = 0; sym < 4; ++sym) {
-        interpolator.interpolate_with_history(
-            pilot_estimates, pilot_positions, sym);
+        interpolator.interpolate_with_history(pilot_estimates, pilot_positions, sym);
     }
 
     // Reset
     interpolator.reset();
 
     // Should work as if starting fresh
-    auto result = interpolator.interpolate_with_history(
-        pilot_estimates, pilot_positions, 0);
+    auto result = interpolator.interpolate_with_history(pilot_estimates, pilot_positions, 0);
     EXPECT_EQ(result.size(), 50u);
 }
 
@@ -337,17 +333,17 @@ TEST(WienerInterpolatorTest, UrbanProfile) {
 //==============================================================================
 
 TEST(WienerInterpolatorTest, ComputeWienerCoefficients) {
-    auto coeffs = compute_wiener_coefficients(
-        10.0f,   // Doppler Hz
-        1.0f,    // Delay spread us
-        20.0f,   // SNR dB
-        8);      // Num taps
+    auto coeffs = compute_wiener_coefficients(10.0f,  // Doppler Hz
+                                              1.0f,   // Delay spread us
+                                              20.0f,  // SNR dB
+                                              8);     // Num taps
 
     EXPECT_EQ(coeffs.size(), 8u);
 
     // Should sum to 1
     float sum = 0.0f;
-    for (float c : coeffs) sum += c;
+    for (float c : coeffs)
+        sum += c;
     EXPECT_NEAR(sum, 1.0f, 0.01f);
 
     // All coefficients should be non-negative
@@ -394,8 +390,8 @@ TEST(WienerInterpolatorTest, MultipathChannelInterpolation) {
         float h_im = 0.0f;
         for (size_t t = 0; t < tap_delays.size(); ++t) {
             // Phase from delay: exp(-j*2*pi*k*delay/N)
-            float phase = -2.0f * static_cast<float>(M_PI) *
-                          static_cast<float>(k) * tap_delays[t] / 8192.0f;
+            float phase =
+                -2.0f * static_cast<float>(M_PI) * static_cast<float>(k) * tap_delays[t] / 8192.0f;
             h_re += tap_gains[t] * std::cos(phase);
             h_im += tap_gains[t] * std::sin(phase);
         }

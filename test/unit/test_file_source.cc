@@ -1,13 +1,12 @@
 // test_file_source.cc — Unit tests for FileSource
 
-#include <gtest/gtest.h>
-
 #include "iq_source.h"
 #include "iq_source_factory.h"
 
 #include <complex>
 #include <cstdio>
 #include <fstream>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
 
@@ -35,7 +34,9 @@ public:
         std::remove(path_.c_str());
     }
 
-    const std::string& path() const { return path_; }
+    const std::string& path() const {
+        return path_;
+    }
 
 private:
     std::string path_;
@@ -43,9 +44,9 @@ private:
 
 TEST(FileSourceTest, CreateWithValidFile) {
     // Create a test file with 8 samples
-    std::vector<std::complex<float>> test_samples = {
-        {1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f},
-        {0.5f, 0.5f}, {-0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
+    std::vector<std::complex<float>> test_samples = {{1.0f, 0.0f},   {0.0f, 1.0f}, {-1.0f, 0.0f},
+                                                     {0.0f, -1.0f},  {0.5f, 0.5f}, {-0.5f, 0.5f},
+                                                     {-0.5f, -0.5f}, {0.5f, -0.5f}};
     TempIQFile temp_file(test_samples);
 
     auto source = create_file_source(temp_file.path(), 6.25e6);
@@ -60,9 +61,9 @@ TEST(FileSourceTest, CreateWithInvalidFile) {
 
 TEST(FileSourceTest, ReadBitExact) {
     // Create a test file with known samples
-    std::vector<std::complex<float>> test_samples = {
-        {1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}, {7.0f, 8.0f},
-        {-1.0f, -2.0f}, {-3.0f, -4.0f}, {-5.0f, -6.0f}, {-7.0f, -8.0f}};
+    std::vector<std::complex<float>> test_samples = {{1.0f, 2.0f},   {3.0f, 4.0f},   {5.0f, 6.0f},
+                                                     {7.0f, 8.0f},   {-1.0f, -2.0f}, {-3.0f, -4.0f},
+                                                     {-5.0f, -6.0f}, {-7.0f, -8.0f}};
     TempIQFile temp_file(test_samples);
 
     auto source = create_file_source(temp_file.path(), 6.25e6);
@@ -82,8 +83,10 @@ TEST(FileSourceTest, ReadBitExact) {
 }
 
 TEST(FileSourceTest, ReadPartialBuffer) {
-    std::vector<std::complex<float>> test_samples = {
-        {1.0f, 0.0f}, {2.0f, 0.0f}, {3.0f, 0.0f}, {4.0f, 0.0f}};
+    std::vector<std::complex<float>> test_samples = {{1.0f, 0.0f},
+                                                     {2.0f, 0.0f},
+                                                     {3.0f, 0.0f},
+                                                     {4.0f, 0.0f}};
     TempIQFile temp_file(test_samples);
 
     auto source = create_file_source(temp_file.path(), 6.25e6);

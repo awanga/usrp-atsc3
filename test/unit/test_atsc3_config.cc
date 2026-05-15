@@ -2,9 +2,9 @@
 //
 // Verifies ATSC 3.0 runtime configuration structures and helper methods.
 
-#include <gtest/gtest.h>
-
 #include "config/atsc3_config.h"
+
+#include <gtest/gtest.h>
 
 namespace atsc3 {
 namespace config {

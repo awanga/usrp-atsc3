@@ -2,11 +2,10 @@
 //
 // Tests Schmidl-Cox autocorrelation bootstrap detection and CFO estimation
 
-#include <gtest/gtest.h>
-
 #include "bootstrap_detector.h"
 
 #include <cmath>
+#include <gtest/gtest.h>
 #include <random>
 #include <vector>
 
@@ -16,8 +15,8 @@ namespace {
 
 // Helper to generate a synthetic bootstrap symbol with known CFO
 // Bootstrap uses repeated half-symbol structure for Schmidl-Cox
-std::vector<sample_t> generate_bootstrap_symbol(double cfo_hz, double sample_rate,
-                                                 double snr_db, uint32_t seed = 42) {
+std::vector<sample_t> generate_bootstrap_symbol(double cfo_hz, double sample_rate, double snr_db,
+                                                uint32_t seed = 42) {
     constexpr size_t kLength = BootstrapDetector::kBootstrapLength;
     constexpr size_t kHalf = BootstrapDetector::kHalfSymbol;
 
@@ -75,8 +74,7 @@ std::vector<sample_t> generate_bootstrap_symbol(double cfo_hz, double sample_rat
             im += noise_dist(rng) * noise_std;
             symbol[i] = sample_t(float_to_q15(re), float_to_q15(im));
 #else
-            symbol[i] += sample_t(noise_dist(rng) * noise_std,
-                                  noise_dist(rng) * noise_std);
+            symbol[i] += sample_t(noise_dist(rng) * noise_std, noise_dist(rng) * noise_std);
 #endif
         }
     }

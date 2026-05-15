@@ -25,6 +25,8 @@ set(LIB_TEST_SOURCES
     test_bch_decoder.cc
     test_l1_decoder.cc
     test_config_bus.cc
+    test_alp_demux.cc
+    test_route_parser.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})
@@ -73,3 +75,23 @@ foreach(test_source ${HAL_TEST_SOURCES})
             LABELS "unit"
     )
 endforeach()
+
+#------------------------------------------------------------------------------
+# av/ tests (Audio/Video processing)
+# Ring buffer tests always build; decoder tests require atsc3_av library
+#------------------------------------------------------------------------------
+
+# Ring buffer test (header-only, no FFmpeg dependency)
+add_executable(test_av_ring_buffer test_av_decoders.cc)
+target_include_directories(test_av_ring_buffer PRIVATE
+    ${CMAKE_SOURCE_DIR}/av
+)
+target_link_libraries(test_av_ring_buffer
+    PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+)
+gtest_discover_tests(test_av_ring_buffer
+    PROPERTIES
+        LABELS "unit"
+)

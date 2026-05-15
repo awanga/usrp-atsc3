@@ -2,12 +2,11 @@
 //
 // Tests pilot pattern extraction for all patterns PP1-PP8
 
-#include <gtest/gtest.h>
-
 #include "pilot_extractor.h"
 
 #include <algorithm>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -216,8 +215,7 @@ TEST(PilotExtractorTest, IsContinualPilot) {
 
     for (const auto& pilot : continual) {
         EXPECT_TRUE(extractor.is_continual_pilot(pilot.subcarrier_index))
-            << "Continual pilot at " << pilot.subcarrier_index
-            << " not recognized";
+            << "Continual pilot at " << pilot.subcarrier_index << " not recognized";
     }
 }
 
@@ -364,14 +362,11 @@ TEST(PilotExtractorTest, ReferenceValueIsBPSK) {
         float im = q15_to_float(pilot.reference_value.imag());
         EXPECT_TRUE(std::abs(re - 1.0f) < 0.01f || std::abs(re + 1.0f) < 0.01f)
             << "Reference real part should be +/-1, got " << re;
-        EXPECT_NEAR(im, 0.0f, 0.01f)
-            << "Reference imag part should be 0, got " << im;
+        EXPECT_NEAR(im, 0.0f, 0.01f) << "Reference imag part should be 0, got " << im;
 #else
-        EXPECT_TRUE(pilot.reference_value.real() == 1.0f ||
-                    pilot.reference_value.real() == -1.0f)
+        EXPECT_TRUE(pilot.reference_value.real() == 1.0f || pilot.reference_value.real() == -1.0f)
             << "Reference real part should be +/-1";
-        EXPECT_FLOAT_EQ(pilot.reference_value.imag(), 0.0f)
-            << "Reference imag part should be 0";
+        EXPECT_FLOAT_EQ(pilot.reference_value.imag(), 0.0f) << "Reference imag part should be 0";
 #endif
     }
 }
@@ -628,11 +623,9 @@ TEST(PilotExtractorTest, PilotCountsScale32K) {
 //==============================================================================
 
 TEST(PilotExtractorTest, AllPatternsWork8K) {
-    std::vector<PilotPattern> patterns = {
-        PilotPattern::PP1, PilotPattern::PP2, PilotPattern::PP3,
-        PilotPattern::PP4, PilotPattern::PP5, PilotPattern::PP6,
-        PilotPattern::PP7, PilotPattern::PP8
-    };
+    std::vector<PilotPattern> patterns = {PilotPattern::PP1, PilotPattern::PP2, PilotPattern::PP3,
+                                          PilotPattern::PP4, PilotPattern::PP5, PilotPattern::PP6,
+                                          PilotPattern::PP7, PilotPattern::PP8};
 
     for (auto pattern : patterns) {
         PilotExtractorConfig config;
@@ -647,19 +640,17 @@ TEST(PilotExtractorTest, AllPatternsWork8K) {
 
             // Should have some pilots
             EXPECT_GT(pilots.size(), 0u)
-                << "No pilots extracted for pattern "
-                << static_cast<int>(pattern);
+                << "No pilots extracted for pattern " << static_cast<int>(pattern);
 
             // Should have continual pilots
             EXPECT_GT(extractor.get_continual_pilot_count(), 0u)
-                << "No continual pilots for pattern "
-                << static_cast<int>(pattern);
+                << "No continual pilots for pattern " << static_cast<int>(pattern);
 
             // Should have scattered pilots
             EXPECT_GT(extractor.get_scattered_pilot_count(0), 0u)
-                << "No scattered pilots for pattern "
-                << static_cast<int>(pattern);
-        }) << "Exception for pattern " << static_cast<int>(pattern);
+                << "No scattered pilots for pattern " << static_cast<int>(pattern);
+        }) << "Exception for pattern "
+           << static_cast<int>(pattern);
     }
 }
 

@@ -1,11 +1,10 @@
 // test_agc.cc — Unit tests for AGC Controller
 
-#include <gtest/gtest.h>
-
 #include "agc.h"
 
 #include <cmath>
 #include <complex>
+#include <gtest/gtest.h>
 #include <vector>
 
 namespace atsc3 {
@@ -18,8 +17,7 @@ std::vector<std::complex<float>> generate_samples(size_t n, float amplitude) {
     for (size_t i = 0; i < n; ++i) {
         // Simple sinusoid
         float phase = static_cast<float>(i) * 0.1f;
-        samples[i] = std::complex<float>(amplitude * std::cos(phase),
-                                         amplitude * std::sin(phase));
+        samples[i] = std::complex<float>(amplitude * std::cos(phase), amplitude * std::sin(phase));
     }
     return samples;
 }
@@ -81,7 +79,7 @@ TEST(AgcTest, StrongSignalReducesGain) {
 TEST(AgcTest, WeakSignalIncreasesGain) {
     AgcConfig config;
     config.target_power_dbfs = -20.0;
-    config.initial_gain_db = 10.0;  // Start low to allow room for increase
+    config.initial_gain_db = 10.0;   // Start low to allow room for increase
     config.release_samples = 100.0;  // Fast release for testing
     config.deadband_db = 0.5;
 
