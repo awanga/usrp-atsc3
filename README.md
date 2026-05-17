@@ -1,5 +1,7 @@
 # gr-atsc3 — ATSC 3.0 Software-Defined Receiver
 
+[![CI](https://github.com/awanga/usrp-atsc3/actions/workflows/ci.yml/badge.svg)](https://github.com/awanga/usrp-atsc3/actions/workflows/ci.yml)
+
 > A GNU Radio out-of-tree (OOT) module implementing a full ATSC 3.0 physical-layer
 > receiver targeting the USRP N2x0 platform with TVRX daughterboard.
 > Architected for GR-version agnosticism (3.8 / 3.10), FPGA portability, and
