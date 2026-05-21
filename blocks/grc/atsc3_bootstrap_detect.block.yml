@@ -1,0 +1,48 @@
+id: atsc3_bootstrap_detect
+label: ATSC 3.0 Bootstrap Detector
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: threshold
+    label: Detection Threshold
+    dtype: real
+    default: '0.7'
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: complex
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: complex
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.bootstrap_detect(${threshold})
+  callbacks:
+    - set_threshold(${threshold})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_bootstrap_detect.h>']
+  declarations: 'gr::atsc3::bootstrap_detect::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::bootstrap_detect::make(${threshold});'
+  callbacks:
+    - 'this->${id}->set_threshold(${threshold});'
+
+documentation: |-
+  ATSC 3.0 Bootstrap Signal Detector
+
+  Detects ATSC 3.0 bootstrap signals using correlation with known
+  bootstrap waveform. Outputs frame-aligned samples when locked.
+
+  Parameters:
+    threshold: Detection correlation threshold (0.0-1.0)
+
+  Outputs:
+    CFO estimate (Hz) via get_cfo_hz()
+    Lock status via is_locked()
+
+file_format: 1

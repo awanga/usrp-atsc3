@@ -1,0 +1,55 @@
+id: atsc3_alp_demux
+label: ATSC 3.0 ALP Demultiplexer
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: plp_id
+    label: PLP ID
+    dtype: int
+    default: '0'
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+    vlen: 1
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+    vlen: 1
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.alp_demux(${plp_id})
+  callbacks:
+    - set_plp_id(${plp_id})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_alp_demux.h>']
+  declarations: 'gr::atsc3::alp_demux::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::alp_demux::make(${plp_id});'
+  callbacks:
+    - 'this->${id}->set_plp_id(${plp_id});'
+
+documentation: |-
+  ATSC 3.0 ALP Demultiplexer
+
+  Parses ATSC Link-layer Protocol packets from decoded baseband
+  frames. Extracts IP packets for ROUTE/DASH or MPEG-TS for
+  legacy content.
+
+  Parameters:
+    plp_id: Physical Layer Pipe ID to extract (0-63, or -1 for all)
+
+  Input: Decoded baseband frame bytes
+  Output: ALP packet payload bytes (tagged with packet_len)
+
+  Outputs:
+    Packet count via get_packet_count()
+    Error count via get_error_count()
+    Packet type stats via get_packet_stats()
+
+file_format: 1

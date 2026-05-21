@@ -1,0 +1,65 @@
+id: atsc3_channel_eq
+label: ATSC 3.0 Channel Equalizer
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: fft_size
+    label: FFT Size
+    dtype: int
+    default: '8192'
+    options: ['8192', '16384', '32768']
+    option_labels: ['8K', '16K', '32K']
+  - id: pilot_pattern
+    label: Pilot Pattern
+    dtype: int
+    default: '3'
+    options: ['1', '2', '3', '4', '5', '6', '7', '8']
+  - id: use_mmse
+    label: Equalization Mode
+    dtype: bool
+    default: 'True'
+    options: ['True', 'False']
+    option_labels: ['MMSE', 'ZF']
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: complex
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: complex
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.channel_eq(${fft_size}, ${pilot_pattern}, ${use_mmse})
+  callbacks:
+    - set_pilot_pattern(${pilot_pattern})
+    - set_mmse(${use_mmse})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_channel_eq.h>']
+  declarations: 'gr::atsc3::channel_eq::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::channel_eq::make(${fft_size}, ${pilot_pattern}, ${use_mmse});'
+  callbacks:
+    - 'this->${id}->set_pilot_pattern(${pilot_pattern});'
+    - 'this->${id}->set_mmse(${use_mmse});'
+
+documentation: |-
+  ATSC 3.0 Channel Equalizer
+
+  Performs channel estimation using scattered pilots and applies
+  frequency-domain equalization (MMSE or Zero-Forcing).
+
+  Parameters:
+    fft_size: OFDM FFT size (must match demodulator)
+    pilot_pattern: ATSC 3.0 pilot pattern index (1-8)
+    use_mmse: True for MMSE equalization, False for Zero-Forcing
+
+  Outputs:
+    SNR estimate (dB) via get_snr_db()
+    MER estimate (dB) via get_mer_db()
+
+file_format: 1

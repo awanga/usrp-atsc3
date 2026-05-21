@@ -1,0 +1,56 @@
+id: atsc3_ofdm_demod
+label: ATSC 3.0 OFDM Demodulator
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: fft_size
+    label: FFT Size
+    dtype: int
+    default: '8192'
+    options: ['8192', '16384', '32768']
+    option_labels: ['8K', '16K', '32K']
+  - id: cp_length
+    label: Cyclic Prefix Length
+    dtype: int
+    default: '1024'
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: complex
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: complex
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.ofdm_demod(${fft_size}, ${cp_length})
+  callbacks:
+    - set_fft_size(${fft_size})
+    - set_cp_length(${cp_length})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_ofdm_demod.h>']
+  declarations: 'gr::atsc3::ofdm_demod::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::ofdm_demod::make(${fft_size}, ${cp_length});'
+  callbacks:
+    - 'this->${id}->set_fft_size(${fft_size});'
+    - 'this->${id}->set_cp_length(${cp_length});'
+
+documentation: |-
+  ATSC 3.0 OFDM Demodulator
+
+  Performs cyclic prefix removal and FFT to convert time-domain
+  OFDM symbols to frequency-domain subcarriers.
+
+  Parameters:
+    fft_size: OFDM FFT size (8K, 16K, or 32K)
+    cp_length: Cyclic prefix length in samples
+
+  Input: Time-domain complex samples (frame-aligned)
+  Output: Frequency-domain OFDM symbols
+
+file_format: 1

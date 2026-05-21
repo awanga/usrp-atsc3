@@ -1,0 +1,70 @@
+id: atsc3_fec_decode
+label: ATSC 3.0 FEC Decoder
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: code_rate
+    label: Code Rate Index
+    dtype: int
+    default: '6'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+    option_labels: ['2/15', '3/15', '4/15', '5/15', '6/15', '7/15', '8/15', '9/15', '10/15', '11/15', '12/15', '13/15']
+  - id: codeword_length
+    label: Codeword Length
+    dtype: int
+    default: '64800'
+    options: ['16200', '64800']
+    option_labels: ['Short (16200)', 'Long (64800)']
+  - id: max_iterations
+    label: Max LDPC Iterations
+    dtype: int
+    default: '50'
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+    vlen: 1
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+    vlen: 1
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.fec_decode(${code_rate}, ${codeword_length}, ${max_iterations})
+  callbacks:
+    - set_code_rate(${code_rate})
+    - set_codeword_length(${codeword_length})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_fec_decode.h>']
+  declarations: 'gr::atsc3::fec_decode::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::fec_decode::make(${code_rate}, ${codeword_length}, ${max_iterations});'
+  callbacks:
+    - 'this->${id}->set_code_rate(${code_rate});'
+    - 'this->${id}->set_codeword_length(${codeword_length});'
+
+documentation: |-
+  ATSC 3.0 FEC Decoder
+
+  Performs LDPC decoding on soft LLR values from demapper.
+  Supports all ATSC 3.0 code rates and both codeword lengths.
+
+  Parameters:
+    code_rate: LDPC code rate index (0-11)
+    codeword_length: 16200 (short) or 64800 (long)
+    max_iterations: Maximum LDPC decoder iterations
+
+  Input: Soft LLR values (int8_t)
+  Output: Decoded information bits (uint8_t)
+
+  Outputs:
+    Average iterations via get_avg_iterations()
+    Frame error rate via get_fer()
+    Last convergence status via last_converged()
+
+file_format: 1

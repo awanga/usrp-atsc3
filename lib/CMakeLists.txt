@@ -28,8 +28,9 @@ set(LIB_HEADERS
     ${FEC_HEADERS}
 )
 
-# Create static library
+# Create static library (with PIC for use in shared libraries like gnuradio-atsc3)
 add_library(atsc3_lib STATIC ${LIB_SOURCES})
+set_target_properties(atsc3_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(atsc3_lib
     PUBLIC

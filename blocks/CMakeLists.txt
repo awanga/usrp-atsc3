@@ -7,15 +7,19 @@ if(NOT Gnuradio_FOUND)
 endif()
 
 set(BLOCKS_SOURCES
-    # atsc3_source_impl.cc
-    # atsc3_demod_impl.cc
-    # atsc3_decoder_impl.cc
+    atsc3_bootstrap_detect_impl.cc
+    atsc3_ofdm_demod_impl.cc
+    atsc3_channel_eq_impl.cc
+    atsc3_fec_decode_impl.cc
+    atsc3_alp_demux_impl.cc
 )
 
 set(BLOCKS_HEADERS
-    # atsc3_source.h
-    # atsc3_demod.h
-    # atsc3_decoder.h
+    atsc3_bootstrap_detect.h
+    atsc3_ofdm_demod.h
+    atsc3_channel_eq.h
+    atsc3_fec_decode.h
+    atsc3_alp_demux.h
 )
 
 if(BLOCKS_SOURCES)
@@ -24,6 +28,7 @@ if(BLOCKS_SOURCES)
     target_include_directories(gnuradio-atsc3
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib>
             $<INSTALL_INTERFACE:include>
     )
 
@@ -35,9 +40,29 @@ if(BLOCKS_SOURCES)
             gnuradio::gnuradio-blocks
     )
 
+    set_target_properties(gnuradio-atsc3 PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+
     install(TARGETS gnuradio-atsc3
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin
+    )
+
+    # Install public headers
+    install(FILES ${BLOCKS_HEADERS}
+        DESTINATION include/gnuradio/atsc3
+    )
+
+    # Install GRC block definitions
+    install(FILES
+        grc/atsc3_bootstrap_detect.block.yml
+        grc/atsc3_ofdm_demod.block.yml
+        grc/atsc3_channel_eq.block.yml
+        grc/atsc3_fec_decode.block.yml
+        grc/atsc3_alp_demux.block.yml
+        DESTINATION share/gnuradio/grc/blocks
     )
 endif()

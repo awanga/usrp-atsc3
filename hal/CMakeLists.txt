@@ -16,6 +16,7 @@ set(HAL_HEADERS
 )
 
 add_library(atsc3_hal ${HAL_SOURCES})
+set_target_properties(atsc3_hal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(atsc3_hal
     PUBLIC
