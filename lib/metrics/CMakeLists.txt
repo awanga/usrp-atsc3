@@ -1,16 +1,20 @@
 # lib/metrics/ - Signal quality metrics
-# SNR estimation, MER calculation, BER/FER tracking
+# SNR estimation, MER calculation, BER/FER tracking, signal strength
 
 set(METRICS_SOURCES
-    # snr_estimator.cc
-    # mer_calculator.cc
-    # error_tracker.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/snr_estimator.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/mer_estimator.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ber_estimator.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/signal_strength.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/metrics_aggregator.cc
+    PARENT_SCOPE
 )
 
 set(METRICS_HEADERS
-    # snr_estimator.h
-    # mer_calculator.h
-    # error_tracker.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/snr_estimator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/mer_estimator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ber_estimator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/signal_strength.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/metrics_aggregator.h
+    PARENT_SCOPE
 )
-
-# Sources will be added to parent LIB_SOURCES when implemented

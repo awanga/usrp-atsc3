@@ -27,6 +27,7 @@ set(LIB_TEST_SOURCES
     test_config_bus.cc
     test_alp_demux.cc
     test_route_parser.cc
+    test_metrics.cc
 )
 
 foreach(test_source ${LIB_TEST_SOURCES})

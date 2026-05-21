@@ -244,38 +244,41 @@ Goal: Live A/V decode and playback from real broadcast.
 
 ---
 
-## Phase 6 — Metrics, Scanner & GNU Radio Wrappers  *(~1 week)*
+## Phase 6 — Metrics, Scanner & GNU Radio Wrappers  *(~1 week)* [~]
 
 Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flowgraph.
 
-### 6.1 Signal Quality Metrics
-- [ ] `lib/metrics/snr_estimator.cc` — decision-directed from pilot residuals
-- [ ] `lib/metrics/mer_estimator.cc` — MER from equalized constellation RMS
-- [ ] `lib/metrics/ber_estimator.cc` — pre-FEC BER proxy from LDPC iteration count
-- [ ] `lib/metrics/signal_strength.cc` — dBm from HAL RSSI + AGC gain correction
-- [ ] JSON metrics output struct: `{ "rssi_dbm", "snr_db", "mer_db", "ber_pre_fec", "ldpc_converged", "services" }`
+### 6.1 Signal Quality Metrics [x]
+- [x] `lib/metrics/snr_estimator.cc` — decision-directed from pilot residuals
+- [x] `lib/metrics/mer_estimator.cc` — MER from equalized constellation RMS
+- [x] `lib/metrics/ber_estimator.cc` — pre-FEC BER proxy from LDPC iteration count
+- [x] `lib/metrics/signal_strength.cc` — dBm from HAL RSSI + AGC gain correction
+- [x] `lib/metrics/metrics_aggregator.cc` — JSON metrics output with all fields
+- [x] Unit tests: 27 tests passing (SNR, MER, BER, signal strength, aggregator)
 
-### 6.2 GNU Radio OOT Blocks
+### 6.2 GNU Radio OOT Blocks [!]
 - [ ] GR block for each `lib/` stage: `atsc3_bootstrap_detect`, `atsc3_ofdm_demod`, `atsc3_channel_eq`, `atsc3_fec_decode`, `atsc3_alp_demux`
 - [ ] Each block: AXI4-S contract comment in header, delegates immediately to `lib/` class
 - [ ] `cmake/gr_python_check.cmake` — detects GR 3.8 vs 3.10 and adjusts block registration API
 - [ ] GRC `.yml` block definition files for all blocks
+- **BLOCKED**: GNU Radio not installed on current system
 
-### 6.3 Channel Scanner
-- [ ] `apps/scanner.py` — sweeps US channel plan from `config/channel_plan_us.json`
-- [ ] Per channel: tune → acquire 2 s → report `{ channel, freq_hz, rssi_dbm, locked, mer_db, services[] }`
-- [ ] Output modes: table (default), JSON (`--format json`), CSV (`--format csv`)
-- [ ] Configurable dwell time (`--dwell 2.0`), band subset (`--band uhf|vhf|all`), single channel (`--channel N`)
+### 6.3 Channel Scanner [x]
+- [x] `apps/scanner.py` — sweeps US channel plan from `config/channel_plan_us.json`
+- [x] Per channel: tune → acquire 2 s → report `{ channel, freq_hz, rssi_dbm, locked, mer_db, services[] }`
+- [x] Output modes: table (default), JSON (`--format json`), CSV (`--format csv`)
+- [x] Configurable dwell time (`--dwell 2.0`), band subset (`--band uhf|vhf|all`), single channel (`--channel N`)
 
-### 6.4 GRC Flowgraph
+### 6.4 GRC Flowgraph [!]
 - [ ] `apps/atsc3_rx.grc` — USRP Source (via HAL) → full decode chain → QT GUI metrics sink
 - [ ] Parameters exposed in GRC: frequency, gain, sample_rate, output_file (optional)
 - [ ] Works with FileSource for offline decode (parameter to switch source)
+- **BLOCKED**: GNU Radio not installed on current system
 
-### 6.5 Metrics HTTP Server
-- [ ] `apps/metrics_server.py` — Flask/aiohttp endpoint at `/metrics` returning JSON
-- [ ] Refresh rate: 1 Hz
-- [ ] Simple HTML dashboard at `/` (plain tables, no JS framework)
+### 6.5 Metrics HTTP Server [x]
+- [x] `apps/metrics_server.py` — HTTP server at `/metrics` returning JSON
+- [x] Refresh rate: configurable (default 1 Hz)
+- [x] HTML dashboard at `/` with auto-refresh and color-coded metrics
 
 ### 6.6 MVP Documentation Pass
 - [ ] `README.md` §Usage section verified against actual build
