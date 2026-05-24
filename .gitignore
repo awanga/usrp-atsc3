@@ -7,10 +7,10 @@ cmake-build-*/
 *.so
 *.dylib
 
-# IQ capture files (tracked via git-lfs)
-*.iq
-*.sigmf-data
-*.sigmf-meta
+# IQ capture files are tracked via git-lfs in test/captures/
+# Only ignore IQ files outside of test/captures/
+/*.iq
+/tmp/*.iq
 
 # Python
 __pycache__/
