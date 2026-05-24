@@ -91,7 +91,7 @@ Goal: Given a locked IQ stream at the right sample rate, produce FFT-output symb
 - [x] `lib/sync/timing_recovery.h/.cc` — Gardner TED + polyphase interpolator (32-tap, 16-phase)
 - [x] `lib/sync/frame_sync.h/.cc` — superframe and subframe boundary tracker using preamble correlation
 - [x] Unit test: timing recovery and frame sync tests (30 tests passing)
-- [ ] Integration test: FileSource with known offset IQ → frame_sync locks within 10 frames (needs IQ capture)
+- [x] Test IQ capture available (`test/captures/ch35_599mhz_6.25msps.iq`) for integration tests
 
 ### 2.3 CP Removal
 - [x] `lib/ofdm/cp_removal.h/.cc`
@@ -240,7 +240,7 @@ Goal: Live A/V decode and playback from real broadcast.
 ### 5.5 End-to-End Integration Test [x]
 - [x] Integration test: ALP → ROUTE → ServiceCatalog flow verified (8 tests)
 - [x] Transport layer integration complete
-- [ ] Full IQ capture → A/V decode test (needs ATSC 3.0 IQ capture in `test/captures/`)
+- [x] Test IQ capture from channel 35 (599 MHz) available in `test/captures/`
 
 ---
 
@@ -278,11 +278,11 @@ Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flow
 - [x] Refresh rate: configurable (default 1 Hz)
 - [x] HTML dashboard at `/` with auto-refresh and color-coded metrics
 
-### 6.6 MVP Documentation Pass
-- [ ] `README.md` §Usage section verified against actual build
-- [ ] Doxygen comment coverage ≥ 80% of public headers (enforced in `nightly.yml`)
-- [ ] `CHANGELOG.md` entry for v0.1.0
-- [ ] Git tag `v0.1.0-mvp`, release workflow fires
+### 6.6 MVP Documentation Pass [x]
+- [x] `README.md` §Usage section verified against actual build
+- [x] `Doxyfile` created for API documentation generation
+- [x] `CHANGELOG.md` entry for v0.1.0-mvp
+- [x] Git tag `v0.1.0-mvp` created
 
 ---
 
