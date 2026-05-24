@@ -17,8 +17,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y gnuradio-dev libuhd-dev \
             libfftw3-dev libboost-all-dev ffmpeg libavcodec-dev libavformat-dev \
-            libavutil-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev \
-            cmake lcov python3-dev python3-numpy
+            libavutil-dev libunwind-dev libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev \
+            libsndfile1-dev cmake lcov python3-dev python3-numpy
           cmake -B build -DCMAKE_BUILD_TYPE=Debug \
             -DATSC3_BUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="--coverage"
@@ -38,7 +39,7 @@ jobs:
       - name: Install GR 3.10 and test
         run: |
           sudo apt-get update && sudo apt-get install -y gnuradio-dev libuhd-dev \
-            libfftw3-dev libboost-all-dev cmake
+            libfftw3-dev libboost-all-dev libsndfile1-dev cmake
           cmake -B build -DATSC3_GR_VERSION=3.10 -DATSC3_BUILD_TESTS=ON
           cmake --build build -j$(nproc)
           ctest --test-dir build -L unit --output-on-failure
@@ -49,9 +50,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y doxygen graphviz
-      - run: doxygen Doxyfile
+      - run: mkdir -p docs/api && doxygen Doxyfile
       - uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/html
+          publish_dir: ./docs/api/html
 

@@ -90,7 +90,6 @@ VERBATIM_HEADERS       = YES
 #---------------------------------------------------------------------------
 
 ALPHABETICAL_INDEX     = YES
-COLS_IN_ALPHA_INDEX    = 5
 
 #---------------------------------------------------------------------------
 # Configuration options related to the HTML output
