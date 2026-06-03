@@ -25,6 +25,13 @@ option(ATSC3_BUILD_TESTS "Build test suite" ON)
 set(ATSC3_GR_VERSION "3.10" CACHE STRING "Target GNU Radio version (3.8, 3.9, 3.10)")
 set(ATSC3_CHANNEL_BW_HZ "6000000" CACHE STRING "Channel bandwidth in Hz (6 MHz default)")
 
+# SIMD tier selection
+# SCALAR: No SIMD, portable C++ only
+# SSSE3:  128-bit vectors (SSE2 + SSSE3 + SSE4.1 + SSE4.2)
+# AVX2:   256-bit vectors (all SSE + AVX + AVX2)
+# NATIVE: Auto-detect based on build host (uses -march=native)
+set(ATSC3_SIMD_TIER "SSSE3" CACHE STRING "SIMD instruction set tier (SCALAR, SSSE3, AVX2, NATIVE)")
+
 #------------------------------------------------------------------------------
 # Compiler Flags
 #------------------------------------------------------------------------------
@@ -46,6 +53,31 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-O3 -DNDEBUG)
+endif()
+
+#------------------------------------------------------------------------------
+# SIMD Configuration
+#------------------------------------------------------------------------------
+# Validate and set SIMD tier flags
+if(ATSC3_SIMD_TIER STREQUAL "SCALAR")
+    message(STATUS "SIMD disabled (scalar mode)")
+    # No SIMD flags
+elseif(ATSC3_SIMD_TIER STREQUAL "SSSE3")
+    message(STATUS "SIMD tier: SSSE3 (128-bit vectors)")
+    add_compile_options(-mssse3)
+    add_compile_definitions(ATSC3_SIMD_SSSE3=1)
+elseif(ATSC3_SIMD_TIER STREQUAL "AVX2")
+    message(STATUS "SIMD tier: AVX2 (256-bit vectors)")
+    add_compile_options(-mavx2 -mfma)
+    add_compile_definitions(ATSC3_SIMD_AVX2=1 ATSC3_SIMD_SSSE3=1)
+elseif(ATSC3_SIMD_TIER STREQUAL "NATIVE")
+    message(STATUS "SIMD tier: NATIVE (auto-detect)")
+    add_compile_options(-march=native)
+    # Runtime detection will determine available features
+    add_compile_definitions(ATSC3_SIMD_NATIVE=1)
+else()
+    message(WARNING "Unknown SIMD tier '${ATSC3_SIMD_TIER}', defaulting to SCALAR")
+    set(ATSC3_SIMD_TIER "SCALAR" CACHE STRING "SIMD tier" FORCE)
 endif()
 
 #------------------------------------------------------------------------------
@@ -167,6 +199,7 @@ message(STATUS "gr-atsc3 Configuration Summary:")
 message(STATUS "  Version:        ${PROJECT_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Fixed-point:    ${ATSC3_FIXED_POINT}")
+message(STATUS "  SIMD tier:      ${ATSC3_SIMD_TIER}")
 message(STATUS "  GR version:     ${ATSC3_GR_VERSION}")
 message(STATUS "  Channel BW:     ${ATSC3_CHANNEL_BW_HZ} Hz")
 message(STATUS "  Build tests:    ${ATSC3_BUILD_TESTS}")

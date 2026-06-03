@@ -296,13 +296,20 @@ Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flow
 - [ ] Unit test: verify H matrix dimensions and sparsity match ATSC spec tables
 - [ ] Unit test: syndrome check with known codewords for each code rate
 
-### 7.2 Interleaver Optimizations
+### 7.2 Interleaver Optimizations [~]
 - [ ] Cell deinterleaver: replace modular arithmetic with bit-masking for power-of-2 sizes
 - [ ] Time deinterleaver: implement double-buffered memory access pattern for cache efficiency
-- [ ] Frequency deinterleaver: precompute permutation tables at init (eliminate runtime address calculation)
-- [ ] SIMD vectorization for interleaver copy loops (`-mavx2` / `-msse4.2`)
+- [x] Frequency deinterleaver: precompute permutation tables at init (eliminate runtime address calculation)
+- [x] SIMD vectorization for interleaver copy loops (SSSE3 and AVX2 tiers implemented)
 - [ ] Benchmark: measure cycles/cell for each interleaver; target < 10 cycles/cell
 - [ ] Memory layout optimization: ensure deinterleaver buffers are 64-byte aligned for cache line efficiency
+
+#### SIMD Implementation Notes
+- Multi-tier SIMD architecture: SCALAR (fallback), SSSE3 (128-bit), AVX2 (256-bit)
+- Runtime CPU feature detection via CPUID (`lib/simd/cpu_features.h`)
+- Compile-time tier selection via CMake `-DATSC3_SIMD_TIER=<SCALAR|SSSE3|AVX2|NATIVE>`
+- Cell and frequency deinterleavers use SIMD-optimized gather with prefetching
+- 16 SIMD-specific unit tests verify intrinsic operations
 
 ### 7.3 ATSC 3.0 Compliance Testing
 - [ ] Conformance test suite against ATSC A/322 reference vectors (obtain from ATSC or implement generator)
@@ -313,9 +320,10 @@ Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flow
 - [ ] Interleaver round-trip: verify bit-exact match with ATSC reference interleaver for all modes
 - [ ] Document compliance status in `docs/compliance.md` with pass/fail matrix per ATSC requirement
 
-### 7.4 Performance Profiling & Optimization
+### 7.4 Performance Profiling & Optimization [~]
 - [ ] Profile with `perf` / `gprof`; identify bottleneck block
-- [ ] LDPC: vectorize min-sum inner loop with SIMD intrinsics (`-mavx2`)
+- [x] LDPC: vectorize hard decision and early termination with SIMD (SSSE3/AVX2)
+- [ ] LDPC: vectorize min-sum check-node update (complex due to sparse access patterns)
 - [ ] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
 - [ ] Multi-PLP support (currently single PLP decoded)
 - [ ] Robustness: restart-on-lock-loss without flowgraph teardown

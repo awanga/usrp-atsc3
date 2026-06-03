@@ -1,10 +1,13 @@
 // freq_deinterleaver.cc — ATSC 3.0 frequency-domain de-interleaving
 //
 // Reverses frequency interleaving to recover original carrier ordering.
+// Includes SIMD-optimized paths for SSSE3 and AVX2 tiers.
 //
 // Reference: ATSC A/322 Section 8.3 (Frequency Interleaving)
 
 #include "freq_deinterleaver.h"
+#include "simd/cpu_features.h"
+#include "simd/simd_types.h"
 
 #include <algorithm>
 #include <cmath>
@@ -47,6 +50,81 @@ inline size_t bit_reverse(size_t x, size_t num_bits) {
         x >>= 1;
     }
     return result;
+}
+
+// SIMD-optimized gather for int8_t data (same as cell_deinterleaver.cc)
+
+#if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+inline void gather_i8_avx2(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    using namespace atsc3::simd;
+    const size_t simd_width = 32;
+    size_t i = 0;
+
+    for (; i + simd_width <= n; i += simd_width) {
+        simd_prefetch_read(&indices[i + simd_width]);
+        ATSC3_ALIGN_32 int8_t temp[32];
+        for (size_t j = 0; j < simd_width; ++j) {
+            temp[j] = src[indices[i + j]];
+        }
+        simd_i8x32 v = simd_load_i8x32(temp);
+        simd_storeu_i8x32(&dst[i], v);
+    }
+
+    for (; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+#endif  // ATSC3_SIMD_AVX2
+
+#if defined(ATSC3_SIMD_SSSE3) || defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+inline void gather_i8_ssse3(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    using namespace atsc3::simd;
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    for (; i + simd_width <= n; i += simd_width) {
+        simd_prefetch_read(&indices[i + simd_width]);
+        ATSC3_ALIGN_16 int8_t temp[16];
+        for (size_t j = 0; j < simd_width; ++j) {
+            temp[j] = src[indices[i + j]];
+        }
+        simd_i8x16 v = simd_load_i8x16(temp);
+        simd_storeu_i8x16(&dst[i], v);
+    }
+
+    for (; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+#endif  // ATSC3_SIMD_SSSE3
+
+inline void gather_i8_scalar(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+inline void gather_i8_dispatch(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+#if defined(ATSC3_SIMD_AVX2)
+    gather_i8_avx2(src, dst, indices, n);
+#elif defined(ATSC3_SIMD_SSSE3)
+    gather_i8_ssse3(src, dst, indices, n);
+#elif defined(ATSC3_SIMD_NATIVE)
+    using namespace atsc3::simd;
+    if (CpuFeatures::has_avx2_support()) {
+        gather_i8_avx2(src, dst, indices, n);
+    } else if (CpuFeatures::has_ssse3_support()) {
+        gather_i8_ssse3(src, dst, indices, n);
+    } else {
+        gather_i8_scalar(src, dst, indices, n);
+    }
+#else
+    gather_i8_scalar(src, dst, indices, n);
+#endif
 }
 
 }  // namespace
@@ -155,10 +233,8 @@ void FreqDeinterleaver::deinterleave(const int8_t* input, int8_t* output) const 
         return;
     }
 
-    // Apply inverse permutation
-    for (size_t i = 0; i < n; ++i) {
-        output[i] = input[inv_permutation_[i]];
-    }
+    // Apply inverse permutation using SIMD-optimized gather
+    gather_i8_dispatch(input, output, inv_permutation_.data(), n);
 }
 
 void FreqDeinterleaver::deinterleave_inplace(int8_t* carriers) {
@@ -174,10 +250,8 @@ void FreqDeinterleaver::deinterleave_inplace(int8_t* carriers) {
     // Copy to temp buffer
     std::copy(carriers, carriers + n, temp_buffer_.begin());
 
-    // Apply inverse permutation
-    for (size_t i = 0; i < n; ++i) {
-        carriers[i] = temp_buffer_[inv_permutation_[i]];
-    }
+    // Apply inverse permutation using SIMD-optimized gather
+    gather_i8_dispatch(temp_buffer_.data(), carriers, inv_permutation_.data(), n);
 }
 
 void FreqDeinterleaver::set_config(const FreqDeinterleaverConfig& config) {

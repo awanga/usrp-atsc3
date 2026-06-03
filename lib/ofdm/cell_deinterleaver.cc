@@ -1,10 +1,13 @@
 // cell_deinterleaver.cc — ATSC 3.0 cell-level de-interleaving
 //
 // Reverses cell interleaving to recover original ordering.
+// Includes SIMD-optimized paths for SSSE3 and AVX2 tiers.
 //
 // Reference: ATSC A/322 Section 8.1 (Cell Interleaving)
 
 #include "cell_deinterleaver.h"
+#include "simd/cpu_features.h"
+#include "simd/simd_types.h"
 
 #include <algorithm>
 #include <cmath>
@@ -47,6 +50,107 @@ inline size_t bit_reverse(size_t x, size_t num_bits) {
         x >>= 1;
     }
     return result;
+}
+
+// SIMD-optimized gather for int8_t data
+// Gathers elements from src using 32-bit indices
+// For irregular permutations, scalar gather + vector store is often best
+
+#if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// AVX2 optimized gather using vgatherdd for indices
+// Note: For int8_t, we gather 4 bytes at a time and extract the needed byte
+inline void gather_i8_avx2(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    using namespace atsc3::simd;
+
+    // Process 32 elements at a time (best for cache efficiency)
+    const size_t simd_width = 32;
+    size_t i = 0;
+
+    // Main SIMD loop
+    for (; i + simd_width <= n; i += simd_width) {
+        // Prefetch next batch of indices and source data
+        simd_prefetch_read(&indices[i + simd_width]);
+
+        // Scalar gather into aligned buffer (AVX2 gather is for 32-bit, not 8-bit)
+        ATSC3_ALIGN_32 int8_t temp[32];
+        for (size_t j = 0; j < simd_width; ++j) {
+            temp[j] = src[indices[i + j]];
+        }
+
+        // Store gathered data
+        simd_i8x32 v = simd_load_i8x32(temp);
+        simd_storeu_i8x32(&dst[i], v);
+    }
+
+    // Scalar cleanup
+    for (; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+#endif  // ATSC3_SIMD_AVX2
+
+#if defined(ATSC3_SIMD_SSSE3) || defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// SSSE3 optimized gather (128-bit)
+inline void gather_i8_ssse3(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    using namespace atsc3::simd;
+
+    // Process 16 elements at a time
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    // Main SIMD loop
+    for (; i + simd_width <= n; i += simd_width) {
+        // Prefetch next batch
+        simd_prefetch_read(&indices[i + simd_width]);
+
+        // Scalar gather into aligned buffer
+        ATSC3_ALIGN_16 int8_t temp[16];
+        for (size_t j = 0; j < simd_width; ++j) {
+            temp[j] = src[indices[i + j]];
+        }
+
+        // Store gathered data
+        simd_i8x16 v = simd_load_i8x16(temp);
+        simd_storeu_i8x16(&dst[i], v);
+    }
+
+    // Scalar cleanup
+    for (; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+#endif  // ATSC3_SIMD_SSSE3
+
+// Scalar gather (fallback)
+inline void gather_i8_scalar(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        dst[i] = src[indices[i]];
+    }
+}
+
+// Runtime dispatch based on CPU features
+inline void gather_i8_dispatch(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
+#if defined(ATSC3_SIMD_AVX2)
+    gather_i8_avx2(src, dst, indices, n);
+#elif defined(ATSC3_SIMD_SSSE3)
+    gather_i8_ssse3(src, dst, indices, n);
+#elif defined(ATSC3_SIMD_NATIVE)
+    // Runtime dispatch for NATIVE builds
+    using namespace atsc3::simd;
+    if (CpuFeatures::has_avx2_support()) {
+        gather_i8_avx2(src, dst, indices, n);
+    } else if (CpuFeatures::has_ssse3_support()) {
+        gather_i8_ssse3(src, dst, indices, n);
+    } else {
+        gather_i8_scalar(src, dst, indices, n);
+    }
+#else
+    gather_i8_scalar(src, dst, indices, n);
+#endif
 }
 
 }  // namespace
@@ -181,11 +285,9 @@ void CellDeinterleaver::deinterleave(int8_t* cells, size_t num_cells) {
     // Copy to temp buffer
     std::copy(cells, cells + num_cells, temp_buffer_.begin());
 
-    // Apply inverse permutation
+    // Apply inverse permutation using SIMD-optimized gather
     // inv_permutation_[i] tells us where to get the value for output position i
-    for (size_t i = 0; i < num_cells; ++i) {
-        cells[i] = temp_buffer_[inv_permutation_[i]];
-    }
+    gather_i8_dispatch(temp_buffer_.data(), cells, inv_permutation_.data(), num_cells);
 }
 
 void CellDeinterleaver::deinterleave(const int8_t* input, int8_t* output, size_t num_cells) const {
@@ -199,10 +301,8 @@ void CellDeinterleaver::deinterleave(const int8_t* input, int8_t* output, size_t
         return;
     }
 
-    // Apply inverse permutation
-    for (size_t i = 0; i < num_cells; ++i) {
-        output[i] = input[inv_permutation_[i]];
-    }
+    // Apply inverse permutation using SIMD-optimized gather
+    gather_i8_dispatch(input, output, inv_permutation_.data(), num_cells);
 }
 
 void CellDeinterleaver::set_config(const CellDeinterleaverConfig& config) {

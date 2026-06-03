@@ -1,10 +1,13 @@
 // ldpc_decoder.cc — ATSC 3.0 LDPC decoding using min-sum algorithm
 //
 // Implements belief propagation for ATSC 3.0 LDPC codes.
+// Includes SIMD-optimized paths for SSSE3 and AVX2 tiers.
 //
 // Reference: ATSC A/322 Section 9 (LDPC Coding)
 
 #include "ldpc_decoder.h"
+#include "simd/cpu_features.h"
+#include "simd/simd_types.h"
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +59,261 @@ const LdpcCodeParams kLdpcParams[] = {
     {51840, 12960},  // 12/15
     {56160, 14040},  // 13/15
 };
+
+// SIMD-optimized operations for min-sum algorithm
+
+#if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// AVX2: Sum 8 floats and return scalar
+inline float hsum_avx2(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    __m128 sum = _mm_add_ps(lo, hi);
+    sum = _mm_hadd_ps(sum, sum);
+    sum = _mm_hadd_ps(sum, sum);
+    return _mm_cvtss_f32(sum);
+}
+
+// AVX2: Compute absolute values for 8 floats
+inline __m256 abs_avx2(__m256 v) {
+    __m256i mask = _mm256_set1_epi32(0x7FFFFFFF);
+    return _mm256_and_ps(v, _mm256_castsi256_ps(mask));
+}
+
+// AVX2: Horizontal minimum of 8 floats
+inline float hmin_avx2(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    __m128 m = _mm_min_ps(lo, hi);
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(2, 3, 0, 1)));
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(1, 0, 3, 2)));
+    return _mm_cvtss_f32(m);
+}
+
+// AVX2: Count negative values (for sign product)
+// Returns number of negative values in vector
+inline int count_negatives_avx2(__m256 v) {
+    int mask = _mm256_movemask_ps(v);  // Sign bits as 8-bit mask
+    return __builtin_popcount(mask);
+}
+
+// AVX2: Vectorized clamp to [-127, 127]
+inline __m256 clamp_llr_avx2(__m256 v) {
+    __m256 min_val = _mm256_set1_ps(-127.0f);
+    __m256 max_val = _mm256_set1_ps(127.0f);
+    return _mm256_max_ps(min_val, _mm256_min_ps(max_val, v));
+}
+
+#endif  // ATSC3_SIMD_AVX2
+
+#if defined(ATSC3_SIMD_SSSE3) || defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// SSE: Sum 4 floats and return scalar
+inline float hsum_sse(__m128 v) {
+    __m128 shuf = _mm_movehdup_ps(v);
+    __m128 sums = _mm_add_ps(v, shuf);
+    shuf = _mm_movehl_ps(shuf, sums);
+    sums = _mm_add_ss(sums, shuf);
+    return _mm_cvtss_f32(sums);
+}
+
+// SSE: Compute absolute values for 4 floats
+inline __m128 abs_sse(__m128 v) {
+    __m128i mask = _mm_set1_epi32(0x7FFFFFFF);
+    return _mm_and_ps(v, _mm_castsi128_ps(mask));
+}
+
+// SSE: Horizontal minimum of 4 floats
+inline float hmin_sse(__m128 v) {
+    __m128 m = _mm_min_ps(v, _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 3, 0, 1)));
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(1, 0, 3, 2)));
+    return _mm_cvtss_f32(m);
+}
+
+// SSE: Count negative values
+inline int count_negatives_sse(__m128 v) {
+    int mask = _mm_movemask_ps(v);
+    return __builtin_popcount(mask);
+}
+
+// SSE: Vectorized clamp to [-127, 127]
+inline __m128 clamp_llr_sse(__m128 v) {
+    __m128 min_val = _mm_set1_ps(-127.0f);
+    __m128 max_val = _mm_set1_ps(127.0f);
+    return _mm_max_ps(min_val, _mm_min_ps(max_val, v));
+}
+
+#endif  // ATSC3_SIMD_SSSE3
+
+// Vectorized computation of min1, min2, and sign product for check node
+// Uses SIMD to accelerate finding two smallest magnitudes
+inline void find_two_min_and_sign(const float* values, size_t n,
+                                  float& min1, float& min2, size_t& min1_idx,
+                                  float& sign_prod) {
+    min1 = std::numeric_limits<float>::max();
+    min2 = std::numeric_limits<float>::max();
+    min1_idx = 0;
+    int neg_count = 0;
+
+#if defined(ATSC3_SIMD_AVX2)
+    // AVX2 path: process 8 at a time
+    size_t i = 0;
+    if (n >= 8) {
+        __m256 vmin1 = _mm256_set1_ps(std::numeric_limits<float>::max());
+        __m256 vmin2 = _mm256_set1_ps(std::numeric_limits<float>::max());
+
+        for (; i + 8 <= n; i += 8) {
+            __m256 v = _mm256_loadu_ps(&values[i]);
+            neg_count += count_negatives_avx2(v);
+            __m256 vabs = abs_avx2(v);
+
+            // Update min2 first (anything smaller than current min1 or min2)
+            __m256 new_min2 = _mm256_min_ps(vmin2, _mm256_max_ps(vmin1, vabs));
+            // Update min1
+            __m256 new_min1 = _mm256_min_ps(vmin1, vabs);
+            vmin2 = new_min2;
+            vmin1 = new_min1;
+        }
+
+        // Horizontal reduction to find scalar min1 and min2
+        float lane_min1 = hmin_avx2(vmin1);
+        float lane_min2 = hmin_avx2(vmin2);
+        if (lane_min1 < min1) {
+            min2 = std::min(min1, lane_min2);
+            min1 = lane_min1;
+        } else if (lane_min1 < min2) {
+            min2 = lane_min1;
+        }
+        if (lane_min2 < min2 && lane_min2 > min1) {
+            min2 = lane_min2;
+        }
+    }
+
+    // Scalar cleanup and find min1_idx
+    for (; i < n; ++i) {
+        float v = values[i];
+        if (v < 0) neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+
+    // Re-scan to find correct min1_idx if it was in SIMD portion
+    if (min1_idx == 0 && n > 1) {
+        for (size_t j = 0; j < n; ++j) {
+            if (std::abs(values[j]) == min1) {
+                min1_idx = j;
+                break;
+            }
+        }
+    }
+
+#elif defined(ATSC3_SIMD_SSSE3)
+    // SSE path: process 4 at a time
+    size_t i = 0;
+    if (n >= 4) {
+        __m128 vmin1 = _mm_set1_ps(std::numeric_limits<float>::max());
+        __m128 vmin2 = _mm_set1_ps(std::numeric_limits<float>::max());
+
+        for (; i + 4 <= n; i += 4) {
+            __m128 v = _mm_loadu_ps(&values[i]);
+            neg_count += count_negatives_sse(v);
+            __m128 vabs = abs_sse(v);
+
+            __m128 new_min2 = _mm_min_ps(vmin2, _mm_max_ps(vmin1, vabs));
+            __m128 new_min1 = _mm_min_ps(vmin1, vabs);
+            vmin2 = new_min2;
+            vmin1 = new_min1;
+        }
+
+        float lane_min1 = hmin_sse(vmin1);
+        float lane_min2 = hmin_sse(vmin2);
+        if (lane_min1 < min1) {
+            min2 = std::min(min1, lane_min2);
+            min1 = lane_min1;
+        } else if (lane_min1 < min2) {
+            min2 = lane_min1;
+        }
+        if (lane_min2 < min2 && lane_min2 > min1) {
+            min2 = lane_min2;
+        }
+    }
+
+    for (; i < n; ++i) {
+        float v = values[i];
+        if (v < 0) neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+
+    if (min1_idx == 0 && n > 1) {
+        for (size_t j = 0; j < n; ++j) {
+            if (std::abs(values[j]) == min1) {
+                min1_idx = j;
+                break;
+            }
+        }
+    }
+
+#else
+    // Scalar path
+    for (size_t i = 0; i < n; ++i) {
+        float v = values[i];
+        if (v < 0) neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+#endif
+
+    // Sign product is negative if odd number of negatives
+    sign_prod = (neg_count & 1) ? -1.0f : 1.0f;
+}
+
+// Vectorized clamp_llr for array
+inline void clamp_llr_array(float* values, size_t n) {
+#if defined(ATSC3_SIMD_AVX2)
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        __m256 v = _mm256_loadu_ps(&values[i]);
+        v = clamp_llr_avx2(v);
+        _mm256_storeu_ps(&values[i], v);
+    }
+    for (; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#elif defined(ATSC3_SIMD_SSSE3)
+    size_t i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m128 v = _mm_loadu_ps(&values[i]);
+        v = clamp_llr_sse(v);
+        _mm_storeu_ps(&values[i], v);
+    }
+    for (; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#else
+    for (size_t i = 0; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#endif
+}
 
 }  // namespace
 
@@ -248,7 +506,43 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
         // Early termination check based on LLR magnitude
         if (config_.early_term_threshold > 0.0f) {
             float avg_magnitude = 0.0f;
-            for (size_t i = 0; i < n; ++i) {
+            size_t i = 0;
+
+#if defined(ATSC3_SIMD_AVX2)
+            // AVX2: Sum absolute values 8 at a time
+            __m256 sum_vec = _mm256_setzero_ps();
+            __m256i abs_mask = _mm256_set1_epi32(0x7FFFFFFF);
+            for (; i + 8 <= n; i += 8) {
+                __m256 v = _mm256_loadu_ps(&llr_app_[i]);
+                __m256 abs_v = _mm256_and_ps(v, _mm256_castsi256_ps(abs_mask));
+                sum_vec = _mm256_add_ps(sum_vec, abs_v);
+            }
+            // Horizontal sum
+            __m128 lo = _mm256_castps256_ps128(sum_vec);
+            __m128 hi = _mm256_extractf128_ps(sum_vec, 1);
+            __m128 sum128 = _mm_add_ps(lo, hi);
+            sum128 = _mm_hadd_ps(sum128, sum128);
+            sum128 = _mm_hadd_ps(sum128, sum128);
+            avg_magnitude = _mm_cvtss_f32(sum128);
+#elif defined(ATSC3_SIMD_SSSE3)
+            // SSE: Sum absolute values 4 at a time
+            __m128 sum_vec = _mm_setzero_ps();
+            __m128i abs_mask = _mm_set1_epi32(0x7FFFFFFF);
+            for (; i + 4 <= n; i += 4) {
+                __m128 v = _mm_loadu_ps(&llr_app_[i]);
+                __m128 abs_v = _mm_and_ps(v, _mm_castsi128_ps(abs_mask));
+                sum_vec = _mm_add_ps(sum_vec, abs_v);
+            }
+            // Horizontal sum
+            __m128 shuf = _mm_movehdup_ps(sum_vec);
+            __m128 sums = _mm_add_ps(sum_vec, shuf);
+            shuf = _mm_movehl_ps(shuf, sums);
+            sums = _mm_add_ss(sums, shuf);
+            avg_magnitude = _mm_cvtss_f32(sums);
+#endif
+
+            // Scalar cleanup
+            for (; i < n; ++i) {
                 avg_magnitude += std::abs(llr_app_[i]);
             }
             avg_magnitude /= static_cast<float>(n);
@@ -408,9 +702,37 @@ void LdpcDecoder::min_sum_iteration() {
 
 void LdpcDecoder::compute_hard_decision() {
     size_t n = H_.num_cols;
+    size_t i = 0;
 
-    for (size_t i = 0; i < n; ++i) {
-        // Negative LLR -> bit = 1, Positive LLR -> bit = 0
+#if defined(ATSC3_SIMD_AVX2)
+    // AVX2: Process 8 floats at a time
+    __m256 zero = _mm256_setzero_ps();
+    for (; i + 8 <= n; i += 8) {
+        __m256 v = _mm256_loadu_ps(&llr_app_[i]);
+        // Compare: v < 0 returns all 1s for true lanes
+        __m256 cmp = _mm256_cmp_ps(v, zero, _CMP_LT_OQ);
+        // Extract sign bits as mask
+        int mask = _mm256_movemask_ps(cmp);
+        // Store individual bits
+        for (size_t j = 0; j < 8; ++j) {
+            hard_decision_[i + j] = (mask >> j) & 1;
+        }
+    }
+#elif defined(ATSC3_SIMD_SSSE3)
+    // SSE: Process 4 floats at a time
+    __m128 zero = _mm_setzero_ps();
+    for (; i + 4 <= n; i += 4) {
+        __m128 v = _mm_loadu_ps(&llr_app_[i]);
+        __m128 cmp = _mm_cmplt_ps(v, zero);
+        int mask = _mm_movemask_ps(cmp);
+        for (size_t j = 0; j < 4; ++j) {
+            hard_decision_[i + j] = (mask >> j) & 1;
+        }
+    }
+#endif
+
+    // Scalar cleanup
+    for (; i < n; ++i) {
         hard_decision_[i] = (llr_app_[i] < 0.0f) ? 1 : 0;
     }
 }
