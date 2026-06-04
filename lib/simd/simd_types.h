@@ -36,8 +36,8 @@
 #if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
 #include <immintrin.h>  // AVX, AVX2, FMA
 #elif defined(ATSC3_SIMD_SSSE3)
-#include <tmmintrin.h>  // SSSE3 (pshufb, pabs, etc.)
 #include <emmintrin.h>  // SSE2 (baseline)
+#include <tmmintrin.h>  // SSSE3 (pshufb, pabs, etc.)
 #endif
 
 namespace atsc3 {
@@ -92,11 +92,13 @@ public:
     AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
 
     pointer allocate(size_type n) {
-        if (n == 0) return nullptr;
+        if (n == 0)
+            return nullptr;
         void* ptr = nullptr;
 #if defined(_MSC_VER)
         ptr = _aligned_malloc(n * sizeof(T), Alignment);
-        if (!ptr) throw std::bad_alloc();
+        if (!ptr)
+            throw std::bad_alloc();
 #else
         if (posix_memalign(&ptr, Alignment, n * sizeof(T)) != 0) {
             throw std::bad_alloc();
@@ -276,10 +278,10 @@ inline simd_i8x16 simd_shuffle_i8x16(simd_i8x16 a, simd_i8x16 idx) {
 // Horizontal sum (float) - sum all 4 elements
 inline float simd_hsum_f32x4(simd_f32x4 v) {
     // SSE3 version using hadd
-    __m128 shuf = _mm_movehdup_ps(v);       // [v1, v1, v3, v3]
-    __m128 sums = _mm_add_ps(v, shuf);      // [v0+v1, v1+v1, v2+v3, v3+v3]
-    shuf = _mm_movehl_ps(shuf, sums);       // [v2+v3, v3+v3, ...]
-    sums = _mm_add_ss(sums, shuf);          // [v0+v1+v2+v3, ...]
+    __m128 shuf = _mm_movehdup_ps(v);   // [v1, v1, v3, v3]
+    __m128 sums = _mm_add_ps(v, shuf);  // [v0+v1, v1+v1, v2+v3, v3+v3]
+    shuf = _mm_movehl_ps(shuf, sums);   // [v2+v3, v3+v3, ...]
+    sums = _mm_add_ss(sums, shuf);      // [v0+v1+v2+v3, ...]
     return _mm_cvtss_f32(sums);
 }
 

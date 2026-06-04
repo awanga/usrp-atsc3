@@ -6,6 +6,7 @@
 // Reference: ATSC A/322 Section 9 (LDPC Coding)
 
 #include "ldpc_decoder.h"
+
 #include "simd/cpu_features.h"
 #include "simd/simd_types.h"
 
@@ -147,9 +148,8 @@ inline __m128 clamp_llr_sse(__m128 v) {
 
 // Vectorized computation of min1, min2, and sign product for check node
 // Uses SIMD to accelerate finding two smallest magnitudes
-inline void find_two_min_and_sign(const float* values, size_t n,
-                                  float& min1, float& min2, size_t& min1_idx,
-                                  float& sign_prod) {
+inline void find_two_min_and_sign(const float* values, size_t n, float& min1, float& min2,
+                                  size_t& min1_idx, float& sign_prod) {
     min1 = std::numeric_limits<float>::max();
     min2 = std::numeric_limits<float>::max();
     min1_idx = 0;
@@ -192,7 +192,8 @@ inline void find_two_min_and_sign(const float* values, size_t n,
     // Scalar cleanup and find min1_idx
     for (; i < n; ++i) {
         float v = values[i];
-        if (v < 0) neg_count++;
+        if (v < 0)
+            neg_count++;
         float mag = std::abs(v);
         if (mag < min1) {
             min2 = min1;
@@ -246,7 +247,8 @@ inline void find_two_min_and_sign(const float* values, size_t n,
 
     for (; i < n; ++i) {
         float v = values[i];
-        if (v < 0) neg_count++;
+        if (v < 0)
+            neg_count++;
         float mag = std::abs(v);
         if (mag < min1) {
             min2 = min1;
@@ -270,7 +272,8 @@ inline void find_two_min_and_sign(const float* values, size_t n,
     // Scalar path
     for (size_t i = 0; i < n; ++i) {
         float v = values[i];
-        if (v < 0) neg_count++;
+        if (v < 0)
+            neg_count++;
         float mag = std::abs(v);
         if (mag < min1) {
             min2 = min1;

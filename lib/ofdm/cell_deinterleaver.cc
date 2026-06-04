@@ -6,6 +6,7 @@
 // Reference: ATSC A/322 Section 8.1 (Cell Interleaving)
 
 #include "cell_deinterleaver.h"
+
 #include "simd/cpu_features.h"
 #include "simd/simd_types.h"
 

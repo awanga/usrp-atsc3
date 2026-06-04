@@ -22,16 +22,16 @@ namespace simd {
 
 const char* simd_tier_name(SimdTier tier) {
     switch (tier) {
-    case SimdTier::SCALAR:
-        return "SCALAR";
-    case SimdTier::SSSE3:
-        return "SSSE3";
-    case SimdTier::AVX2:
-        return "AVX2";
-    case SimdTier::AVX512:
-        return "AVX512";
-    default:
-        return "UNKNOWN";
+        case SimdTier::SCALAR:
+            return "SCALAR";
+        case SimdTier::SSSE3:
+            return "SSSE3";
+        case SimdTier::AVX2:
+            return "AVX2";
+        case SimdTier::AVX512:
+            return "AVX512";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -83,11 +83,11 @@ void CpuFeatures::detect_features() {
     sse2_ = (edx >> 26) & 1;  // bit 26: SSE2
 
     // ECX bits
-    sse3_ = (ecx >> 0) & 1;        // bit 0: SSE3
-    ssse3_ = (ecx >> 9) & 1;       // bit 9: SSSE3
-    sse41_ = (ecx >> 19) & 1;      // bit 19: SSE4.1
-    sse42_ = (ecx >> 20) & 1;      // bit 20: SSE4.2
-    fma_ = (ecx >> 12) & 1;        // bit 12: FMA
+    sse3_ = (ecx >> 0) & 1;          // bit 0: SSE3
+    ssse3_ = (ecx >> 9) & 1;         // bit 9: SSSE3
+    sse41_ = (ecx >> 19) & 1;        // bit 19: SSE4.1
+    sse42_ = (ecx >> 20) & 1;        // bit 20: SSE4.2
+    fma_ = (ecx >> 12) & 1;          // bit 12: FMA
     bool osxsave = (ecx >> 27) & 1;  // bit 27: OSXSAVE (OS uses XSAVE)
     bool avx_hw = (ecx >> 28) & 1;   // bit 28: AVX hardware support
 
@@ -142,9 +142,7 @@ bool CpuFeatures::os_supports_avx() const {
     // Use XGETBV with ECX=0 to read XCR0
 #if defined(__GNUC__) || defined(__clang__)
     unsigned int xcr0_lo, xcr0_hi;
-    __asm__ volatile("xgetbv"
-                     : "=a"(xcr0_lo), "=d"(xcr0_hi)
-                     : "c"(0));
+    __asm__ volatile("xgetbv" : "=a"(xcr0_lo), "=d"(xcr0_hi) : "c"(0));
     return (xcr0_lo & 0x06) == 0x06;  // bits 1 and 2 set
 #elif defined(_MSC_VER)
     unsigned long long xcr0 = _xgetbv(0);
@@ -163,9 +161,7 @@ bool CpuFeatures::os_supports_avx512() const {
     // plus bits 1 and 2 for XMM and YMM
 #if defined(__GNUC__) || defined(__clang__)
     unsigned int xcr0_lo, xcr0_hi;
-    __asm__ volatile("xgetbv"
-                     : "=a"(xcr0_lo), "=d"(xcr0_hi)
-                     : "c"(0));
+    __asm__ volatile("xgetbv" : "=a"(xcr0_lo), "=d"(xcr0_hi) : "c"(0));
     return (xcr0_lo & 0xE6) == 0xE6;  // bits 1, 2, 5, 6, 7 set
 #elif defined(_MSC_VER)
     unsigned long long xcr0 = _xgetbv(0);

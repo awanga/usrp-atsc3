@@ -47,25 +47,55 @@ public:
     static const CpuFeatures& instance();
 
     // Individual feature queries
-    bool has_sse2() const { return sse2_; }
-    bool has_sse3() const { return sse3_; }
-    bool has_ssse3() const { return ssse3_; }
-    bool has_sse41() const { return sse41_; }
-    bool has_sse42() const { return sse42_; }
-    bool has_avx() const { return avx_; }
-    bool has_avx2() const { return avx2_; }
-    bool has_fma() const { return fma_; }
-    bool has_avx512f() const { return avx512f_; }
-    bool has_avx512bw() const { return avx512bw_; }
-    bool has_avx512vl() const { return avx512vl_; }
+    bool has_sse2() const {
+        return sse2_;
+    }
+    bool has_sse3() const {
+        return sse3_;
+    }
+    bool has_ssse3() const {
+        return ssse3_;
+    }
+    bool has_sse41() const {
+        return sse41_;
+    }
+    bool has_sse42() const {
+        return sse42_;
+    }
+    bool has_avx() const {
+        return avx_;
+    }
+    bool has_avx2() const {
+        return avx2_;
+    }
+    bool has_fma() const {
+        return fma_;
+    }
+    bool has_avx512f() const {
+        return avx512f_;
+    }
+    bool has_avx512bw() const {
+        return avx512bw_;
+    }
+    bool has_avx512vl() const {
+        return avx512vl_;
+    }
 
     // Get the highest supported SIMD tier
-    SimdTier best_tier() const { return best_tier_; }
+    SimdTier best_tier() const {
+        return best_tier_;
+    }
 
     // Static convenience methods (call instance() internally)
-    static bool has_ssse3_support() { return instance().has_ssse3(); }
-    static bool has_avx2_support() { return instance().has_avx2(); }
-    static SimdTier get_best_tier() { return instance().best_tier(); }
+    static bool has_ssse3_support() {
+        return instance().has_ssse3();
+    }
+    static bool has_avx2_support() {
+        return instance().has_avx2();
+    }
+    static SimdTier get_best_tier() {
+        return instance().best_tier();
+    }
 
     // Print detected features to stdout (for debugging)
     void print_features() const;
