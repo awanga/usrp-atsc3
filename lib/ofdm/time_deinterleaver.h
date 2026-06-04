@@ -18,6 +18,7 @@
 // Reference: ATSC A/322 Section 8.2 (Time Interleaving)
 
 #include "config/atsc3_config.h"
+#include "simd/simd_types.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -114,10 +115,11 @@ private:
 
     // Delay lines: delay_lines_[row][position]
     // Each row has a different length based on its delay
-    std::vector<std::vector<int8_t>> delay_lines_;
+    // Inner vectors are cache-line aligned for optimal access
+    std::vector<simd::aligned_vector<int8_t>> delay_lines_;
 
     // Write position for each delay line (circular buffer)
-    std::vector<size_t> write_pos_;
+    simd::aligned_vector<size_t> write_pos_;
 
     // Number of blocks needed for settling
     size_t settling_blocks_;

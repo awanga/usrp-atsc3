@@ -28,6 +28,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <new>
+#include <vector>
 
 // Include SIMD intrinsics based on platform and tier
 #if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
@@ -60,6 +63,70 @@ namespace simd {
 
 // Cache line size for prefetch and buffer alignment
 constexpr size_t kCacheLineSize = 64;
+
+//------------------------------------------------------------------------------
+// Aligned Allocator for std::vector
+//------------------------------------------------------------------------------
+
+// Custom allocator that ensures N-byte alignment for vector storage
+// Usage: std::vector<T, AlignedAllocator<T, 64>> aligned_vec;
+template <typename T, size_t Alignment = kCacheLineSize>
+class AlignedAllocator {
+public:
+    using value_type = T;
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+
+    template <typename U>
+    struct rebind {
+        using other = AlignedAllocator<U, Alignment>;
+    };
+
+    AlignedAllocator() noexcept = default;
+
+    template <typename U>
+    AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+
+    pointer allocate(size_type n) {
+        if (n == 0) return nullptr;
+        void* ptr = nullptr;
+#if defined(_MSC_VER)
+        ptr = _aligned_malloc(n * sizeof(T), Alignment);
+        if (!ptr) throw std::bad_alloc();
+#else
+        if (posix_memalign(&ptr, Alignment, n * sizeof(T)) != 0) {
+            throw std::bad_alloc();
+        }
+#endif
+        return static_cast<pointer>(ptr);
+    }
+
+    void deallocate(pointer p, size_type) noexcept {
+#if defined(_MSC_VER)
+        _aligned_free(p);
+#else
+        free(p);
+#endif
+    }
+
+    template <typename U>
+    bool operator==(const AlignedAllocator<U, Alignment>&) const noexcept {
+        return true;
+    }
+
+    template <typename U>
+    bool operator!=(const AlignedAllocator<U, Alignment>&) const noexcept {
+        return false;
+    }
+};
+
+// Convenience type aliases for cache-aligned vectors
+template <typename T>
+using aligned_vector = std::vector<T, AlignedAllocator<T, kCacheLineSize>>;
 
 //------------------------------------------------------------------------------
 // SSSE3 Tier Types (128-bit vectors)
