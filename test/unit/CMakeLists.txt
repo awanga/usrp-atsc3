@@ -97,3 +97,32 @@ gtest_discover_tests(test_av_ring_buffer
     PROPERTIES
         LABELS "unit"
 )
+
+#------------------------------------------------------------------------------
+# Performance benchmarks (separate from unit tests)
+#------------------------------------------------------------------------------
+
+add_executable(bench_interleaver bench_interleaver.cc)
+target_link_libraries(bench_interleaver
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+# Label as "benchmark" so it's not run with regular unit tests
+gtest_discover_tests(bench_interleaver
+    PROPERTIES
+        LABELS "benchmark"
+)
+
+add_executable(bench_fftw bench_fftw.cc)
+target_link_libraries(bench_fftw
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+gtest_discover_tests(bench_fftw
+    PROPERTIES
+        LABELS "benchmark"
+)
