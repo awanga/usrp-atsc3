@@ -288,13 +288,19 @@ Goal: Complete MVP. Observable signal quality, channel scanner, working GRC flow
 
 ## Phase 7 — Hardening, Compliance & Performance  *(post-MVP, ongoing)*
 
-### 7.1 Full ATSC 3.0 H Matrix Support
-- [ ] Generate all LDPC H matrices per ATSC A/322 §12.2 for both codeword lengths (64800, 16200)
-- [ ] Validate H matrices for all 12 code rates: 2/15, 3/15, 4/15, 5/15, 6/15, 7/15, 8/15, 9/15, 10/15, 11/15, 12/15, 13/15
-- [ ] Store H matrices in sparse CSR format in `config/ldpc_tables/` (row indices, column indices per rate/length)
-- [ ] Add H matrix loader with runtime selection based on L1 signaling
-- [ ] Unit test: verify H matrix dimensions and sparsity match ATSC spec tables
-- [ ] Unit test: syndrome check with known codewords for each code rate
+### 7.1 Full ATSC 3.0 H Matrix Support [x]
+- [x] Generate all LDPC H matrices per ATSC A/322 §12.2 for both codeword lengths (64800, 16200)
+- [x] Validate H matrices for all 12 code rates: 2/15, 3/15, 4/15, 5/15, 6/15, 7/15, 8/15, 9/15, 10/15, 11/15, 12/15, 13/15
+- [x] Store H matrices in sparse CSR format in `config/ldpc_tables/` (row indices, column indices per rate/length)
+- [x] Add H matrix loader with runtime selection based on L1 signaling
+- [x] Unit test: verify H matrix dimensions and sparsity match ATSC spec tables
+- [x] Unit test: syndrome check with known codewords for each code rate
+
+#### H Matrix Implementation Notes
+- Quasi-cyclic construction with expansion factor Q=360 (long) or Q=90 (short)
+- Generator creates proper circulant permutation matrices per ATSC A/322
+- Sparse row/column index storage for memory efficiency
+- 18 unit tests verify dimensions, sparsity, syndrome checks, decoder integration
 
 ### 7.2 Interleaver Optimizations [x]
 - [x] Cell deinterleaver: uses precomputed permutation tables (more efficient than bit-masking)

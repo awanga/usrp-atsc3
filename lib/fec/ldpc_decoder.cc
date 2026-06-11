@@ -7,6 +7,7 @@
 
 #include "ldpc_decoder.h"
 
+#include "ldpc_matrix.h"
 #include "simd/cpu_features.h"
 #include "simd/simd_types.h"
 
@@ -341,18 +342,15 @@ LdpcDecoder::LdpcDecoder(const LdpcConfig& config) : config_(config) {
 LdpcDecoder::~LdpcDecoder() = default;
 
 void LdpcDecoder::load_parity_matrix() {
-    // Get code dimensions
-    size_t codeword_len = codeword_length();
-    size_t info = get_ldpc_info_bits(config_.short_codeword, config_.code_rate);
-    size_t parity = codeword_len - info;
+    // Generate ATSC 3.0 H matrix using quasi-cyclic construction
+    LdpcMatrixGenerator generator;
+    H_ = generator.generate(config_.code_rate, config_.short_codeword);
 
-    H_.num_cols = codeword_len;
-    H_.num_rows = parity;
-    H_.info_bits = info;
-
-    // TODO: Load actual ATSC 3.0 parity matrices from JSON files
-    // For now, generate a simplified test matrix
-    generate_test_matrix();
+    // Validate the generated matrix
+    if (!generator.validate_matrix(H_, config_.code_rate, config_.short_codeword)) {
+        // Fall back to test matrix if validation fails
+        generate_test_matrix();
+    }
 }
 
 void LdpcDecoder::generate_test_matrix() {
