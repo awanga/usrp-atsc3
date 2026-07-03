@@ -9,6 +9,10 @@ This module provides the following blocks:
 - bootstrap_detect: ATSC 3.0 bootstrap detector
 - ofdm_demod: OFDM demodulator
 - channel_eq: Channel equalizer
+- constellation_demapper: QAM to soft LLR conversion
+- cell_deinterleaver: Cell de-interleaving
+- freq_deinterleaver: Frequency de-interleaving
+- time_deinterleaver: Time de-interleaving
 - fec_decode: LDPC/BCH FEC decoder
 - alp_demux: ALP demultiplexer
 """
@@ -17,6 +21,10 @@ from gnuradio.atsc3.atsc3_python import (
     bootstrap_detect,
     ofdm_demod,
     channel_eq,
+    constellation_demapper,
+    cell_deinterleaver,
+    freq_deinterleaver,
+    time_deinterleaver,
     fec_decode,
     alp_demux,
 )
@@ -25,6 +33,10 @@ __all__ = [
     "bootstrap_detect",
     "ofdm_demod",
     "channel_eq",
+    "constellation_demapper",
+    "cell_deinterleaver",
+    "freq_deinterleaver",
+    "time_deinterleaver",
     "fec_decode",
     "alp_demux",
 ]

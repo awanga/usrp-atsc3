@@ -1,0 +1,67 @@
+id: atsc3_time_deinterleaver
+label: ATSC 3.0 Time De-interleaver
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: ti_mode
+    label: TI Mode
+    dtype: int
+    default: '1'
+    options: ['0', '1', '2']
+    option_labels: ['None', 'CTI', 'HTI']
+  - id: ti_depth
+    label: TI Depth
+    dtype: int
+    default: '0'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.time_deinterleaver(${ti_mode}, ${ti_depth})
+  callbacks:
+    - set_ti_mode(${ti_mode})
+    - set_ti_depth(${ti_depth})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_time_deinterleaver.h>']
+  declarations: 'gr::atsc3::time_deinterleaver::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::time_deinterleaver::make(${ti_mode}, ${ti_depth});'
+  callbacks:
+    - 'this->${id}->set_ti_mode(${ti_mode});'
+    - 'this->${id}->set_ti_depth(${ti_depth});'
+
+documentation: |-
+  ATSC 3.0 Time De-interleaver
+
+  Reverses the convolutional time interleaving applied at the transmitter
+  to improve burst error resilience across time. Uses multiple delay lines
+  with progressively longer delays.
+
+  Supports CTI (Convolutional Time Interleaving) mode per ATSC A/322 Section 8.2.
+  HTI (Hybrid Time Interleaving) is not yet implemented.
+
+  Parameters:
+    ti_mode: Time interleaving mode (0=None, 1=CTI, 2=HTI)
+    ti_depth: TI depth (0-15). depth=0 means no time interleaving
+
+  Note: Initial output blocks will contain invalid data as delay lines fill.
+  Use is_settled() to check when output becomes valid.
+
+  Input:
+    Interleaved LLR cells (int8_t)
+
+  Output:
+    De-interleaved LLR cells (int8_t)
+
+file_format: 1

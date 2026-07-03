@@ -5,6 +5,10 @@ set(BINDING_SOURCES
     bootstrap_detect_python.cc
     ofdm_demod_python.cc
     channel_eq_python.cc
+    constellation_demapper_python.cc
+    cell_deinterleaver_python.cc
+    freq_deinterleaver_python.cc
+    time_deinterleaver_python.cc
     fec_decode_python.cc
     alp_demux_python.cc
 )

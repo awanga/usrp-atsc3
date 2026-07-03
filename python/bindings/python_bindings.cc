@@ -9,6 +9,10 @@ namespace py = pybind11;
 void bind_bootstrap_detect(py::module_& m);
 void bind_ofdm_demod(py::module_& m);
 void bind_channel_eq(py::module_& m);
+void bind_constellation_demapper(py::module_& m);
+void bind_cell_deinterleaver(py::module_& m);
+void bind_freq_deinterleaver(py::module_& m);
+void bind_time_deinterleaver(py::module_& m);
 void bind_fec_decode(py::module_& m);
 void bind_alp_demux(py::module_& m);
 
@@ -20,6 +24,10 @@ This module provides blocks for receiving ATSC 3.0 broadcast signals:
 - bootstrap_detect: Bootstrap signal detection and coarse CFO estimation
 - ofdm_demod: OFDM demodulation with FFT and CP removal
 - channel_eq: Channel estimation and equalization
+- constellation_demapper: QAM symbol to soft LLR conversion
+- cell_deinterleaver: Cell de-interleaving
+- freq_deinterleaver: Frequency de-interleaving
+- time_deinterleaver: Time de-interleaving
 - fec_decode: LDPC/BCH forward error correction decoding
 - alp_demux: ALP packet demultiplexing
 )doc";
@@ -31,6 +39,10 @@ This module provides blocks for receiving ATSC 3.0 broadcast signals:
     bind_bootstrap_detect(m);
     bind_ofdm_demod(m);
     bind_channel_eq(m);
+    bind_constellation_demapper(m);
+    bind_cell_deinterleaver(m);
+    bind_freq_deinterleaver(m);
+    bind_time_deinterleaver(m);
     bind_fec_decode(m);
     bind_alp_demux(m);
 }

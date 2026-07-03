@@ -1,0 +1,61 @@
+id: atsc3_freq_deinterleaver
+label: ATSC 3.0 Frequency De-interleaver
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: fft_size
+    label: FFT Size
+    dtype: int
+    default: '8192'
+    options: ['8192', '16384', '32768']
+    option_labels: ['8K', '16K', '32K']
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.freq_deinterleaver(${fft_size})
+  callbacks:
+    - set_fft_size(${fft_size})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_freq_deinterleaver.h>']
+  declarations: 'gr::atsc3::freq_deinterleaver::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::freq_deinterleaver::make(${fft_size});'
+  callbacks:
+    - 'this->${id}->set_fft_size(${fft_size});'
+
+documentation: |-
+  ATSC 3.0 Frequency De-interleaver
+
+  Reverses the frequency interleaving applied at the transmitter, which
+  spreads data across OFDM subcarriers to improve frequency-selective
+  fading resilience.
+
+  The permutation is based on a pseudo-random sequence that depends on
+  FFT size and number of active carriers per ATSC A/322 Section 8.3.
+
+  Parameters:
+    fft_size: OFDM FFT size (8192, 16384, or 32768)
+
+  Active carriers per FFT size:
+    8K:  6913 carriers
+    16K: 13825 carriers
+    32K: 27649 carriers
+
+  Input:
+    Interleaved LLR cells (int8_t, one OFDM symbol)
+
+  Output:
+    De-interleaved LLR cells (int8_t)
+
+file_format: 1

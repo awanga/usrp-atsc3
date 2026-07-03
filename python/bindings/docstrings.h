@@ -255,3 +255,193 @@ Get error count (CRC failures, etc.)
 Returns:
     Total number of packet errors
 )doc";
+
+// constellation_demapper docstrings
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER = R"doc(
+ATSC 3.0 Constellation Demapper Block
+
+Converts equalized QAM symbols to soft LLR values for LDPC decoding.
+Supports uniform QAM and non-uniform constellations (NUC).
+
+Input: Equalized QAM symbols (complex)
+Output: Soft LLRs (int8_t, bits_per_symbol per input)
+
+AXI4-S: TDATA=cf32 in, int8_t out TVALID TREADY TLAST(codeword)
+)doc";
+
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER_MAKE = R"doc(
+Create ATSC 3.0 constellation demapper block
+
+Args:
+    modulation: Modulation type (0=QPSK, 1=QAM16, 2=QAM64, etc.)
+    code_rate: Code rate index (0-11, for NUC selection)
+    noise_variance: Noise variance for LLR scaling
+
+Returns:
+    Shared pointer to new constellation_demapper instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER_SET_MODULATION = R"doc(
+Set modulation type
+
+Args:
+    modulation: Modulation type index
+)doc";
+
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER_SET_CODE_RATE = R"doc(
+Set code rate (for NUC table selection)
+
+Args:
+    code_rate: Code rate index (0-11)
+)doc";
+
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER_SET_NOISE_VARIANCE = R"doc(
+Set noise variance for LLR scaling
+
+Args:
+    noise_variance: Noise variance estimate
+)doc";
+
+[[maybe_unused]] static const char* DOC_CONSTELLATION_DEMAPPER_GET_BITS_PER_SYMBOL = R"doc(
+Get bits per symbol for current modulation
+
+Returns:
+    Number of bits per QAM symbol
+)doc";
+
+// cell_deinterleaver docstrings
+[[maybe_unused]] static const char* DOC_CELL_DEINTERLEAVER = R"doc(
+ATSC 3.0 Cell De-interleaver Block
+
+Reverses cell interleaving applied at transmitter.
+Uses bit-reversal permutation based on FFT size.
+
+Input: Interleaved LLR cells
+Output: De-interleaved LLR cells
+
+AXI4-S: TDATA=int8_t TVALID TREADY TLAST(FEC block)
+)doc";
+
+[[maybe_unused]] static const char* DOC_CELL_DEINTERLEAVER_MAKE = R"doc(
+Create ATSC 3.0 cell de-interleaver block
+
+Args:
+    fft_size: FFT size (determines permutation size)
+
+Returns:
+    Shared pointer to new cell_deinterleaver instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_CELL_DEINTERLEAVER_SET_FFT_SIZE = R"doc(
+Set FFT size (reconfigures permutation)
+
+Args:
+    fft_size: FFT size (8192, 16384, or 32768)
+)doc";
+
+[[maybe_unused]] static const char* DOC_CELL_DEINTERLEAVER_GET_FFT_SIZE = R"doc(
+Get current FFT size
+
+Returns:
+    Current FFT size
+)doc";
+
+// freq_deinterleaver docstrings
+[[maybe_unused]] static const char* DOC_FREQ_DEINTERLEAVER = R"doc(
+ATSC 3.0 Frequency De-interleaver Block
+
+Reverses frequency interleaving within each OFDM symbol.
+Uses LFSR-based permutation per ATSC A/322 Section 8.3.
+
+Input: Interleaved LLR cells (per symbol)
+Output: De-interleaved LLR cells
+
+AXI4-S: TDATA=int8_t TVALID TREADY TLAST(symbol)
+)doc";
+
+[[maybe_unused]] static const char* DOC_FREQ_DEINTERLEAVER_MAKE = R"doc(
+Create ATSC 3.0 frequency de-interleaver block
+
+Args:
+    fft_size: FFT size (8192, 16384, or 32768)
+
+Returns:
+    Shared pointer to new freq_deinterleaver instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_FREQ_DEINTERLEAVER_SET_FFT_SIZE = R"doc(
+Set FFT size (reconfigures permutation table)
+
+Args:
+    fft_size: FFT size (8192, 16384, or 32768)
+)doc";
+
+[[maybe_unused]] static const char* DOC_FREQ_DEINTERLEAVER_GET_FFT_SIZE = R"doc(
+Get current FFT size
+
+Returns:
+    Current FFT size
+)doc";
+
+[[maybe_unused]] static const char* DOC_FREQ_DEINTERLEAVER_GET_NUM_CARRIERS = R"doc(
+Get number of active carriers
+
+Returns:
+    Number of active subcarriers for current FFT size
+)doc";
+
+// time_deinterleaver docstrings
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER = R"doc(
+ATSC 3.0 Time De-interleaver Block
+
+Reverses time interleaving (CTI or HTI mode).
+Requires settling period before valid output.
+
+Input: Interleaved LLR cells
+Output: De-interleaved LLR cells
+
+AXI4-S: TDATA=int8_t TVALID TREADY TLAST(TI block)
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_MAKE = R"doc(
+Create ATSC 3.0 time de-interleaver block
+
+Args:
+    ti_mode: Time interleaving mode (0=NONE, 1=CTI, 2=HTI)
+    ti_depth: Time interleaving depth (0-15)
+
+Returns:
+    Shared pointer to new time_deinterleaver instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_SET_TI_MODE = R"doc(
+Set time interleaving mode
+
+Args:
+    ti_mode: Mode (0=NONE, 1=CTI, 2=HTI)
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_SET_TI_DEPTH = R"doc(
+Set time interleaving depth
+
+Args:
+    ti_depth: Depth (0-15)
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_IS_SETTLED = R"doc(
+Check if delay lines are settled
+
+Returns:
+    True if output is valid (settling complete)
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_GET_SETTLING_BLOCKS = R"doc(
+Get number of blocks needed for settling
+
+Returns:
+    Number of blocks required before output is valid
+)doc";
+
+[[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_RESET = R"doc(
+Reset internal state (clears delay lines)
+)doc";

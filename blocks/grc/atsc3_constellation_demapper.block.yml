@@ -1,0 +1,73 @@
+id: atsc3_constellation_demapper
+label: ATSC 3.0 Constellation Demapper
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: modulation
+    label: Modulation
+    dtype: int
+    default: '2'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+    option_labels: ['QPSK', 'QAM16', 'QAM64', 'QAM256', 'QAM1024', 'QAM4096',
+                    'NUC-QPSK', 'NUC-16', 'NUC-64', 'NUC-256', 'NUC-1024', 'NUC-4096']
+  - id: code_rate
+    label: Code Rate
+    dtype: int
+    default: '5'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+    option_labels: ['2/15', '3/15', '4/15', '5/15', '6/15', '7/15',
+                    '8/15', '9/15', '10/15', '11/15', '12/15', '13/15']
+  - id: noise_variance
+    label: Noise Variance
+    dtype: float
+    default: '0.1'
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: complex
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.constellation_demapper(${modulation}, ${code_rate}, ${noise_variance})
+  callbacks:
+    - set_modulation(${modulation})
+    - set_code_rate(${code_rate})
+    - set_noise_variance(${noise_variance})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_constellation_demapper.h>']
+  declarations: 'gr::atsc3::constellation_demapper::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::constellation_demapper::make(${modulation}, ${code_rate}, ${noise_variance});'
+  callbacks:
+    - 'this->${id}->set_modulation(${modulation});'
+    - 'this->${id}->set_code_rate(${code_rate});'
+    - 'this->${id}->set_noise_variance(${noise_variance});'
+
+documentation: |-
+  ATSC 3.0 Constellation Demapper
+
+  Converts equalized QAM symbols to soft LLRs for LDPC decoding.
+  Supports uniform QAM and non-uniform constellations (NUC) per ATSC A/322.
+
+  Uses max-log approximation for efficient LLR computation.
+  Output LLRs are scaled by 1/noise_variance and clamped to [-127, +127].
+
+  Parameters:
+    modulation: Modulation type (QPSK, QAM16, QAM64, etc. or NUC variants)
+    code_rate: LDPC code rate (needed for NUC table selection)
+    noise_variance: Noise variance estimate for LLR scaling
+
+  Input:
+    Equalized QAM symbols (gr_complex)
+
+  Output:
+    Soft LLRs (int8_t, bits_per_symbol outputs per input symbol)
+
+file_format: 1
