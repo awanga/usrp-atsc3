@@ -1,0 +1,36 @@
+// python_bindings.cc — Main pybind11 module for gr-atsc3
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+namespace py = pybind11;
+
+// Forward declarations for per-block binding functions
+void bind_bootstrap_detect(py::module_& m);
+void bind_ofdm_demod(py::module_& m);
+void bind_channel_eq(py::module_& m);
+void bind_fec_decode(py::module_& m);
+void bind_alp_demux(py::module_& m);
+
+PYBIND11_MODULE(atsc3_python, m) {
+    m.doc() = R"doc(
+gr-atsc3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
+
+This module provides blocks for receiving ATSC 3.0 broadcast signals:
+- bootstrap_detect: Bootstrap signal detection and coarse CFO estimation
+- ofdm_demod: OFDM demodulation with FFT and CP removal
+- channel_eq: Channel estimation and equalization
+- fec_decode: LDPC/BCH forward error correction decoding
+- alp_demux: ALP packet demultiplexing
+)doc";
+
+    // Import GNU Radio runtime to ensure proper type registration
+    py::module_::import("gnuradio.gr");
+
+    // Bind all blocks
+    bind_bootstrap_detect(m);
+    bind_ofdm_demod(m);
+    bind_channel_eq(m);
+    bind_fec_decode(m);
+    bind_alp_demux(m);
+}

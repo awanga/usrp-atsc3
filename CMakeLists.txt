@@ -121,6 +121,27 @@ else()
     message(WARNING "UHD not found - hardware sources will be disabled")
 endif()
 
+# Python and pybind11 (required for Python bindings)
+if(Gnuradio_FOUND)
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    find_package(pybind11 CONFIG)
+    if(pybind11_FOUND)
+        message(STATUS "Found pybind11 ${pybind11_VERSION}")
+        # Determine Python site-packages installation directory
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c
+                "import sysconfig; print(sysconfig.get_path('platlib'))"
+            OUTPUT_VARIABLE PYTHON_SITE_PACKAGES
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        set(PYTHON_INSTALL_DIR ${PYTHON_SITE_PACKAGES} CACHE PATH
+            "Python site-packages installation directory")
+        message(STATUS "Python install dir: ${PYTHON_INSTALL_DIR}")
+    else()
+        message(WARNING "pybind11 not found - Python bindings will not be built")
+    endif()
+endif()
+
 #------------------------------------------------------------------------------
 # GoogleTest (for testing)
 #------------------------------------------------------------------------------
@@ -151,6 +172,11 @@ add_subdirectory(hal)
 # GNU Radio blocks (only if GR found)
 if(Gnuradio_FOUND)
     add_subdirectory(blocks)
+endif()
+
+# Python bindings (only if GR and pybind11 found)
+if(Gnuradio_FOUND AND pybind11_FOUND)
+    add_subdirectory(python)
 endif()
 
 # Applications
@@ -202,6 +228,7 @@ message(STATUS "  Fixed-point:    ${ATSC3_FIXED_POINT}")
 message(STATUS "  SIMD tier:      ${ATSC3_SIMD_TIER}")
 message(STATUS "  GR version:     ${ATSC3_GR_VERSION}")
 message(STATUS "  Channel BW:     ${ATSC3_CHANNEL_BW_HZ} Hz")
+message(STATUS "  Python bindings:${pybind11_FOUND}")
 message(STATUS "  Build tests:    ${ATSC3_BUILD_TESTS}")
 message(STATUS "  ML backend:     ${ATSC3_ENABLE_ML}")
 message(STATUS "  HDL stubs:      ${ATSC3_ENABLE_HDL_STUBS}")
