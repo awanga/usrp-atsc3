@@ -25,7 +25,7 @@ options:
     sizing_mode: fixed
     thread_safe_setters: ''
     title: ATSC 3.0 Receiver
-    window_size: (1000,1000)
+    window_size: (1280,1024)
   states:
     bus_sink: false
     bus_source: false
@@ -128,6 +128,58 @@ blocks:
       bus_source: false
       bus_structure: null
       coordinate: [296, 96]
+      rotation: 0
+      state: enabled
+
+  - name: modulation
+    id: variable
+    parameters:
+      comment: '0=QPSK, 1=16QAM, 2=64QAM, 3=256QAM'
+      value: '2'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [392, 96]
+      rotation: 0
+      state: enabled
+
+  - name: code_rate
+    id: variable
+    parameters:
+      comment: '0=2/15 to 11=13/15'
+      value: '6'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [488, 96]
+      rotation: 0
+      state: enabled
+
+  - name: ti_mode
+    id: variable
+    parameters:
+      comment: '0=None, 1=CTI, 2=HTI'
+      value: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [584, 96]
+      rotation: 0
+      state: enabled
+
+  - name: plp_id
+    id: variable
+    parameters:
+      comment: ''
+      value: '0'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [680, 96]
       rotation: 0
       state: enabled
 
@@ -241,7 +293,11 @@ blocks:
       clock_source5: ''
       clock_source6: ''
       clock_source7: ''
-      comment: USRP N2x0 + TVRX Daughterboard
+      comment: 'USRP N2x0 + TVRX Daughterboard
+
+        Default IP: 192.168.10.2
+
+        Uses PC clock for timing'
       dc_offs_enb0: 'True'
       dc_offs_enb1: 'False'
       dc_offs_enb10: 'False'
@@ -274,7 +330,7 @@ blocks:
       dc_offs_enb7: 'False'
       dc_offs_enb8: 'False'
       dc_offs_enb9: 'False'
-      dev_addr: '"type=usrp2"'
+      dev_addr: '"type=usrp2,addr=192.168.10.2"'
       dev_args: ''
       gain0: rf_gain
       gain1: '0'
@@ -454,7 +510,7 @@ blocks:
       start_time: '-1.0'
       stream_args: ''
       stream_chans: '[]'
-      sync: sync
+      sync: none
       time_source0: ''
       time_source1: ''
       time_source2: ''
@@ -523,6 +579,134 @@ blocks:
       bus_source: false
       bus_structure: null
       coordinate: [656, 304]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_constellation_demapper_0
+    id: atsc3_constellation_demapper
+    parameters:
+      affinity: ''
+      alias: ''
+      code_rate: code_rate
+      comment: ''
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      modulation: modulation
+      noise_variance: '0.1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [256, 488]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_cell_deinterleaver_0
+    id: atsc3_cell_deinterleaver
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      fft_size: fft_size
+      maxoutbuf: '0'
+      minoutbuf: '0'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [456, 496]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_freq_deinterleaver_0
+    id: atsc3_freq_deinterleaver
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      fft_size: fft_size
+      maxoutbuf: '0'
+      minoutbuf: '0'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [656, 496]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_time_deinterleaver_0
+    id: atsc3_time_deinterleaver
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      ti_depth: '0'
+      ti_mode: ti_mode
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [856, 488]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_fec_decode_0
+    id: atsc3_fec_decode
+    parameters:
+      affinity: ''
+      alias: ''
+      code_rate: code_rate
+      codeword_length: '64800'
+      comment: ''
+      max_iterations: '50'
+      maxoutbuf: '0'
+      minoutbuf: '0'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [256, 600]
+      rotation: 0
+      state: enabled
+
+  - name: atsc3_alp_demux_0
+    id: atsc3_alp_demux
+    parameters:
+      affinity: ''
+      alias: ''
+      comment: ''
+      maxoutbuf: '0'
+      minoutbuf: '0'
+      plp_id: plp_id
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [456, 608]
+      rotation: 0
+      state: enabled
+
+  - name: blocks_file_sink_0
+    id: blocks_file_sink
+    parameters:
+      affinity: ''
+      alias: ''
+      append: 'False'
+      comment: 'ALP packet output
+
+        (IP/MPEG-TS data)'
+      file: /tmp/atsc3_alp_packets.bin
+      type: byte
+      unbuffered: 'False'
+      vlen: '1'
+    states:
+      bus_sink: false
+      bus_source: false
+      bus_structure: null
+      coordinate: [656, 600]
       rotation: 0
       state: enabled
 
@@ -604,7 +788,7 @@ blocks:
       bus_sink: false
       bus_source: false
       bus_structure: null
-      coordinate: [256, 440]
+      coordinate: [256, 720]
       rotation: 0
       state: enabled
 
@@ -697,27 +881,7 @@ blocks:
       bus_sink: false
       bus_source: false
       bus_structure: null
-      coordinate: [864, 280]
-      rotation: 0
-      state: enabled
-
-  - name: blocks_null_sink_0
-    id: blocks_null_sink
-    parameters:
-      affinity: ''
-      alias: ''
-      bus_structure_sink: '[[0,],]'
-      comment: 'Placeholder for FEC decode
-
-        and ALP demux chain'
-      num_inputs: '1'
-      type: complex
-      vlen: '1'
-    states:
-      bus_sink: false
-      bus_source: false
-      bus_structure: null
-      coordinate: [864, 376]
+      coordinate: [656, 720]
       rotation: 0
       state: enabled
 
@@ -727,7 +891,13 @@ connections:
   - [atsc3_bootstrap_detect_0, '0', atsc3_ofdm_demod_0, '0']
   - [atsc3_ofdm_demod_0, '0', atsc3_channel_eq_0, '0']
   - [atsc3_channel_eq_0, '0', qtgui_const_sink_0, '0']
-  - [atsc3_channel_eq_0, '0', blocks_null_sink_0, '0']
+  - [atsc3_channel_eq_0, '0', atsc3_constellation_demapper_0, '0']
+  - [atsc3_constellation_demapper_0, '0', atsc3_cell_deinterleaver_0, '0']
+  - [atsc3_cell_deinterleaver_0, '0', atsc3_freq_deinterleaver_0, '0']
+  - [atsc3_freq_deinterleaver_0, '0', atsc3_time_deinterleaver_0, '0']
+  - [atsc3_time_deinterleaver_0, '0', atsc3_fec_decode_0, '0']
+  - [atsc3_fec_decode_0, '0', atsc3_alp_demux_0, '0']
+  - [atsc3_alp_demux_0, '0', blocks_file_sink_0, '0']
 
 metadata:
   file_format: 1
