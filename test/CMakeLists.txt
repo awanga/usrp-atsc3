@@ -15,6 +15,9 @@ add_subdirectory(integration)
 # Hardware tests (require physical USRP)
 add_subdirectory(hw)
 
+# Compliance tests (ATSC A/322 conformance)
+add_subdirectory(compliance)
+
 # Add label for easy test selection
 # Unit tests: ctest -L unit
 # Integration tests: ctest -L integration
