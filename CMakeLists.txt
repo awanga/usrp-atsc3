@@ -169,6 +169,9 @@ add_subdirectory(lib)
 # Hardware abstraction layer
 add_subdirectory(hal)
 
+# Audio/Video processing (must be before blocks/ so atsc3_av target exists)
+add_subdirectory(av)
+
 # GNU Radio blocks (only if GR found)
 if(Gnuradio_FOUND)
     add_subdirectory(blocks)
@@ -181,9 +184,6 @@ endif()
 
 # Applications
 add_subdirectory(apps)
-
-# Audio/Video processing
-add_subdirectory(av)
 
 # HDL stubs (post-MVP)
 if(ATSC3_ENABLE_HDL_STUBS)
