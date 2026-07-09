@@ -374,27 +374,27 @@ Recommendation: Use `FFTW_MEASURE` with wisdom persistence for production deploy
 
 Goal: End-to-end live reception with audiovisual playback and service selection.
 
-### 8.1 GNU Radio Signal Chain Blocks [~]
+### 8.1 GNU Radio Signal Chain Blocks [x]
 - [x] `atsc3_constellation_demapper` — QAM symbol to soft LLR conversion
 - [x] `atsc3_cell_deinterleaver` — Cell de-interleaving (bit-reversal)
 - [x] `atsc3_freq_deinterleaver` — Frequency de-interleaving (LFSR)
 - [x] `atsc3_time_deinterleaver` — Time de-interleaving (CTI/HTI)
 - [x] Complete GRC flowgraph: USRP → bootstrap → OFDM → EQ → demap → deint → FEC → ALP
 
-### 8.2 Service Discovery Integration [ ]
-- [ ] `atsc3_route_parser` block — Wrap `lib/framing/RouteParser`
+### 8.2 Service Discovery Integration [x]
+- [x] `atsc3_route_parser` block — Wrap `lib/framing/RouteParser`
+- [x] `atsc3_service_guide` block — Display available services (JSON output)
 - [ ] ALP demux message ports for IP, TS, and signaling callbacks
-- [ ] `atsc3_service_guide` block — Display available services in QT GUI
 - [ ] Service selection via runtime parameter callback
 
-### 8.3 Audiovisual Playback Integration [ ]
-- [ ] `atsc3_service_selector` block — Filter IP packets by selected service TSI
-- [ ] `atsc3_av_player` block — Wrap `av/HevcDecoder`, `av/AudioDecoder`, `av/GstPlayer`
-- [ ] GStreamer main-thread initialization (documented constraint)
+### 8.3 Audiovisual Playback Integration [x]
+- [x] `atsc3_service_selector` block — Filter IP packets by selected service TSI
+- [x] `atsc3_av_player` block — Wrap `av/HevcDecoder`, `av/AudioDecoder`, `av/GstPlayer`
+- [x] GStreamer main-thread initialization (documented constraint in start())
 - [ ] End-to-end playback test with real ATSC 3.0 capture
 
-### 8.4 L1 Signaling Display [ ]
-- [ ] `atsc3_l1_monitor` block — Display L1-Pre/Post signaling info
+### 8.4 L1 Signaling Display [x]
+- [x] `atsc3_l1_monitor` block — Display L1-Pre/Post signaling info (JSON output)
 - [ ] Expose L1 config via message port for downstream blocks
 - [ ] Integrate L1 info with metrics dashboard
 
