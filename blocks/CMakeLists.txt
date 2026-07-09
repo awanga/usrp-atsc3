@@ -16,6 +16,11 @@ set(BLOCKS_SOURCES
     atsc3_time_deinterleaver_impl.cc
     atsc3_fec_decode_impl.cc
     atsc3_alp_demux_impl.cc
+    atsc3_route_parser_impl.cc
+    atsc3_service_selector_impl.cc
+    atsc3_av_player_impl.cc
+    atsc3_l1_monitor_impl.cc
+    atsc3_service_guide_impl.cc
 )
 
 set(BLOCKS_HEADERS
@@ -28,6 +33,11 @@ set(BLOCKS_HEADERS
     atsc3_time_deinterleaver.h
     atsc3_fec_decode.h
     atsc3_alp_demux.h
+    atsc3_route_parser.h
+    atsc3_service_selector.h
+    atsc3_av_player.h
+    atsc3_l1_monitor.h
+    atsc3_service_guide.h
 )
 
 if(BLOCKS_SOURCES)
@@ -37,6 +47,7 @@ if(BLOCKS_SOURCES)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
             $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/av>
             $<INSTALL_INTERFACE:include>
     )
 
@@ -47,6 +58,13 @@ if(BLOCKS_SOURCES)
             gnuradio::gnuradio-runtime
             gnuradio::gnuradio-blocks
     )
+
+    # Link A/V library if available
+    if(TARGET atsc3_av)
+        target_link_libraries(gnuradio-atsc3 PRIVATE atsc3_av)
+    else()
+        message(WARNING "atsc3_av not available - A/V player block will have limited functionality")
+    endif()
 
     set_target_properties(gnuradio-atsc3 PROPERTIES
         CXX_STANDARD 17
@@ -75,6 +93,11 @@ if(BLOCKS_SOURCES)
         grc/atsc3_time_deinterleaver.block.yml
         grc/atsc3_fec_decode.block.yml
         grc/atsc3_alp_demux.block.yml
+        grc/atsc3_route_parser.block.yml
+        grc/atsc3_service_selector.block.yml
+        grc/atsc3_av_player.block.yml
+        grc/atsc3_l1_monitor.block.yml
+        grc/atsc3_service_guide.block.yml
         DESTINATION share/gnuradio/grc/blocks
     )
 endif()

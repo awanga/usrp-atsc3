@@ -1,0 +1,61 @@
+id: atsc3_service_selector
+label: ATSC 3.0 Service Selector
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: service_id
+    label: Service ID
+    dtype: int
+    default: '0'
+    hide: none
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: video
+    domain: stream
+    dtype: byte
+  - label: audio
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.service_selector(${service_id})
+  callbacks:
+    - set_service_id(${service_id})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_service_selector.h>']
+  declarations: 'gr::atsc3::service_selector::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::service_selector::make(${service_id});'
+  callbacks:
+    - 'this->${id}->set_service_id(${service_id});'
+
+documentation: |-
+  ATSC 3.0 Service Selector
+
+  Filters IP packets by service TSI and extracts elementary streams
+  for video and audio playback.
+
+  Parameters:
+    service_id: Service ID to select (0 = auto-select first service)
+
+  Input:
+    Byte stream of IP packets from ALP demux
+
+  Outputs:
+    video: HEVC NAL units (byte stream)
+    audio: AC-4/AAC audio frames (byte stream)
+
+  The block reassembles ROUTE media segments and outputs
+  elementary stream data suitable for decoding.
+
+  Use service_id=0 to automatically lock to the first
+  discovered service.
+
+file_format: 1

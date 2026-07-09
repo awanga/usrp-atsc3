@@ -15,6 +15,11 @@ This module provides the following blocks:
 - time_deinterleaver: Time de-interleaving
 - fec_decode: LDPC/BCH FEC decoder
 - alp_demux: ALP demultiplexer
+- route_parser: ROUTE/DASH signaling parser
+- service_selector: Service selection and ES extraction
+- av_player: Live A/V playback via GStreamer
+- l1_monitor: L1 signaling display
+- service_guide: Service catalog display
 """
 
 from gnuradio.atsc3.atsc3_python import (
@@ -27,6 +32,12 @@ from gnuradio.atsc3.atsc3_python import (
     time_deinterleaver,
     fec_decode,
     alp_demux,
+    route_parser,
+    service_selector,
+    av_player,
+    l1_monitor,
+    service_guide,
+    PlayerState,
 )
 
 __all__ = [
@@ -39,4 +50,10 @@ __all__ = [
     "time_deinterleaver",
     "fec_decode",
     "alp_demux",
+    "route_parser",
+    "service_selector",
+    "av_player",
+    "l1_monitor",
+    "service_guide",
+    "PlayerState",
 ]

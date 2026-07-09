@@ -1,0 +1,77 @@
+id: atsc3_av_player
+label: ATSC 3.0 A/V Player
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: enable_video
+    label: Enable Video
+    dtype: bool
+    default: 'True'
+    options: ['True', 'False']
+  - id: enable_audio
+    label: Enable Audio
+    dtype: bool
+    default: 'True'
+    options: ['True', 'False']
+  - id: volume
+    label: Volume
+    dtype: float
+    default: '1.0'
+
+inputs:
+  - label: video
+    domain: stream
+    dtype: byte
+  - label: audio
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: state
+    domain: message
+    optional: true
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.av_player(${enable_video}, ${enable_audio}, ${volume})
+  callbacks:
+    - set_volume(${volume})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_av_player.h>']
+  declarations: 'gr::atsc3::av_player::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::av_player::make(${enable_video}, ${enable_audio}, ${volume});'
+  callbacks:
+    - 'this->${id}->set_volume(${volume});'
+
+documentation: |-
+  ATSC 3.0 A/V Player
+
+  Plays decoded HEVC video and AC-4/AAC audio using GStreamer.
+  Handles A/V synchronization via GStreamer clock.
+
+  IMPORTANT: This block initializes GStreamer in its start() method,
+  which must be called from the main thread (handled by GNU Radio).
+
+  Parameters:
+    enable_video: Enable video output (True/False)
+    enable_audio: Enable audio output (True/False)
+    volume: Audio volume level (0.0 to 1.0)
+
+  Inputs:
+    video: HEVC NAL units (byte stream)
+    audio: AC-4/AAC audio frames (byte stream)
+
+  Message Output:
+    state: Player state changes (PMT dictionary with state,
+           video_frames, audio_samples)
+
+  Runtime methods:
+    play(): Start playback
+    pause(): Pause playback
+    stop(): Stop playback
+    set_volume(float): Adjust volume
+    get_state(): Get current player state
+
+file_format: 1

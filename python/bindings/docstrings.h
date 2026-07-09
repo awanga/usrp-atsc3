@@ -445,3 +445,285 @@ Returns:
 [[maybe_unused]] static const char* DOC_TIME_DEINTERLEAVER_RESET = R"doc(
 Reset internal state (clears delay lines)
 )doc";
+
+// route_parser docstrings
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER = R"doc(
+ATSC 3.0 ROUTE Parser Block
+
+Parses ROUTE/DASH signaling from ALP signaling packets.
+Discovers broadcast services and provides segment notifications.
+
+Input: Signaling byte stream (from ALP demux)
+Output: Message ports for catalog and segment updates
+
+AXI4-S: TDATA=uint8_t TVALID TREADY TLAST(packet)
+)doc";
+
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER_MAKE = R"doc(
+Create ATSC 3.0 ROUTE parser block
+
+Returns:
+    Shared pointer to new route_parser instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER_GET_SERVICE_COUNT = R"doc(
+Get number of discovered services
+
+Returns:
+    Number of services in catalog
+)doc";
+
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER_GET_PACKET_COUNT = R"doc(
+Get parsed packet count
+
+Returns:
+    Total signaling packets processed
+)doc";
+
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER_GET_ERROR_COUNT = R"doc(
+Get parse error count
+
+Returns:
+    Number of parse errors encountered
+)doc";
+
+[[maybe_unused]] static const char* DOC_ROUTE_PARSER_RESET = R"doc(
+Reset parser state and clear service catalog
+)doc";
+
+// service_selector docstrings
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR = R"doc(
+ATSC 3.0 Service Selector Block
+
+Selects a service and extracts video/audio elementary streams.
+
+Input: IP packets from ALP demux
+Output 0: Video ES (HEVC NALs)
+Output 1: Audio ES (AC-4/AAC frames)
+
+AXI4-S: TDATA=uint8_t TVALID TREADY TLAST(packet)
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_MAKE = R"doc(
+Create ATSC 3.0 service selector block
+
+Args:
+    service_id: Service ID to select (0 = first available)
+
+Returns:
+    Shared pointer to new service_selector instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_SET_SERVICE_ID = R"doc(
+Set service to extract
+
+Args:
+    service_id: Service ID to select
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_GET_SERVICE_ID = R"doc(
+Get currently selected service ID
+
+Returns:
+    Current service ID
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_GET_VIDEO_BYTES = R"doc(
+Get video bytes extracted
+
+Returns:
+    Total video ES bytes output
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_GET_AUDIO_BYTES = R"doc(
+Get audio bytes extracted
+
+Returns:
+    Total audio ES bytes output
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_SELECTOR_IS_SERVICE_LOCKED = R"doc(
+Check if service is locked
+
+Returns:
+    True if service is actively being extracted
+)doc";
+
+// av_player docstrings
+[[maybe_unused]] static const char* DOC_AV_PLAYER = R"doc(
+ATSC 3.0 A/V Player Block
+
+Live audio/video playback via GStreamer.
+IMPORTANT: Pipeline is initialized in start() on main thread.
+
+Input 0: Video ES (HEVC NALs)
+Input 1: Audio ES (AC-4/AAC frames)
+Output: Message port for state changes
+
+AXI4-S: TDATA=uint8_t TVALID TREADY TLAST(frame)
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_MAKE = R"doc(
+Create ATSC 3.0 A/V player block
+
+Args:
+    enable_video: Enable video playback
+    enable_audio: Enable audio playback
+    volume: Initial volume (0.0 - 1.0)
+
+Returns:
+    Shared pointer to new av_player instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_PLAY = R"doc(
+Start playback
+
+Returns:
+    True if playback started successfully
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_PAUSE = R"doc(
+Pause playback
+
+Returns:
+    True if paused successfully
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_STOP = R"doc(
+Stop playback
+
+Returns:
+    True if stopped successfully
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_SET_VOLUME = R"doc(
+Set volume level
+
+Args:
+    volume: Volume (0.0 - 1.0)
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_GET_VOLUME = R"doc(
+Get current volume
+
+Returns:
+    Current volume level (0.0 - 1.0)
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_GET_STATE = R"doc(
+Get current player state
+
+Returns:
+    PlayerState enum value
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_GET_VIDEO_FRAMES = R"doc(
+Get video frames rendered
+
+Returns:
+    Total frames rendered
+)doc";
+
+[[maybe_unused]] static const char* DOC_AV_PLAYER_GET_AUDIO_SAMPLES = R"doc(
+Get audio samples played
+
+Returns:
+    Total audio samples played
+)doc";
+
+// l1_monitor docstrings
+[[maybe_unused]] static const char* DOC_L1_MONITOR = R"doc(
+ATSC 3.0 L1 Monitor Block
+
+Monitors and displays L1 signaling information.
+
+Input: Message port for L1 config updates
+Output: Message port for JSON-formatted L1 info
+
+No streaming I/O - message ports only.
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_MAKE = R"doc(
+Create ATSC 3.0 L1 monitor block
+
+Returns:
+    Shared pointer to new l1_monitor instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_GET_FFT_SIZE = R"doc(
+Get current FFT size
+
+Returns:
+    FFT size (8192, 16384, or 32768)
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_GET_PILOT_PATTERN = R"doc(
+Get current pilot pattern
+
+Returns:
+    Pilot pattern index (1-8)
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_GET_NUM_PLPS = R"doc(
+Get number of PLPs
+
+Returns:
+    Number of physical layer pipes
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_IS_CONFIG_VALID = R"doc(
+Check if L1 config is valid
+
+Returns:
+    True if L1 config has been received
+)doc";
+
+[[maybe_unused]] static const char* DOC_L1_MONITOR_GET_L1_JSON = R"doc(
+Get L1 info as JSON string
+
+Returns:
+    JSON-formatted L1 signaling info
+)doc";
+
+// service_guide docstrings
+[[maybe_unused]] static const char* DOC_SERVICE_GUIDE = R"doc(
+ATSC 3.0 Service Guide Block
+
+Displays available broadcast services from service catalog.
+
+Input: Message port for catalog updates
+Output: Message port for JSON-formatted service list
+
+No streaming I/O - message ports only.
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_GUIDE_MAKE = R"doc(
+Create ATSC 3.0 service guide block
+
+Returns:
+    Shared pointer to new service_guide instance
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_GUIDE_GET_SERVICE_COUNT = R"doc(
+Get number of services
+
+Returns:
+    Number of services in guide
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_GUIDE_GET_SERVICE_JSON = R"doc(
+Get service info as JSON
+
+Args:
+    index: Service index
+
+Returns:
+    JSON-formatted service info
+)doc";
+
+[[maybe_unused]] static const char* DOC_SERVICE_GUIDE_GET_ALL_SERVICES_JSON = R"doc(
+Get all services as JSON
+
+Returns:
+    JSON array of all services
+)doc";

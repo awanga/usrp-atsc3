@@ -11,6 +11,11 @@ set(BINDING_SOURCES
     time_deinterleaver_python.cc
     fec_decode_python.cc
     alp_demux_python.cc
+    route_parser_python.cc
+    service_selector_python.cc
+    av_player_python.cc
+    l1_monitor_python.cc
+    service_guide_python.cc
 )
 
 pybind11_add_module(atsc3_python ${BINDING_SOURCES})

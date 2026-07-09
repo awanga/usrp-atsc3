@@ -15,6 +15,11 @@ void bind_freq_deinterleaver(py::module_& m);
 void bind_time_deinterleaver(py::module_& m);
 void bind_fec_decode(py::module_& m);
 void bind_alp_demux(py::module_& m);
+void bind_route_parser(py::module_& m);
+void bind_service_selector(py::module_& m);
+void bind_av_player(py::module_& m);
+void bind_l1_monitor(py::module_& m);
+void bind_service_guide(py::module_& m);
 
 PYBIND11_MODULE(atsc3_python, m) {
     m.doc() = R"doc(
@@ -30,6 +35,11 @@ This module provides blocks for receiving ATSC 3.0 broadcast signals:
 - time_deinterleaver: Time de-interleaving
 - fec_decode: LDPC/BCH forward error correction decoding
 - alp_demux: ALP packet demultiplexing
+- route_parser: ROUTE/DASH signaling parser for service discovery
+- service_selector: Service selection and ES extraction
+- av_player: Live A/V playback via GStreamer
+- l1_monitor: L1 signaling display
+- service_guide: Service catalog display
 )doc";
 
     // Import GNU Radio runtime to ensure proper type registration
@@ -45,4 +55,9 @@ This module provides blocks for receiving ATSC 3.0 broadcast signals:
     bind_time_deinterleaver(m);
     bind_fec_decode(m);
     bind_alp_demux(m);
+    bind_route_parser(m);
+    bind_service_selector(m);
+    bind_av_player(m);
+    bind_l1_monitor(m);
+    bind_service_guide(m);
 }
