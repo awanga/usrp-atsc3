@@ -353,25 +353,38 @@ Power-of-2 depths (1, 3, 7, 15 → 2, 4, 8, 16 rows) use bitmask and meet target
 - [x] LDPC: vectorize hard decision and early termination with SIMD (SSSE3/AVX2)
 - [ ] LDPC: vectorize min-sum check-node update (complex due to sparse access patterns)
 - [x] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
-- [ ] Constellation demapper: optimize max-log LLR computation (current bottleneck)
+- [x] Constellation demapper: optimize with direct slicer LLR computation (75× speedup)
 - [ ] Multi-PLP support (currently single PLP decoded)
 - [ ] Robustness: restart-on-lock-loss without flowgraph teardown
 - [x] Memory: ASAN clean run on deinterleaver and LDPC unit tests
 - [ ] Fuzzing: libFuzzer on ALP and ROUTE parsers
 
 #### Signal Chain Profiling Results (8K FFT, 64-QAM, excluding LDPC)
+
+**Pre-optimization (v1):**
 | Block                    | % Time | Notes                                    |
 |--------------------------|--------|------------------------------------------|
-| **Constellation Demapper**| 99.3%  | **CRITICAL** - max-log LLR computation   |
+| Constellation Demapper   | 99.3%  | max-log LLR brute-force O(M) search      |
 | FFT Engine               | 0.4%   | FFTW3 with ESTIMATE plan                 |
 | Cell De-interleaver      | 0.3%   | SSSE3 optimized                          |
 | Frequency De-interleaver | 0.0%   | SSSE3 optimized                          |
 
-**Key finding**: Demapper is the primary bottleneck, not LDPC or FFT.
-Optimization priorities:
-1. Pre-compute QAM constellation distance LUT
-2. Vectorize per-symbol LLR computation (SIMD)
-3. Consider approximation for higher-order QAM (256/1024/4096)
+**Post-optimization (v2, commit 7a85178):**
+| Block                    | % Time | Notes                                    |
+|--------------------------|--------|------------------------------------------|
+| Constellation Demapper   | 66.1%  | Direct slicer O(1) LLR, 112× faster      |
+| FFT Engine               | 17.9%  | FFTW3 with ESTIMATE plan                 |
+| Cell De-interleaver      | 11.9%  | SSSE3 optimized                          |
+| Frequency De-interleaver | 4.1%   | SSSE3 optimized                          |
+
+**Optimization applied**: Replaced O(M) brute-force constellation search with O(1)
+direct boundary-based LLR computation. Eliminated `std::fmod/fabs/round/max/min`
+function calls with inline arithmetic.
+
+**Results**: 6913 symbols × 1000 iterations (64-QAM)
+- Total benchmark: 8.7s → 116ms (**75× faster**)
+- Demapper: 86ms → 0.77ms per iteration (**112× faster**)
+- Throughput: 0.75 Mbps → 55.89 Mbps
 
 #### FFTW Plan Mode Evaluation Results
 | FFT Size | ESTIMATE Plan | MEASURE Plan | PATIENT Plan | Recommendation |
