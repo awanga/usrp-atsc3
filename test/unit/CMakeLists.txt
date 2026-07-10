@@ -127,3 +127,15 @@ gtest_discover_tests(bench_fftw
     PROPERTIES
         LABELS "benchmark"
 )
+
+add_executable(bench_signal_chain bench_signal_chain.cc)
+target_link_libraries(bench_signal_chain
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+gtest_discover_tests(bench_signal_chain
+    PROPERTIES
+        LABELS "benchmark"
+)

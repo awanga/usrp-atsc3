@@ -349,14 +349,29 @@ Power-of-2 depths (1, 3, 7, 15 → 2, 4, 8, 16 rows) use bitmask and meet target
 **Remaining work**: Full NUC tables per ATSC A/322 §7.5 (code-rate dependent)
 
 ### 7.4 Performance Profiling & Optimization [~]
-- [ ] Profile with `perf` / `gprof`; identify bottleneck block
+- [x] Profile with `perf` / `gprof`; identify bottleneck block
 - [x] LDPC: vectorize hard decision and early termination with SIMD (SSSE3/AVX2)
 - [ ] LDPC: vectorize min-sum check-node update (complex due to sparse access patterns)
 - [x] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
+- [ ] Constellation demapper: optimize max-log LLR computation (current bottleneck)
 - [ ] Multi-PLP support (currently single PLP decoded)
 - [ ] Robustness: restart-on-lock-loss without flowgraph teardown
 - [x] Memory: ASAN clean run on deinterleaver and LDPC unit tests
 - [ ] Fuzzing: libFuzzer on ALP and ROUTE parsers
+
+#### Signal Chain Profiling Results (8K FFT, 64-QAM, excluding LDPC)
+| Block                    | % Time | Notes                                    |
+|--------------------------|--------|------------------------------------------|
+| **Constellation Demapper**| 99.3%  | **CRITICAL** - max-log LLR computation   |
+| FFT Engine               | 0.4%   | FFTW3 with ESTIMATE plan                 |
+| Cell De-interleaver      | 0.3%   | SSSE3 optimized                          |
+| Frequency De-interleaver | 0.0%   | SSSE3 optimized                          |
+
+**Key finding**: Demapper is the primary bottleneck, not LDPC or FFT.
+Optimization priorities:
+1. Pre-compute QAM constellation distance LUT
+2. Vectorize per-symbol LLR computation (SIMD)
+3. Consider approximation for higher-order QAM (256/1024/4096)
 
 #### FFTW Plan Mode Evaluation Results
 | FFT Size | ESTIMATE Plan | MEASURE Plan | PATIENT Plan | Recommendation |
