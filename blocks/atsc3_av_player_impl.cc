@@ -17,11 +17,11 @@ av_player_impl::av_player_impl(bool enable_video, bool enable_audio, float volum
       enable_video_(enable_video),
       enable_audio_(enable_audio),
       volume_(volume),
+      port_state_(pmt::mp("state")),
       video_frames_(0),
       audio_samples_(0),
       initialized_(false) {
-    // Create message port for state changes
-    port_state_ = pmt::mp("state");
+    // Register message port for state changes
     message_port_register_out(port_state_);
 }
 

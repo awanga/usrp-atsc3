@@ -14,11 +14,10 @@ service_guide::sptr service_guide::make() {
 
 service_guide_impl::service_guide_impl()
     : gr::block("atsc3_service_guide", gr::io_signature::make(0, 0, 0),
-                gr::io_signature::make(0, 0, 0)) {
-    // Create message ports
-    port_catalog_ = pmt::mp("catalog");
-    port_services_ = pmt::mp("services");
-
+                gr::io_signature::make(0, 0, 0)),
+      port_catalog_(pmt::mp("catalog")),
+      port_services_(pmt::mp("services")) {
+    // Register message ports
     message_port_register_in(port_catalog_);
     message_port_register_out(port_services_);
 

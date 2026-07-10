@@ -14,11 +14,10 @@ l1_monitor::sptr l1_monitor::make() {
 
 l1_monitor_impl::l1_monitor_impl()
     : gr::block("atsc3_l1_monitor", gr::io_signature::make(0, 0, 0),
-                gr::io_signature::make(0, 0, 0)) {
-    // Create message ports
-    port_l1_config_ = pmt::mp("l1_config");
-    port_l1_info_ = pmt::mp("l1_info");
-
+                gr::io_signature::make(0, 0, 0)),
+      port_l1_config_(pmt::mp("l1_config")),
+      port_l1_info_(pmt::mp("l1_info")) {
+    // Register message ports
     message_port_register_in(port_l1_config_);
     message_port_register_out(port_l1_info_);
 

@@ -14,11 +14,11 @@ route_parser::sptr route_parser::make() {
 route_parser_impl::route_parser_impl()
     : gr::sync_block("atsc3_route_parser", gr::io_signature::make(1, 1, sizeof(uint8_t)),
                      gr::io_signature::make(0, 0, 0)),
+      port_catalog_(pmt::mp("catalog")),
+      port_segment_(pmt::mp("segment")),
       packet_count_(0),
       error_count_(0) {
-    // Create message ports
-    port_catalog_ = pmt::mp("catalog");
-    port_segment_ = pmt::mp("segment");
+    // Register message ports
     message_port_register_out(port_catalog_);
     message_port_register_out(port_segment_);
 
