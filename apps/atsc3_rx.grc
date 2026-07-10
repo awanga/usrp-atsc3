@@ -55,7 +55,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 160]
+    coordinate: [264, 152.0]
     rotation: 0
     state: enabled
 - name: code_rate
@@ -67,7 +67,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [488, 96]
+    coordinate: [720, 32.0]
     rotation: 0
     state: enabled
 - name: cp_length
@@ -79,7 +79,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [200, 96]
+    coordinate: [384, 32.0]
     rotation: 0
     state: enabled
 - name: fft_size
@@ -91,7 +91,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [112, 96]
+    coordinate: [296, 32.0]
     rotation: 0
     state: enabled
 - name: modulation
@@ -103,7 +103,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [392, 96]
+    coordinate: [488, 32.0]
     rotation: 0
     state: enabled
 - name: pilot_pattern
@@ -115,7 +115,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [296, 96]
+    coordinate: [600, 32.0]
     rotation: 0
     state: enabled
 - name: plp_id
@@ -127,7 +127,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [680, 96]
+    coordinate: [912, 32.0]
     rotation: 0
     state: enabled
 - name: rf_gain
@@ -148,7 +148,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [160, 160]
+    coordinate: [456, 152.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -160,7 +160,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 96]
+    coordinate: [192, 32.0]
     rotation: 0
     state: enabled
 - name: service_id
@@ -169,7 +169,6 @@ blocks:
     comment: 'Enter service ID from guide
 
       0 = first available service'
-    entry_signal: editingFinished
     gui_hint: 0,3,1,1
     label: Service ID
     type: int
@@ -178,7 +177,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [776, 96]
+    coordinate: [1008, 32.0]
     rotation: 0
     state: enabled
 - name: ti_mode
@@ -190,7 +189,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 96]
+    coordinate: [816, 32.0]
     rotation: 0
     state: enabled
 - name: volume
@@ -211,7 +210,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [312, 160]
+    coordinate: [608, 152.0]
     rotation: 0
     state: enabled
 - name: atsc3_alp_demux_0
@@ -227,7 +226,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [456, 608]
+    coordinate: [568, 656.0]
     rotation: 0
     state: disabled
 - name: atsc3_av_player_0
@@ -247,7 +246,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1056, 584]
+    coordinate: [1120, 792.0]
     rotation: 0
     state: disabled
 - name: atsc3_bootstrap_detect_0
@@ -263,7 +262,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 320]
+    coordinate: [312, 344.0]
     rotation: 0
     state: enabled
 - name: atsc3_cell_deinterleaver_0
@@ -279,9 +278,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [456, 496]
+    coordinate: [568, 456.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: atsc3_channel_eq_0
   id: atsc3_channel_eq
   parameters:
@@ -297,7 +296,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [656, 304]
+    coordinate: [840, 328.0]
     rotation: 0
     state: enabled
 - name: atsc3_constellation_demapper_0
@@ -315,9 +314,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 488]
+    coordinate: [304, 440.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: atsc3_fec_decode_0
   id: atsc3_fec_decode
   parameters:
@@ -333,7 +332,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 600]
+    coordinate: [304, 640.0]
     rotation: 0
     state: disabled
 - name: atsc3_freq_deinterleaver_0
@@ -349,9 +348,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [656, 496]
+    coordinate: [816, 456.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: atsc3_ofdm_demod_0
   id: atsc3_ofdm_demod
   parameters:
@@ -366,7 +365,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [456, 312]
+    coordinate: [568, 336.0]
     rotation: 0
     state: enabled
 - name: atsc3_route_parser_0
@@ -383,7 +382,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [656, 600]
+    coordinate: [848, 648.0]
     rotation: 0
     state: disabled
 - name: atsc3_service_guide_0
@@ -400,7 +399,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [856, 720]
+    coordinate: [1128, 648.0]
     rotation: 0
     state: disabled
 - name: atsc3_service_selector_0
@@ -418,7 +417,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [856, 592]
+    coordinate: [856, 800.0]
     rotation: 0
     state: disabled
 - name: atsc3_time_deinterleaver_0
@@ -435,122 +434,26 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [856, 488]
+    coordinate: [1104, 448.0]
     rotation: 0
     state: disabled
-- name: qtgui_edit_box_msg_0
-  id: qtgui_edit_box_msg
+- name: blocks_char_to_float_0
+  id: blocks_char_to_float
   parameters:
     affinity: ''
     alias: ''
-    comment: 'Service Guide Display
-
-      Shows discovered ATSC 3.0 services'
-    gui_hint: 2,1,2,1
-    is_pair: 'False'
-    is_static: 'True'
-    key: services
-    label: Service Guide
-    type: string
-    value: '{"services": []}'
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    scale: '1'
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1056, 712]
+    coordinate: [1128, 552.0]
     rotation: 0
-    state: disabled
-- name: qtgui_histogram_sink_0
-  id: qtgui_histogram_sink_x
-  parameters:
-    accum: 'False'
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'True'
-    axislabels: 'True'
-    bins: '100'
-    color1: '"blue"'
-    color10: '"dark blue"'
-    color2: '"red"'
-    color3: '"green"'
-    color4: '"black"'
-    color5: '"cyan"'
-    color6: '"magenta"'
-    color7: '"yellow"'
-    color8: '"dark red"'
-    color9: '"dark green"'
-    comment: 'LLR Distribution
-
-      Shows soft decision quality
-
-      Wider spread = better SNR'
-    grid: 'True'
-    gui_hint: 3,0,1,2
-    label1: LLR Values
-    label10: ''
-    label2: ''
-    label3: ''
-    label4: ''
-    label5: ''
-    label6: ''
-    label7: ''
-    label8: ''
-    label9: ''
-    legend: 'True'
-    marker1: '-1'
-    marker10: '-1'
-    marker2: '-1'
-    marker3: '-1'
-    marker4: '-1'
-    marker5: '-1'
-    marker6: '-1'
-    marker7: '-1'
-    marker8: '-1'
-    marker9: '-1'
-    name: '"LLR Histogram"'
-    nconnections: '1'
-    size: '4096'
-    style1: '1'
-    style10: '1'
-    style2: '1'
-    style3: '1'
-    style4: '1'
-    style5: '1'
-    style6: '1'
-    style7: '1'
-    style8: '1'
-    style9: '1'
-    type: float
-    update_time: '0.20'
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    xmax: '10'
-    xmin: '-10'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [456, 736]
-    rotation: 0
-    state: disabled
+    state: enabled
 - name: qtgui_const_sink_0
   id: qtgui_const_sink_x
   parameters:
@@ -640,9 +543,33 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [656, 800]
+    coordinate: [1104, 328.0]
     rotation: 0
-    state: enabled
+    state: disabled
+- name: qtgui_edit_box_msg_0
+  id: qtgui_edit_box_msg
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Service Guide Display
+
+      Shows discovered ATSC 3.0 services'
+    gui_hint: 2,1,2,1
+    is_pair: 'False'
+    is_static: 'True'
+    key: services
+    label: Service Guide
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: string
+    value: '{"services": []}'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1376, 656.0]
+    rotation: 0
+    state: disabled
 - name: qtgui_freq_sink_0
   id: qtgui_freq_sink_x
   parameters:
@@ -721,7 +648,98 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 800]
+    coordinate: [304, 840.0]
+    rotation: 0
+    state: enabled
+- name: qtgui_histogram_sink_0
+  id: qtgui_histogram_sink_x
+  parameters:
+    accum: 'False'
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    axislabels: 'True'
+    bins: '100'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: 'LLR Distribution
+
+      Shows soft decision quality
+
+      Wider spread = better SNR'
+    grid: 'True'
+    gui_hint: 3,0,1,2
+    label1: LLR Values
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'True'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"LLR Histogram"'
+    nconnections: '1'
+    size: '4096'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    type: float
+    update_time: '0.20'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    xmax: '10'
+    xmin: '-10'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1376, 420.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_source_0
@@ -1173,15 +1191,16 @@ connections:
 - [atsc3_channel_eq_0, '0', atsc3_constellation_demapper_0, '0']
 - [atsc3_channel_eq_0, '0', qtgui_const_sink_0, '0']
 - [atsc3_constellation_demapper_0, '0', atsc3_cell_deinterleaver_0, '0']
-- [atsc3_constellation_demapper_0, '0', qtgui_histogram_sink_0, '0']
 - [atsc3_fec_decode_0, '0', atsc3_alp_demux_0, '0']
 - [atsc3_freq_deinterleaver_0, '0', atsc3_time_deinterleaver_0, '0']
+- [atsc3_freq_deinterleaver_0, '0', blocks_char_to_float_0, '0']
 - [atsc3_ofdm_demod_0, '0', atsc3_channel_eq_0, '0']
 - [atsc3_route_parser_0, catalog, atsc3_service_guide_0, catalog]
 - [atsc3_service_guide_0, services, qtgui_edit_box_msg_0, val]
 - [atsc3_service_selector_0, '0', atsc3_av_player_0, '0']
 - [atsc3_service_selector_0, '1', atsc3_av_player_0, '1']
 - [atsc3_time_deinterleaver_0, '0', atsc3_fec_decode_0, '0']
+- [blocks_char_to_float_0, '0', qtgui_histogram_sink_0, '0']
 - [uhd_usrp_source_0, '0', atsc3_bootstrap_detect_0, '0']
 - [uhd_usrp_source_0, '0', qtgui_freq_sink_0, '0']
 
