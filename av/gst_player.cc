@@ -5,6 +5,7 @@
 #include "gst_player.h"
 
 #include <cstring>
+#include <glib.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
 
@@ -40,6 +41,9 @@ bool GstPlayer::init(const GstPlayerConfig& config) {
         return false;
     }
 
+    // Start GMainLoop event thread for async message processing
+    start_event_loop();
+
     initialized_.store(true);
     state_.store(PlayerState::STOPPED);
 
@@ -52,6 +56,7 @@ void GstPlayer::shutdown() {
     }
 
     stop();
+    stop_event_loop();
     destroy_pipeline();
     initialized_.store(false);
 }
@@ -104,6 +109,11 @@ bool GstPlayer::push_video(const uint8_t* data, size_t size, int64_t pts_ns) {
         return false;
     }
 
+    // Auto-play on first data if enabled
+    if (auto_play_on_data_.load() && !first_data_received_.exchange(true)) {
+        play();
+    }
+
     // Create buffer
     GstBuffer* buffer = gst_buffer_new_allocate(nullptr, size, nullptr);
     if (buffer == nullptr) {
@@ -134,6 +144,11 @@ bool GstPlayer::push_audio(const uint8_t* data, size_t size, int64_t pts_ns,
                            StreamType stream_type) {
     if (!initialized_.load() || audio_appsrc_ == nullptr || data == nullptr || size == 0) {
         return false;
+    }
+
+    // Auto-play on first data if enabled
+    if (auto_play_on_data_.load() && !first_data_received_.exchange(true)) {
+        play();
     }
 
     (void)stream_type;  // Currently using same appsrc for all audio types
@@ -262,6 +277,66 @@ bool GstPlayer::process_messages() {
     }
 
     return state_.load() != PlayerState::ERROR;
+}
+
+// Static callback for bus messages (called from GMainLoop thread)
+// Signature matches GstBusFunc for gst_bus_add_watch
+gboolean GstPlayer::bus_callback(GstBus* /* bus */, GstMessage* msg, void* user_data) {
+    auto* player = static_cast<GstPlayer*>(user_data);
+    player->handle_message(msg);
+    return TRUE;  // Keep watching
+}
+
+void GstPlayer::start_event_loop() {
+    if (bus_ == nullptr) {
+        return;
+    }
+
+    // Create a dedicated context for this player
+    main_context_ = g_main_context_new();
+    main_loop_ = g_main_loop_new(main_context_, FALSE);
+
+    // Add bus watch using the standard GStreamer API
+    // gst_bus_add_watch uses the default main context, so we use gst_bus_add_watch_full
+    // with our custom context
+    GSource* bus_source = gst_bus_create_watch(bus_);
+    g_source_set_callback(
+        bus_source, G_SOURCE_FUNC(+[](GstBus* bus, GstMessage* msg, gpointer data) -> gboolean {
+            return bus_callback(bus, msg, data);
+        }),
+        this, nullptr);
+    bus_watch_id_ = g_source_attach(bus_source, main_context_);
+    g_source_unref(bus_source);
+
+    // Start event thread
+    event_thread_ = std::thread([this]() {
+        g_main_context_push_thread_default(main_context_);
+        g_main_loop_run(main_loop_);
+        g_main_context_pop_thread_default(main_context_);
+    });
+}
+
+void GstPlayer::stop_event_loop() {
+    // Signal loop to quit
+    if (main_loop_ != nullptr) {
+        g_main_loop_quit(main_loop_);
+    }
+
+    // Wait for thread to finish
+    if (event_thread_.joinable()) {
+        event_thread_.join();
+    }
+
+    // Clean up
+    if (main_loop_ != nullptr) {
+        g_main_loop_unref(main_loop_);
+        main_loop_ = nullptr;
+    }
+    if (main_context_ != nullptr) {
+        g_main_context_unref(main_context_);
+        main_context_ = nullptr;
+    }
+    bus_watch_id_ = 0;
 }
 
 bool GstPlayer::create_pipeline() {

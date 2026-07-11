@@ -53,6 +53,10 @@ bool av_player_impl::start() {
             [this](::atsc3::av::PlayerState state) { on_state_change(state); });
 
         player_->set_volume(volume_);
+
+        // Enable auto-play: play() will be called when first data arrives
+        // This avoids race conditions with empty appsrc
+        player_->set_auto_play(true);
     }
 
     // Initialize video decoder
@@ -76,10 +80,7 @@ bool av_player_impl::start() {
 
     initialized_ = true;
 
-    // Auto-start playback
-    if (player_) {
-        player_->play();
-    }
+    // Note: playback starts automatically when first data arrives (auto-play mode)
 
     return true;
 }
