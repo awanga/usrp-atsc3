@@ -103,20 +103,9 @@ std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
 }
 
 std::vector<sample_t> build_qpsk() {
-    std::vector<sample_t> points(4);
-    constexpr float val = 0.7071067811865476f;
-#ifdef ATSC3_FIXED_POINT
-    points[0] = sample_t(float_to_q15(val), float_to_q15(val));
-    points[1] = sample_t(float_to_q15(-val), float_to_q15(val));
-    points[2] = sample_t(float_to_q15(-val), float_to_q15(-val));
-    points[3] = sample_t(float_to_q15(val), float_to_q15(-val));
-#else
-    points[0] = sample_t(val, val);
-    points[1] = sample_t(-val, val);
-    points[2] = sample_t(-val, -val);
-    points[3] = sample_t(val, -val);
-#endif
-    return points;
+    // Use build_uniform_qam for consistent Gray coding
+    // This gives: idx=0→(-,-), idx=1→(-,+), idx=2→(+,-), idx=3→(+,+)
+    return build_uniform_qam(2, kQamNorm4);
 }
 
 // ============================================================================
@@ -202,14 +191,18 @@ inline float compute_1d_llr(float coord, int half_side, int bit_index, float sca
 // Fast QPSK demapping (2 bits) - optimized
 inline void demap_qpsk_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
     // QPSK: bit 0 from I, bit 1 from Q
+    // Gray coding: negative coord → bit=0 → positive LLR
+    // So LLR ∝ -coord
     float fclip = static_cast<float>(clip);
-    out[0] = clamp_round(i_coord * scale, fclip);
-    out[1] = clamp_round(q_coord * scale, fclip);
+    out[0] = clamp_round(-i_coord * scale, fclip);
+    out[1] = clamp_round(-q_coord * scale, fclip);
 }
 
 // Fast 16-QAM demapping (4 bits) - optimized
 inline void demap_qam16_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
     // 16-QAM: 4x4 grid, constellation at ±1, ±3 (normalized)
+    // Gray coding: negative coord → MSB=0 → positive LLR
+    // Bit order: I bits first (0,1), then Q bits (2,3)
     float fclip = static_cast<float>(clip);
 
     // Denormalize to grid coordinates
@@ -221,32 +214,27 @@ inline void demap_qam16_fast(float i_coord, float q_coord, float scale, int8_t c
     float abs_i = i_dn < 0.0f ? -i_dn : i_dn;
     float abs_q = q_dn < 0.0f ? -q_dn : q_dn;
 
-    // Bit 0 (I MSB): boundary at 0
-    out[0] = clamp_round(i_dn * s, fclip);
+    // I bits (0, 1)
+    out[0] = clamp_round(-i_dn * s, fclip);           // I MSB: negative I → bit=0
+    out[1] = clamp_round((abs_i - 2.0f) * s, fclip);  // I LSB: |I|>2 → bit=0
 
-    // Bit 1 (Q MSB): boundary at 0
-    out[1] = clamp_round(q_dn * s, fclip);
-
-    // Bit 2 (I LSB): boundary at ±2
-    out[2] = clamp_round((2.0f - abs_i) * s, fclip);
-
-    // Bit 3 (Q LSB): boundary at ±2
-    out[3] = clamp_round((2.0f - abs_q) * s, fclip);
+    // Q bits (2, 3)
+    out[2] = clamp_round(-q_dn * s, fclip);           // Q MSB: negative Q → bit=0
+    out[3] = clamp_round((abs_q - 2.0f) * s, fclip);  // Q LSB: |Q|>2 → bit=0
 }
 
 // Fast 64-QAM demapping (6 bits) - fully optimized
 inline void demap_qam64_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
     // 64-QAM: 8x8 grid, constellation at ±1, ±3, ±5, ±7 (normalized)
-    // I component -> bits 0, 2, 4
-    // Q component -> bits 1, 3, 5
+    // Bit order: I bits first (0,1,2), then Q bits (3,4,5)
     //
     // For Gray-coded 64-QAM:
-    // Bit 0: sign of I (MSB)
-    // Bit 1: sign of Q
-    // Bit 2: |I| < 4 vs >= 4 (middle boundary)
-    // Bit 3: |Q| < 4 vs >= 4
-    // Bit 4: |I| mod 4 < 2 vs >= 2 (inner boundaries at ±2, ±6)
-    // Bit 5: |Q| mod 4 < 2 vs >= 2
+    // Bit 0: I MSB, negative I → bit=0
+    // Bit 1: I middle, |I| >= 4 → bit=0
+    // Bit 2: I LSB, ||I|-4| >= 2 → bit=0
+    // Bit 3: Q MSB, negative Q → bit=0
+    // Bit 4: Q middle, |Q| >= 4 → bit=0
+    // Bit 5: Q LSB, ||Q|-4| >= 2 → bit=0
 
     float fclip = static_cast<float>(clip);
 
@@ -257,39 +245,31 @@ inline void demap_qam64_fast(float i_coord, float q_coord, float scale, int8_t c
     // Combined scale factor
     float s = scale / kQamDenorm64;
 
-    // Absolute values (branchless: clear sign bit)
+    // Absolute values
     float abs_i = i_dn < 0.0f ? -i_dn : i_dn;
     float abs_q = q_dn < 0.0f ? -q_dn : q_dn;
 
-    // Bit 0 (I MSB): LLR = distance from origin boundary
-    // Positive I -> bit=0 more likely -> positive LLR
-    out[0] = clamp_round(i_dn * s, fclip);
+    // Distance from midpoint for LSB bits
+    float dist_i = abs_i - 4.0f;
+    dist_i = dist_i < 0.0f ? -dist_i : dist_i;
+    float dist_q = abs_q - 4.0f;
+    dist_q = dist_q < 0.0f ? -dist_q : dist_q;
 
-    // Bit 1 (Q MSB): same logic for Q
-    out[1] = clamp_round(q_dn * s, fclip);
+    // I bits (0, 1, 2)
+    out[0] = clamp_round(-i_dn * s, fclip);            // I MSB: negative I → bit=0
+    out[1] = clamp_round((abs_i - 4.0f) * s, fclip);   // I middle: |I| >= 4 → bit=0
+    out[2] = clamp_round((dist_i - 2.0f) * s, fclip);  // I LSB: ||I|-4| >= 2 → bit=0
 
-    // Bit 2 (I): boundary at ±4
-    // |I| < 4 -> bit=0; |I| >= 4 -> bit=1
-    // LLR = (4 - |I|) * scale
-    out[2] = clamp_round((4.0f - abs_i) * s, fclip);
-
-    // Bit 3 (Q): boundary at ±4
-    out[3] = clamp_round((4.0f - abs_q) * s, fclip);
-
-    // Bit 4 (I): boundaries at ±2, ±6 (repeats every 4)
-    // Reduce |I| to [0, 4) using fast modulo
-    float red_i = abs_i - 4.0f * static_cast<int>(abs_i * 0.25f);  // abs_i mod 4
-    // Within [0,4): boundary at 2
-    out[4] = clamp_round((2.0f - red_i) * s, fclip);
-
-    // Bit 5 (Q): boundaries at ±2, ±6
-    float red_q = abs_q - 4.0f * static_cast<int>(abs_q * 0.25f);
-    out[5] = clamp_round((2.0f - red_q) * s, fclip);
+    // Q bits (3, 4, 5)
+    out[3] = clamp_round(-q_dn * s, fclip);            // Q MSB: negative Q → bit=0
+    out[4] = clamp_round((abs_q - 4.0f) * s, fclip);   // Q middle: |Q| >= 4 → bit=0
+    out[5] = clamp_round((dist_q - 2.0f) * s, fclip);  // Q LSB: ||Q|-4| >= 2 → bit=0
 }
 
 // Fast 256-QAM demapping (8 bits) - optimized
 inline void demap_qam256_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
-    // 256-QAM: 16x16 grid
+    // 256-QAM: 16x16 grid, levels ±1,±3,...,±15
+    // Bit order: I bits first (0,1,2,3), then Q bits (4,5,6,7)
     float fclip = static_cast<float>(clip);
 
     float i_dn = i_coord * kQamDenorm256;
@@ -299,21 +279,29 @@ inline void demap_qam256_fast(float i_coord, float q_coord, float scale, int8_t 
     float abs_i = i_dn < 0.0f ? -i_dn : i_dn;
     float abs_q = q_dn < 0.0f ? -q_dn : q_dn;
 
-    // I bits: 0, 2, 4, 6
-    out[0] = clamp_round(i_dn * s, fclip);
-    out[2] = clamp_round((8.0f - abs_i) * s, fclip);
-    float red_i4 = abs_i - 8.0f * static_cast<int>(abs_i * 0.125f);  // mod 8
-    out[4] = clamp_round((4.0f - red_i4) * s, fclip);
-    float red_i6 = abs_i - 4.0f * static_cast<int>(abs_i * 0.25f);  // mod 4
-    out[6] = clamp_round((2.0f - red_i6) * s, fclip);
+    // Nested distances for I
+    float dist_i1 = abs_i - 8.0f;
+    dist_i1 = dist_i1 < 0.0f ? -dist_i1 : dist_i1;
+    float dist_i2 = dist_i1 - 4.0f;
+    dist_i2 = dist_i2 < 0.0f ? -dist_i2 : dist_i2;
 
-    // Q bits: 1, 3, 5, 7
-    out[1] = clamp_round(q_dn * s, fclip);
-    out[3] = clamp_round((8.0f - abs_q) * s, fclip);
-    float red_q5 = abs_q - 8.0f * static_cast<int>(abs_q * 0.125f);
-    out[5] = clamp_round((4.0f - red_q5) * s, fclip);
-    float red_q7 = abs_q - 4.0f * static_cast<int>(abs_q * 0.25f);
-    out[7] = clamp_round((2.0f - red_q7) * s, fclip);
+    // Nested distances for Q
+    float dist_q1 = abs_q - 8.0f;
+    dist_q1 = dist_q1 < 0.0f ? -dist_q1 : dist_q1;
+    float dist_q2 = dist_q1 - 4.0f;
+    dist_q2 = dist_q2 < 0.0f ? -dist_q2 : dist_q2;
+
+    // I bits (0, 1, 2, 3)
+    out[0] = clamp_round(-i_dn * s, fclip);             // I MSB: negative I → bit=0
+    out[1] = clamp_round((abs_i - 8.0f) * s, fclip);    // |I| >= 8 → bit=0
+    out[2] = clamp_round((dist_i1 - 4.0f) * s, fclip);  // ||I|-8| >= 4 → bit=0
+    out[3] = clamp_round((dist_i2 - 2.0f) * s, fclip);  // |||I|-8|-4| >= 2 → bit=0
+
+    // Q bits (4, 5, 6, 7)
+    out[4] = clamp_round(-q_dn * s, fclip);             // Q MSB: negative Q → bit=0
+    out[5] = clamp_round((abs_q - 8.0f) * s, fclip);    // |Q| >= 8 → bit=0
+    out[6] = clamp_round((dist_q1 - 4.0f) * s, fclip);  // ||Q|-8| >= 4 → bit=0
+    out[7] = clamp_round((dist_q2 - 2.0f) * s, fclip);  // |||Q|-8|-4| >= 2 → bit=0
 }
 
 }  // namespace
