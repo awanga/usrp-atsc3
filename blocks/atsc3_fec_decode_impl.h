@@ -35,12 +35,17 @@ private:
     uint64_t failed_codewords_;
     double iteration_sum_;
 
-    // Message port
+    // Multi-PLP support
+    int plp_id_;
+
+    // Message ports
     pmt::pmt_t port_reset_in_;
+    pmt::pmt_t port_l1_config_;
 
     void reconfigure();
     void update_statistics(bool converged, int iterations);
     void handle_reset_msg(pmt::pmt_t msg);
+    void handle_l1_config(pmt::pmt_t msg);
 
 public:
     fec_decode_impl(int code_rate, int codeword_length, int max_iterations);
@@ -65,6 +70,10 @@ public:
         return last_converged_.load();
     }
     void reset_stats() override;
+    void set_plp_id(int plp_id) override;
+    int get_plp_id() const override {
+        return plp_id_;
+    }
 };
 
 }  // namespace atsc3

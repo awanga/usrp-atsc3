@@ -17,14 +17,17 @@ private:
     int ti_mode_;
     int ti_depth_;
     int cells_per_block_;
+    int plp_id_;
 
     std::unique_ptr<::atsc3::ofdm::TimeDeinterleaver> deinterleaver_;
 
-    // Message port
+    // Message ports
     pmt::pmt_t port_reset_in_;
+    pmt::pmt_t port_l1_config_;
 
     void reconfigure();
     void handle_reset_msg(pmt::pmt_t msg);
+    void handle_l1_config(pmt::pmt_t msg);
 
 public:
     time_deinterleaver_impl(int ti_mode, int ti_depth);
@@ -44,6 +47,10 @@ public:
     }
     void reset() override {
         deinterleaver_->reset();
+    }
+    void set_plp_id(int plp_id) override;
+    int get_plp_id() const override {
+        return plp_id_;
     }
 };
 

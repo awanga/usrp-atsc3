@@ -20,6 +20,11 @@ parameters:
     label: Max LDPC Iterations
     dtype: int
     default: '50'
+  - id: plp_id
+    label: PLP ID
+    dtype: int
+    default: '-1'
+    hide: ${ 'part' if plp_id == -1 else 'none' }
 
 inputs:
   - label: in
@@ -27,6 +32,9 @@ inputs:
     dtype: byte
     vlen: 1
   - label: reset
+    domain: message
+    optional: true
+  - label: l1_config
     domain: message
     optional: true
 
@@ -42,6 +50,7 @@ templates:
   callbacks:
     - set_code_rate(${code_rate})
     - set_codeword_length(${codeword_length})
+    - set_plp_id(${plp_id})
 
 cpp_templates:
   includes: ['#include <gnuradio/atsc3/atsc3_fec_decode.h>']
@@ -50,6 +59,7 @@ cpp_templates:
   callbacks:
     - 'this->${id}->set_code_rate(${code_rate});'
     - 'this->${id}->set_codeword_length(${codeword_length});'
+    - 'this->${id}->set_plp_id(${plp_id});'
 
 documentation: |-
   ATSC 3.0 FEC Decoder
@@ -61,9 +71,11 @@ documentation: |-
     code_rate: LDPC code rate index (0-11)
     codeword_length: 16200 (short) or 64800 (long)
     max_iterations: Maximum LDPC decoder iterations
+    plp_id: PLP ID for multi-PLP operation (-1 for manual config)
 
   Message Ports:
     reset (input): Resets decoder statistics (FER, avg iterations)
+    l1_config (input): L1 signaling config for auto-configuration
 
   API Methods:
     get_avg_iterations(): Average LDPC iterations per codeword

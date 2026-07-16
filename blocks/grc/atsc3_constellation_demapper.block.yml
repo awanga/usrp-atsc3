@@ -22,11 +22,19 @@ parameters:
     label: Noise Variance
     dtype: float
     default: '0.1'
+  - id: plp_id
+    label: PLP ID
+    dtype: int
+    default: '-1'
+    hide: ${ 'part' if plp_id == -1 else 'none' }
 
 inputs:
   - label: in
     domain: stream
     dtype: complex
+  - label: l1_config
+    domain: message
+    optional: true
 
 outputs:
   - label: out
@@ -40,6 +48,7 @@ templates:
     - set_modulation(${modulation})
     - set_code_rate(${code_rate})
     - set_noise_variance(${noise_variance})
+    - set_plp_id(${plp_id})
 
 cpp_templates:
   includes: ['#include <gnuradio/atsc3/atsc3_constellation_demapper.h>']
@@ -49,6 +58,7 @@ cpp_templates:
     - 'this->${id}->set_modulation(${modulation});'
     - 'this->${id}->set_code_rate(${code_rate});'
     - 'this->${id}->set_noise_variance(${noise_variance});'
+    - 'this->${id}->set_plp_id(${plp_id});'
 
 documentation: |-
   ATSC 3.0 Constellation Demapper
@@ -63,6 +73,10 @@ documentation: |-
     modulation: Modulation type (QPSK, QAM16, QAM64, etc. or NUC variants)
     code_rate: LDPC code rate (needed for NUC table selection)
     noise_variance: Noise variance estimate for LLR scaling
+    plp_id: PLP ID for multi-PLP operation (-1 for manual config)
+
+  Message Ports:
+    l1_config (input): L1 signaling config for auto-configuration
 
   Input:
     Equalized QAM symbols (gr_complex)

@@ -48,6 +48,19 @@ public:
      * \brief Reset internal state (clears delay lines)
      */
     virtual void reset() = 0;
+
+    /*!
+     * \brief Set PLP ID for multi-PLP operation
+     *
+     * When L1 config is received, block auto-configures for this PLP.
+     * \param plp_id PLP ID (0-63), or -1 to use manual configuration
+     */
+    virtual void set_plp_id(int plp_id) = 0;
+
+    /*!
+     * \brief Get current PLP ID
+     */
+    virtual int get_plp_id() const = 0;
 };
 
 }  // namespace atsc3

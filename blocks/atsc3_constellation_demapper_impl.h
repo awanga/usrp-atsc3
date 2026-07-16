@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <ofdm/constellation_demapper.h>
+#include <pmt/pmt.h>
 
 namespace gr {
 namespace atsc3 {
@@ -16,10 +17,15 @@ private:
     int modulation_;
     int code_rate_;
     float noise_variance_;
+    int plp_id_;
 
     std::unique_ptr<::atsc3::ofdm::ConstellationDemapper> demapper_;
 
+    // Message port for L1 config
+    pmt::pmt_t port_l1_config_;
+
     void reconfigure();
+    void handle_l1_config(pmt::pmt_t msg);
 
 public:
     constellation_demapper_impl(int modulation, int code_rate, float noise_variance);
@@ -34,6 +40,10 @@ public:
     void set_noise_variance(float noise_variance) override;
     int get_bits_per_symbol() const override {
         return static_cast<int>(demapper_->bits_per_symbol());
+    }
+    void set_plp_id(int plp_id) override;
+    int get_plp_id() const override {
+        return plp_id_;
     }
 };
 
