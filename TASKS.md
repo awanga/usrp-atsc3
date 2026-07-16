@@ -355,9 +355,9 @@ Power-of-2 depths (1, 3, 7, 15 → 2, 4, 8, 16 rows) use bitmask and meet target
 - [x] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
 - [x] Constellation demapper: optimize with direct slicer LLR computation (75× speedup)
 - [ ] Multi-PLP support (currently single PLP decoded)
-- [ ] Robustness: restart-on-lock-loss without flowgraph teardown
+- [x] Robustness: restart-on-lock-loss without flowgraph teardown
 - [x] Memory: ASAN clean run on deinterleaver and LDPC unit tests
-- [ ] Fuzzing: libFuzzer on ALP and ROUTE parsers
+- [x] Fuzzing: libFuzzer on ALP and ROUTE parsers
 
 #### Signal Chain Profiling Results (8K FFT, 64-QAM, excluding LDPC)
 

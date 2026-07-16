@@ -21,6 +21,7 @@ option(ATSC3_FIXED_POINT "Build with fixed-point (int16_t) sample type" OFF)
 option(ATSC3_ENABLE_ML "Enable ML inference backend (post-MVP)" OFF)
 option(ATSC3_ENABLE_HDL_STUBS "Build HDL stub generation targets (post-MVP)" OFF)
 option(ATSC3_BUILD_TESTS "Build test suite" ON)
+option(ATSC3_BUILD_FUZZ "Build libFuzzer harnesses (requires clang)" OFF)
 
 set(ATSC3_GR_VERSION "3.10" CACHE STRING "Target GNU Radio version (3.8, 3.9, 3.10)")
 set(ATSC3_CHANNEL_BW_HZ "6000000" CACHE STRING "Channel bandwidth in Hz (6 MHz default)")
