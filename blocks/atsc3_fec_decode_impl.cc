@@ -21,6 +21,11 @@ fec_decode_impl::fec_decode_impl(int code_rate, int codeword_length, int max_ite
       failed_codewords_(0),
       iteration_sum_(0.0) {
     reconfigure();
+
+    // Register message port
+    port_reset_in_ = pmt::intern("reset");
+    message_port_register_in(port_reset_in_);
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
 }
 
 fec_decode_impl::~fec_decode_impl() = default;
@@ -118,6 +123,25 @@ void fec_decode_impl::set_code_rate(int code_rate) {
 void fec_decode_impl::set_codeword_length(int length) {
     codeword_length_ = length;
     reconfigure();
+}
+
+void fec_decode_impl::reset_stats() {
+    // Reset LDPC decoder internal state
+    if (ldpc_decoder_) {
+        ldpc_decoder_->reset();
+    }
+
+    // Reset statistics
+    total_codewords_ = 0;
+    failed_codewords_ = 0;
+    iteration_sum_ = 0.0;
+    avg_iterations_.store(0.0f);
+    fer_.store(0.0f);
+    last_converged_.store(false);
+}
+
+void fec_decode_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset_stats();
 }
 
 }  // namespace atsc3

@@ -5,6 +5,7 @@
 
 #include "atsc3_bootstrap_detect.h"
 
+#include <pmt/pmt.h>
 #include <sync/bootstrap_detector.h>
 
 namespace gr {
@@ -15,7 +16,19 @@ private:
     ::atsc3::sync::BootstrapDetector detector_;
     float threshold_;
     bool locked_;
+    bool prev_locked_;
     float cfo_hz_;
+    float metric_;
+
+    // Message ports
+    pmt::pmt_t port_reset_in_;
+    pmt::pmt_t port_lock_status_out_;
+
+    // Handle incoming reset message
+    void handle_reset_msg(pmt::pmt_t msg);
+
+    // Emit lock status change
+    void emit_lock_status();
 
 public:
     bootstrap_detect_impl(float threshold);
@@ -36,6 +49,7 @@ public:
         return locked_;
     }
     void set_threshold(float threshold) override;
+    void reset() override;
 };
 
 }  // namespace atsc3

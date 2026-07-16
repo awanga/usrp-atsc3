@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <ofdm/time_deinterleaver.h>
+#include <pmt/pmt.h>
 
 namespace gr {
 namespace atsc3 {
@@ -19,7 +20,11 @@ private:
 
     std::unique_ptr<::atsc3::ofdm::TimeDeinterleaver> deinterleaver_;
 
+    // Message port
+    pmt::pmt_t port_reset_in_;
+
     void reconfigure();
+    void handle_reset_msg(pmt::pmt_t msg);
 
 public:
     time_deinterleaver_impl(int ti_mode, int ti_depth);

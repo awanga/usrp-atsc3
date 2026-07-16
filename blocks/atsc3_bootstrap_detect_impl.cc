@@ -25,9 +25,20 @@ bootstrap_detect_impl::bootstrap_detect_impl(float threshold)
       detector_(make_detector_config(threshold)),
       threshold_(threshold),
       locked_(false),
-      cfo_hz_(0.0f) {
+      prev_locked_(false),
+      cfo_hz_(0.0f),
+      metric_(0.0f) {
     // Set output multiple to bootstrap symbol length
     set_output_multiple(4096);
+
+    // Register message ports
+    port_reset_in_ = pmt::intern("reset");
+    port_lock_status_out_ = pmt::intern("lock_status");
+
+    message_port_register_in(port_reset_in_);
+    message_port_register_out(port_lock_status_out_);
+
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
 }
 
 bootstrap_detect_impl::~bootstrap_detect_impl() = default;
@@ -54,12 +65,19 @@ int bootstrap_detect_impl::general_work(int noutput_items, gr_vector_int& ninput
     if (result.detected) {
         locked_ = true;
         cfo_hz_ = static_cast<float>(result.cfo_hz);
+        metric_ = static_cast<float>(result.metric);
 
         // Add stream tag at detection point
         add_item_tag(0, nitems_written(0) + result.sample_index, pmt::intern("bootstrap_start"),
                      pmt::from_long(result.sample_index));
         add_item_tag(0, nitems_written(0) + result.sample_index, pmt::intern("cfo_hz"),
                      pmt::from_double(result.cfo_hz));
+    }
+
+    // Emit lock status message on state change
+    if (locked_ != prev_locked_) {
+        emit_lock_status();
+        prev_locked_ = locked_;
     }
 
     // Pass through samples (detector is observe-only)
@@ -77,6 +95,26 @@ void bootstrap_detect_impl::set_threshold(float threshold) {
     ::atsc3::sync::BootstrapConfig config;
     config.threshold = static_cast<double>(threshold);
     detector_.set_config(config);
+}
+
+void bootstrap_detect_impl::reset() {
+    detector_.reset();
+    locked_ = false;
+    prev_locked_ = false;
+    cfo_hz_ = 0.0f;
+    metric_ = 0.0f;
+}
+
+void bootstrap_detect_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset();
+}
+
+void bootstrap_detect_impl::emit_lock_status() {
+    pmt::pmt_t msg = pmt::make_dict();
+    msg = pmt::dict_add(msg, pmt::intern("locked"), pmt::from_bool(locked_));
+    msg = pmt::dict_add(msg, pmt::intern("cfo_hz"), pmt::from_float(cfo_hz_));
+    msg = pmt::dict_add(msg, pmt::intern("metric"), pmt::from_float(metric_));
+    message_port_pub(port_lock_status_out_, msg);
 }
 
 }  // namespace atsc3

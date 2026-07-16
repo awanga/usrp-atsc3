@@ -21,6 +21,7 @@ set(BLOCKS_SOURCES
     atsc3_av_player_impl.cc
     atsc3_l1_monitor_impl.cc
     atsc3_service_guide_impl.cc
+    atsc3_lock_supervisor_impl.cc
 )
 
 set(BLOCKS_HEADERS
@@ -38,6 +39,7 @@ set(BLOCKS_HEADERS
     atsc3_av_player.h
     atsc3_l1_monitor.h
     atsc3_service_guide.h
+    atsc3_lock_supervisor.h
 )
 
 if(BLOCKS_SOURCES)
@@ -98,6 +100,7 @@ if(BLOCKS_SOURCES)
         grc/atsc3_av_player.block.yml
         grc/atsc3_l1_monitor.block.yml
         grc/atsc3_service_guide.block.yml
+        grc/atsc3_lock_supervisor.block.yml
         DESTINATION share/gnuradio/grc/blocks
     )
 endif()

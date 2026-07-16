@@ -44,6 +44,14 @@ public:
      * \brief Get current MER estimate in dB
      */
     virtual float get_mer_db() const = 0;
+
+    /*!
+     * \brief Reset equalizer state
+     *
+     * Clears channel estimate and IIR averaging state.
+     * Called automatically via "reset" message port.
+     */
+    virtual void reset() = 0;
 };
 
 }  // namespace atsc3

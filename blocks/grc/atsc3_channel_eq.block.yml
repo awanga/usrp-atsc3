@@ -26,6 +26,9 @@ inputs:
   - label: in
     domain: stream
     dtype: complex
+  - label: reset
+    domain: message
+    optional: true
 
 outputs:
   - label: out
@@ -58,8 +61,12 @@ documentation: |-
     pilot_pattern: ATSC 3.0 pilot pattern index (1-8)
     use_mmse: True for MMSE equalization, False for Zero-Forcing
 
-  Outputs:
-    SNR estimate (dB) via get_snr_db()
-    MER estimate (dB) via get_mer_db()
+  Message Ports:
+    reset (input): Resets channel estimate and IIR averaging
+
+  API Methods:
+    get_snr_db(): Current SNR estimate in dB
+    get_mer_db(): Current MER estimate in dB
+    reset(): Reset equalizer state
 
 file_format: 1

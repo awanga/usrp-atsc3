@@ -20,6 +20,9 @@ inputs:
   - label: in
     domain: stream
     dtype: byte
+  - label: reset
+    domain: message
+    optional: true
 
 outputs:
   - label: out
@@ -57,6 +60,14 @@ documentation: |-
 
   Note: Initial output blocks will contain invalid data as delay lines fill.
   Use is_settled() to check when output becomes valid.
+
+  Message Ports:
+    reset (input): Clears delay lines (output becomes invalid until settled)
+
+  API Methods:
+    is_settled(): Check if delay lines have filled
+    get_settling_blocks(): Number of blocks needed to settle
+    reset(): Clear delay lines
 
   Input:
     Interleaved LLR cells (int8_t)

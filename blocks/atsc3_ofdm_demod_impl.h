@@ -8,6 +8,7 @@
 #include <memory>
 #include <ofdm/cp_removal.h>
 #include <ofdm/fft_engine.h>
+#include <pmt/pmt.h>
 #include <vector>
 
 namespace gr {
@@ -25,7 +26,19 @@ private:
     std::vector<::atsc3::sample_t> fft_output_;
     bool symbol_ready_ = false;
 
+    // Lock state tracking
+    bool locked_ = false;
+    bool prev_locked_ = false;
+    float confidence_ = 0.0f;
+    std::string state_name_;
+
+    // Message ports
+    pmt::pmt_t port_reset_in_;
+    pmt::pmt_t port_lock_status_out_;
+
     void reconfigure();
+    void handle_reset_msg(pmt::pmt_t msg);
+    void emit_lock_status();
 
 public:
     ofdm_demod_impl(int fft_size, int cp_length);
@@ -43,6 +56,10 @@ public:
     int get_cp_length() const override {
         return cp_length_;
     }
+    bool is_locked() const override {
+        return locked_;
+    }
+    void reset() override;
 };
 
 }  // namespace atsc3

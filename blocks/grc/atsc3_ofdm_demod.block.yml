@@ -19,11 +19,17 @@ inputs:
   - label: in
     domain: stream
     dtype: complex
+  - label: reset
+    domain: message
+    optional: true
 
 outputs:
   - label: out
     domain: stream
     dtype: complex
+  - label: lock_status
+    domain: message
+    optional: true
 
 templates:
   imports: from gnuradio import atsc3
@@ -49,6 +55,15 @@ documentation: |-
   Parameters:
     fft_size: OFDM FFT size (8K, 16K, or 32K)
     cp_length: Cyclic prefix length in samples
+
+  Message Ports:
+    reset (input): Resets demodulator state
+    lock_status (output): Emits lock state changes as dict:
+      {locked: bool, state: str, confidence: float}
+
+  API Methods:
+    is_locked(): Current lock status
+    reset(): Reset demodulator state
 
   Input: Time-domain complex samples (frame-aligned)
   Output: Frequency-domain OFDM symbols

@@ -49,6 +49,14 @@ public:
      * \brief Check if last codeword converged
      */
     virtual bool last_converged() const = 0;
+
+    /*!
+     * \brief Reset decoder statistics
+     *
+     * Clears FER, average iterations, and codeword counters.
+     * Called automatically via "reset" message port.
+     */
+    virtual void reset_stats() = 0;
 };
 
 }  // namespace atsc3

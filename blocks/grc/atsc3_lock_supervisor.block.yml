@@ -1,0 +1,73 @@
+id: atsc3_lock_supervisor
+label: ATSC 3.0 Lock Supervisor
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: unlock_threshold
+    label: Unlock Threshold
+    dtype: int
+    default: '3'
+  - id: relock_delay_ms
+    label: Relock Delay (ms)
+    dtype: int
+    default: '100'
+
+inputs:
+  - label: lock_status
+    domain: message
+    optional: true
+
+outputs:
+  - label: reset
+    domain: message
+    optional: true
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.lock_supervisor(${unlock_threshold}, ${relock_delay_ms})
+  callbacks:
+    - set_unlock_threshold(${unlock_threshold})
+    - set_relock_delay(${relock_delay_ms})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_lock_supervisor.h>']
+  declarations: 'gr::atsc3::lock_supervisor::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::lock_supervisor::make(${unlock_threshold}, ${relock_delay_ms});'
+  callbacks:
+    - 'this->${id}->set_unlock_threshold(${unlock_threshold});'
+    - 'this->${id}->set_relock_delay(${relock_delay_ms});'
+
+documentation: |-
+  ATSC 3.0 Lock Supervisor
+
+  Monitors lock status from sync blocks and orchestrates graceful
+  signal recovery when lock is lost. Avoids flowgraph teardown by
+  sending reset messages to all registered blocks.
+
+  Parameters:
+    unlock_threshold: Number of consecutive unlock reports before
+                      triggering a reset sequence (default: 3)
+    relock_delay_ms: Time to ignore lock status after reset,
+                     allowing blocks to stabilize (default: 100ms)
+
+  Message Ports:
+    lock_status (input): Receives lock status messages from
+                         bootstrap_detect and ofdm_demod blocks
+    reset (output): Sends reset commands to all connected blocks
+
+  Connection example:
+    bootstrap_detect.lock_status -> lock_supervisor.lock_status
+    ofdm_demod.lock_status -> lock_supervisor.lock_status
+    lock_supervisor.reset -> bootstrap_detect.reset
+    lock_supervisor.reset -> ofdm_demod.reset
+    lock_supervisor.reset -> channel_eq.reset
+    lock_supervisor.reset -> time_deinterleaver.reset
+    lock_supervisor.reset -> fec_decode.reset
+
+  API Methods:
+    is_locked(): Check if system is currently locked
+    get_reset_count(): Number of resets since start
+    manual_reset(): Manually trigger a reset sequence
+
+file_format: 1

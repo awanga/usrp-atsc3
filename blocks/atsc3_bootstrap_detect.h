@@ -37,6 +37,14 @@ public:
      * \brief Set detection threshold
      */
     virtual void set_threshold(float threshold) = 0;
+
+    /*!
+     * \brief Reset detector state
+     *
+     * Clears internal buffers and returns to searching mode.
+     * Called automatically via "reset" message port.
+     */
+    virtual void reset() = 0;
 };
 
 }  // namespace atsc3

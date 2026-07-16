@@ -43,6 +43,19 @@ public:
      * \brief Get current CP length
      */
     virtual int get_cp_length() const = 0;
+
+    /*!
+     * \brief Check if frame sync is locked
+     */
+    virtual bool is_locked() const = 0;
+
+    /*!
+     * \brief Reset demodulator state
+     *
+     * Clears internal buffers and frame sync state.
+     * Called automatically via "reset" message port.
+     */
+    virtual void reset() = 0;
 };
 
 }  // namespace atsc3

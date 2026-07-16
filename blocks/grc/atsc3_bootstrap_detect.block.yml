@@ -13,11 +13,17 @@ inputs:
   - label: in
     domain: stream
     dtype: complex
+  - label: reset
+    domain: message
+    optional: true
 
 outputs:
   - label: out
     domain: stream
     dtype: complex
+  - label: lock_status
+    domain: message
+    optional: true
 
 templates:
   imports: from gnuradio import atsc3
@@ -41,8 +47,14 @@ documentation: |-
   Parameters:
     threshold: Detection correlation threshold (0.0-1.0)
 
-  Outputs:
-    CFO estimate (Hz) via get_cfo_hz()
-    Lock status via is_locked()
+  Message Ports:
+    reset (input): Resets detector state to searching mode
+    lock_status (output): Emits lock state changes as dict:
+      {locked: bool, cfo_hz: float, metric: float}
+
+  API Methods:
+    get_cfo_hz(): Current CFO estimate in Hz
+    is_locked(): Current lock status
+    reset(): Reset detector state
 
 file_format: 1

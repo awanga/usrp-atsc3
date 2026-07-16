@@ -8,6 +8,7 @@
 #include <atomic>
 #include <fec/ldpc_decoder.h>
 #include <memory>
+#include <pmt/pmt.h>
 #include <vector>
 
 namespace gr {
@@ -34,8 +35,12 @@ private:
     uint64_t failed_codewords_;
     double iteration_sum_;
 
+    // Message port
+    pmt::pmt_t port_reset_in_;
+
     void reconfigure();
     void update_statistics(bool converged, int iterations);
+    void handle_reset_msg(pmt::pmt_t msg);
 
 public:
     fec_decode_impl(int code_rate, int codeword_length, int max_iterations);
@@ -59,6 +64,7 @@ public:
     bool last_converged() const override {
         return last_converged_.load();
     }
+    void reset_stats() override;
 };
 
 }  // namespace atsc3

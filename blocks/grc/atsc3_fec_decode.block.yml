@@ -26,6 +26,9 @@ inputs:
     domain: stream
     dtype: byte
     vlen: 1
+  - label: reset
+    domain: message
+    optional: true
 
 outputs:
   - label: out
@@ -59,12 +62,16 @@ documentation: |-
     codeword_length: 16200 (short) or 64800 (long)
     max_iterations: Maximum LDPC decoder iterations
 
+  Message Ports:
+    reset (input): Resets decoder statistics (FER, avg iterations)
+
+  API Methods:
+    get_avg_iterations(): Average LDPC iterations per codeword
+    get_fer(): Frame error rate
+    last_converged(): Whether last codeword converged
+    reset_stats(): Reset statistics counters
+
   Input: Soft LLR values (int8_t)
   Output: Decoded information bits (uint8_t)
-
-  Outputs:
-    Average iterations via get_avg_iterations()
-    Frame error rate via get_fer()
-    Last convergence status via last_converged()
 
 file_format: 1

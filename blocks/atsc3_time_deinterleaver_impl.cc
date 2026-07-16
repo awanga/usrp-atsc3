@@ -18,6 +18,11 @@ time_deinterleaver_impl::time_deinterleaver_impl(int ti_mode, int ti_depth)
       ti_depth_(ti_depth),
       cells_per_block_(1000) {  // Default cells per TI block
     reconfigure();
+
+    // Register message port
+    port_reset_in_ = pmt::intern("reset");
+    message_port_register_in(port_reset_in_);
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
 }
 
 time_deinterleaver_impl::~time_deinterleaver_impl() = default;
@@ -63,6 +68,10 @@ void time_deinterleaver_impl::set_ti_mode(int ti_mode) {
 void time_deinterleaver_impl::set_ti_depth(int ti_depth) {
     ti_depth_ = ti_depth;
     reconfigure();
+}
+
+void time_deinterleaver_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset();
 }
 
 }  // namespace atsc3

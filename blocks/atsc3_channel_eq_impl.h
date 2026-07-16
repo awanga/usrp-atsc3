@@ -9,6 +9,7 @@
 #include <channel/equalizer.h>
 #include <memory>
 #include <ofdm/pilot_extractor.h>
+#include <pmt/pmt.h>
 
 namespace gr {
 namespace atsc3 {
@@ -27,7 +28,11 @@ private:
     float mer_db_;
     size_t symbol_index_;
 
+    // Message port
+    pmt::pmt_t port_reset_in_;
+
     void reconfigure();
+    void handle_reset_msg(pmt::pmt_t msg);
 
 public:
     channel_eq_impl(int fft_size, int pilot_pattern, bool use_mmse);
@@ -45,6 +50,7 @@ public:
     float get_mer_db() const override {
         return mer_db_;
     }
+    void reset() override;
 };
 
 }  // namespace atsc3
