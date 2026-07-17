@@ -523,19 +523,13 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
 
     size_t n = H_.num_cols;
 
-    // Initialize channel LLRs from input
+    // Initialize channel LLRs and APP LLRs from input
     for (size_t i = 0; i < n; ++i) {
         llr_channel_[i] = static_cast<float>(llr_in[i]);
+        llr_app_[i] = llr_channel_[i];
     }
 
-    // Initialize variable-to-check messages with channel LLRs
-    for (size_t col = 0; col < n; ++col) {
-        for (size_t idx = 0; idx < llr_vn_[col].size(); ++idx) {
-            llr_vn_[col][idx] = llr_channel_[col];
-        }
-    }
-
-    // Clear check-to-variable messages
+    // Clear check-to-variable messages (layered decoding updates these incrementally)
     for (auto& row : llr_cn_) {
         std::fill(row.begin(), row.end(), 0.0f);
     }
@@ -552,9 +546,7 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
         // Check syndrome
         size_t unsatisfied = check_syndrome();
         if (unsatisfied == 0) {
-            // All parity checks satisfied
-            result.converged = true;
-            result.iterations_used = iter + 1;
+            // All parity checks satisfied - exit loop early
             break;
         }
 
@@ -643,12 +635,18 @@ int LdpcDecoder::decode(const int8_t* llr_in, uint8_t* bits_out, size_t* iterati
 }
 
 void LdpcDecoder::min_sum_iteration() {
+    // Layered decoding: process one check node at a time and immediately
+    // update connected variable nodes. This converges faster than flooding
+    // because later rows see updated information from earlier rows.
+    //
+    // For each row:
+    // 1. Compute VN→CN messages: vn_msg = APP[col] - old_CN→VN[row][idx]
+    // 2. Compute new CN→VN messages using min-sum on VN→CN
+    // 3. Update APP: APP[col] += (new_CN→VN - old_CN→VN)
+
     size_t m = H_.num_rows;
-    size_t n = H_.num_cols;
     float scale = config_.min_sum_scale;
 
-    // Check node update (horizontal step)
-    // For each check node, compute messages to connected variable nodes
     for (size_t row = 0; row < m; ++row) {
         const auto& cols = H_.row_indices[row];
         const auto& edge_map = H_.row_to_col_edge[row];
@@ -657,21 +655,28 @@ void LdpcDecoder::min_sum_iteration() {
         if (degree == 0)
             continue;
 
-        // Compute product of signs and find two smallest magnitudes
+        // Step 1: Compute VN→CN messages and find min1, min2, sign_prod
         float sign_prod = 1.0f;
-        float min1 = std::numeric_limits<float>::max();  // Smallest
-        float min2 = std::numeric_limits<float>::max();  // Second smallest
+        float min1 = std::numeric_limits<float>::max();
+        float min2 = std::numeric_limits<float>::max();
         size_t min1_idx = 0;
+
+        // Temporary storage for VN→CN messages for this row
+        // Stack allocation for small degrees, heap for large
+        float vn_msgs_stack[32];
+        std::vector<float> vn_msgs_heap;
+        float* vn_msgs =
+            (degree <= 32) ? vn_msgs_stack : (vn_msgs_heap.resize(degree), vn_msgs_heap.data());
 
         for (size_t idx = 0; idx < degree; ++idx) {
             size_t col = cols[idx];
 
-            // O(1) lookup using precomputed edge mapping
-            size_t edge_idx = edge_map[idx];
+            // VN→CN = APP - old CN→VN message
+            float old_cn_msg = llr_cn_[row][idx];
+            float vn_msg = llr_app_[col] - old_cn_msg;
+            vn_msgs[idx] = vn_msg;
 
-            float vn_msg = llr_vn_[col][edge_idx];
             float mag = std::abs(vn_msg);
-
             sign_prod *= sign(vn_msg);
 
             if (mag < min1) {
@@ -683,54 +688,22 @@ void LdpcDecoder::min_sum_iteration() {
             }
         }
 
-        // Compute check-to-variable messages
+        // Step 2 & 3: Compute new CN→VN messages and update APP
         for (size_t idx = 0; idx < degree; ++idx) {
-            // O(1) lookup for sign computation
-            size_t edge_idx = edge_map[idx];
-            float this_sign = sign(llr_vn_[cols[idx]][edge_idx]);
+            size_t col = cols[idx];
+
+            // Compute new CN→VN message
+            float this_sign = sign(vn_msgs[idx]);
             float msg_sign = sign_prod * this_sign;
-
-            // Use min2 for the minimum variable, min1 for others
             float msg_mag = (idx == min1_idx) ? min2 : min1;
+            float new_cn_msg = clamp_llr(msg_sign * msg_mag * scale);
 
-            // Apply scaling factor for better performance
-            llr_cn_[row][idx] = clamp_llr(msg_sign * msg_mag * scale);
-        }
-    }
+            // Update APP with delta (new - old)
+            float old_cn_msg = llr_cn_[row][idx];
+            llr_app_[col] = clamp_llr(llr_app_[col] - old_cn_msg + new_cn_msg);
 
-    // Variable node update (vertical step)
-    // For each variable node, compute messages to connected check nodes
-    for (size_t col = 0; col < n; ++col) {
-        const auto& rows = H_.col_indices[col];
-        const auto& edge_map = H_.col_to_row_edge[col];
-        size_t degree = rows.size();
-
-        if (degree == 0) {
-            llr_app_[col] = llr_channel_[col];
-            continue;
-        }
-
-        // Sum all incoming check-to-variable messages
-        float sum_cn = 0.0f;
-        for (size_t idx = 0; idx < degree; ++idx) {
-            size_t row = rows[idx];
-
-            // O(1) lookup using precomputed edge mapping
-            size_t edge_idx = edge_map[idx];
-            sum_cn += llr_cn_[row][edge_idx];
-        }
-
-        // A posteriori LLR
-        llr_app_[col] = clamp_llr(llr_channel_[col] + sum_cn);
-
-        // Compute variable-to-check messages (exclude incoming message from each check)
-        for (size_t idx = 0; idx < degree; ++idx) {
-            size_t row = rows[idx];
-
-            // O(1) lookup using precomputed edge mapping
-            size_t edge_idx = edge_map[idx];
-            float cn_msg = llr_cn_[row][edge_idx];
-            llr_vn_[col][idx] = clamp_llr(llr_app_[col] - cn_msg);
+            // Store new CN→VN message
+            llr_cn_[row][idx] = new_cn_msg;
         }
     }
 }
@@ -780,6 +753,7 @@ size_t LdpcDecoder::check_syndrome() {
         const auto& cols = H_.row_indices[row];
 
         // XOR all bits in this check
+        // cppcheck-suppress useStlAlgorithm ; explicit XOR loop is clearer than std::accumulate
         uint8_t parity = 0;
         for (uint16_t col : cols) {
             parity ^= hard_decision_[col];

@@ -410,7 +410,7 @@ See `docs/ldpc_vectorization_analysis.md` for full analysis. Key findings:
 
 **Recommended optimization order**:
 1. Pre-compute edge mappings → 2-4× speedup ✓ (completed)
-2. Layered decoding schedule → additional 1.5-2× speedup (pending)
+2. Layered decoding schedule → additional 1.5-2× speedup ✓ (completed)
 3. Fixed-point LLR processing → additional 1.5-2× speedup (pending)
 
 **Current SIMD status**: Helper functions vectorized (AVX2/SSE), edge mappings optimized.
@@ -418,6 +418,12 @@ See `docs/ldpc_vectorization_analysis.md` for full analysis. Key findings:
 **Edge mapping optimization**: Added `row_to_col_edge` and `col_to_row_edge` tables to
 SparseMatrix, populated during `build_edge_mappings()`. Eliminates O(d²) linear searches
 in `min_sum_iteration()` with O(1) direct lookups.
+
+**Layered decoding optimization**: Replaced flooding schedule (all check nodes, then all
+variable nodes) with layered/turbo schedule. Each check node update immediately propagates
+to connected variable nodes, allowing later rows to see updated information. Converges in
+fewer iterations (typically ~50% reduction). Uses stack allocation for small-degree nodes
+(≤32) to avoid heap allocation overhead.
 
 ---
 
