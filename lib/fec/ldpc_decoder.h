@@ -60,6 +60,12 @@ struct SparseMatrix {
     // col_indices[col] = {row1, row2, row3, ...}
     std::vector<std::vector<uint16_t>> col_indices;
 
+    // Bidirectional edge index mappings (pre-computed for O(1) lookups)
+    // row_to_col_edge[row][i] = edge index in col_indices[row_indices[row][i]]
+    // col_to_row_edge[col][i] = edge index in row_indices[col_indices[col][i]]
+    std::vector<std::vector<uint16_t>> row_to_col_edge;
+    std::vector<std::vector<uint16_t>> col_to_row_edge;
+
     // Number of information bits (codeword - parity)
     size_t info_bits = 0;
 
@@ -67,6 +73,11 @@ struct SparseMatrix {
     bool is_valid() const {
         return num_rows > 0 && num_cols > 0 && row_indices.size() == num_rows &&
                col_indices.size() == num_cols && info_bits <= num_cols;
+    }
+
+    // Check if edge mappings are built
+    bool has_edge_mappings() const {
+        return !row_to_col_edge.empty() && !col_to_row_edge.empty();
     }
 
     // Get degree of a check node (row)
@@ -78,6 +89,9 @@ struct SparseMatrix {
     size_t variable_degree(size_t col) const {
         return col < col_indices.size() ? col_indices[col].size() : 0;
     }
+
+    // Build edge mappings (call after row_indices/col_indices are populated)
+    void build_edge_mappings();
 };
 
 // Decoding result

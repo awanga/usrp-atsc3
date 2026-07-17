@@ -321,6 +321,57 @@ inline void clamp_llr_array(float* values, size_t n) {
 
 }  // namespace
 
+void SparseMatrix::build_edge_mappings() {
+    if (num_rows == 0 || num_cols == 0) {
+        return;
+    }
+
+    // Allocate mapping tables
+    row_to_col_edge.resize(num_rows);
+    col_to_row_edge.resize(num_cols);
+
+    for (size_t row = 0; row < num_rows; ++row) {
+        row_to_col_edge[row].resize(row_indices[row].size());
+    }
+    for (size_t col = 0; col < num_cols; ++col) {
+        col_to_row_edge[col].resize(col_indices[col].size());
+    }
+
+    // Build row_to_col_edge: for each edge (row,col), find edge index in col's list
+    for (size_t row = 0; row < num_rows; ++row) {
+        const auto& cols = row_indices[row];
+        for (size_t edge_in_row = 0; edge_in_row < cols.size(); ++edge_in_row) {
+            uint16_t col = cols[edge_in_row];
+            const auto& rows_for_col = col_indices[col];
+
+            // Find this row in the column's row list
+            for (size_t edge_in_col = 0; edge_in_col < rows_for_col.size(); ++edge_in_col) {
+                if (rows_for_col[edge_in_col] == row) {
+                    row_to_col_edge[row][edge_in_row] = static_cast<uint16_t>(edge_in_col);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Build col_to_row_edge: for each edge (col,row), find edge index in row's list
+    for (size_t col = 0; col < num_cols; ++col) {
+        const auto& rows = col_indices[col];
+        for (size_t edge_in_col = 0; edge_in_col < rows.size(); ++edge_in_col) {
+            uint16_t row = rows[edge_in_col];
+            const auto& cols_for_row = row_indices[row];
+
+            // Find this col in the row's col list
+            for (size_t edge_in_row = 0; edge_in_row < cols_for_row.size(); ++edge_in_row) {
+                if (cols_for_row[edge_in_row] == col) {
+                    col_to_row_edge[col][edge_in_col] = static_cast<uint16_t>(edge_in_row);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 size_t get_ldpc_info_bits(bool short_codeword, config::CodeRate rate) {
     size_t idx = static_cast<size_t>(rate);
     if (idx >= sizeof(kLdpcParams) / sizeof(kLdpcParams[0])) {
@@ -420,6 +471,9 @@ void LdpcDecoder::allocate_buffers() {
 
     size_t n = H_.num_cols;
     size_t m = H_.num_rows;
+
+    // Build bidirectional edge mappings for O(1) lookups in min_sum_iteration
+    H_.build_edge_mappings();
 
     // Allocate check-to-variable messages (one per edge, grouped by row)
     llr_cn_.resize(m);
@@ -597,6 +651,7 @@ void LdpcDecoder::min_sum_iteration() {
     // For each check node, compute messages to connected variable nodes
     for (size_t row = 0; row < m; ++row) {
         const auto& cols = H_.row_indices[row];
+        const auto& edge_map = H_.row_to_col_edge[row];
         size_t degree = cols.size();
 
         if (degree == 0)
@@ -611,15 +666,8 @@ void LdpcDecoder::min_sum_iteration() {
         for (size_t idx = 0; idx < degree; ++idx) {
             size_t col = cols[idx];
 
-            // Find which edge index this is in the column's perspective
-            const auto& rows_for_col = H_.col_indices[col];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < rows_for_col.size(); ++j) {
-                if (rows_for_col[j] == row) {
-                    edge_idx = j;
-                    break;
-                }
-            }
+            // O(1) lookup using precomputed edge mapping
+            size_t edge_idx = edge_map[idx];
 
             float vn_msg = llr_vn_[col][edge_idx];
             float mag = std::abs(vn_msg);
@@ -637,8 +685,9 @@ void LdpcDecoder::min_sum_iteration() {
 
         // Compute check-to-variable messages
         for (size_t idx = 0; idx < degree; ++idx) {
-            // Min-sum approximation: message excludes this variable
-            float this_sign = sign(llr_vn_[cols[idx]][0]);  // Simplified
+            // O(1) lookup for sign computation
+            size_t edge_idx = edge_map[idx];
+            float this_sign = sign(llr_vn_[cols[idx]][edge_idx]);
             float msg_sign = sign_prod * this_sign;
 
             // Use min2 for the minimum variable, min1 for others
@@ -653,6 +702,7 @@ void LdpcDecoder::min_sum_iteration() {
     // For each variable node, compute messages to connected check nodes
     for (size_t col = 0; col < n; ++col) {
         const auto& rows = H_.col_indices[col];
+        const auto& edge_map = H_.col_to_row_edge[col];
         size_t degree = rows.size();
 
         if (degree == 0) {
@@ -665,16 +715,8 @@ void LdpcDecoder::min_sum_iteration() {
         for (size_t idx = 0; idx < degree; ++idx) {
             size_t row = rows[idx];
 
-            // Find which edge index this is in the row's perspective
-            const auto& cols_for_row = H_.row_indices[row];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < cols_for_row.size(); ++j) {
-                if (cols_for_row[j] == col) {
-                    edge_idx = j;
-                    break;
-                }
-            }
-
+            // O(1) lookup using precomputed edge mapping
+            size_t edge_idx = edge_map[idx];
             sum_cn += llr_cn_[row][edge_idx];
         }
 
@@ -685,16 +727,8 @@ void LdpcDecoder::min_sum_iteration() {
         for (size_t idx = 0; idx < degree; ++idx) {
             size_t row = rows[idx];
 
-            // Find edge index in row
-            const auto& cols_for_row = H_.row_indices[row];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < cols_for_row.size(); ++j) {
-                if (cols_for_row[j] == col) {
-                    edge_idx = j;
-                    break;
-                }
-            }
-
+            // O(1) lookup using precomputed edge mapping
+            size_t edge_idx = edge_map[idx];
             float cn_msg = llr_cn_[row][edge_idx];
             llr_vn_[col][idx] = clamp_llr(llr_app_[col] - cn_msg);
         }

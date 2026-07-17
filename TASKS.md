@@ -409,11 +409,15 @@ See `docs/ldpc_vectorization_analysis.md` for full analysis. Key findings:
 **Primary bottleneck**: O(d²) edge index lookups in `min_sum_iteration()`, not arithmetic.
 
 **Recommended optimization order**:
-1. Pre-compute edge mappings → 2-4× speedup (in progress)
-2. Layered decoding schedule → additional 1.5-2× speedup
-3. Fixed-point LLR processing → additional 1.5-2× speedup
+1. Pre-compute edge mappings → 2-4× speedup ✓ (completed)
+2. Layered decoding schedule → additional 1.5-2× speedup (pending)
+3. Fixed-point LLR processing → additional 1.5-2× speedup (pending)
 
-**Current SIMD status**: Helper functions vectorized (AVX2/SSE), core loop scalar.
+**Current SIMD status**: Helper functions vectorized (AVX2/SSE), edge mappings optimized.
+
+**Edge mapping optimization**: Added `row_to_col_edge` and `col_to_row_edge` tables to
+SparseMatrix, populated during `build_edge_mappings()`. Eliminates O(d²) linear searches
+in `min_sum_iteration()` with O(1) direct lookups.
 
 ---
 
