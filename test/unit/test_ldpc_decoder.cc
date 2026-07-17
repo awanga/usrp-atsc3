@@ -536,6 +536,138 @@ TEST(LdpcDecoderTest, MinSumScalingAffectsConvergence) {
     EXPECT_EQ(iterations_used.size(), scales.size());
 }
 
+//==============================================================================
+// Fixed-Point Equivalence Tests
+//==============================================================================
+
+TEST(LdpcDecoderTest, FixedPointDecodes) {
+    // Test that fixed-point decoder can decode a valid codeword
+    LdpcConfig config;
+    config.short_codeword = true;
+    config.code_rate = config::CodeRate::RATE_7_15;
+    config.max_iterations = 50;
+    config.use_fixed_point = true;
+
+    LdpcDecoder decoder(config);
+    size_t n = decoder.codeword_length();
+
+    // All-zero codeword with strong positive LLRs (high confidence bit=0)
+    std::vector<int8_t> llr(n, 50);
+
+    LdpcResult result = decoder.decode(llr.data());
+
+    EXPECT_TRUE(result.is_valid);
+    EXPECT_TRUE(result.converged);
+    EXPECT_EQ(result.num_unsatisfied_checks, 0u);
+
+    // All decoded bits should be 0
+    for (uint8_t bit : result.decoded_bits) {
+        EXPECT_EQ(bit, 0u);
+    }
+}
+
+TEST(LdpcDecoderTest, FixedPointWithNoise) {
+    // Test fixed-point decoder with noisy LLRs
+    LdpcConfig config;
+    config.short_codeword = true;
+    config.code_rate = config::CodeRate::RATE_7_15;
+    config.max_iterations = 50;
+    config.use_fixed_point = true;
+
+    LdpcDecoder decoder(config);
+    size_t n = decoder.codeword_length();
+
+    // All-zero codeword with moderate noise
+    std::mt19937 rng(42);
+    std::normal_distribution<float> noise(20.0f, 10.0f);  // Mean positive, some variance
+
+    std::vector<int8_t> llr(n);
+    for (size_t i = 0; i < n; ++i) {
+        float val = noise(rng);
+        llr[i] = static_cast<int8_t>(std::max(-127.0f, std::min(127.0f, val)));
+    }
+
+    LdpcResult result = decoder.decode(llr.data());
+
+    EXPECT_TRUE(result.is_valid);
+    EXPECT_TRUE(result.converged);
+}
+
+TEST(LdpcDecoderTest, FixedPointEquivalence) {
+    // Verify that fixed-point and float produce equivalent results
+    // for a given input with moderate noise
+    LdpcConfig config_float;
+    config_float.short_codeword = true;
+    config_float.code_rate = config::CodeRate::RATE_7_15;
+    config_float.max_iterations = 50;
+    config_float.use_fixed_point = false;
+
+    LdpcConfig config_fxp = config_float;
+    config_fxp.use_fixed_point = true;
+
+    LdpcDecoder decoder_float(config_float);
+    LdpcDecoder decoder_fxp(config_fxp);
+    size_t n = decoder_float.codeword_length();
+
+    // Generate LLRs for all-zero codeword with low noise
+    std::mt19937 rng(12345);
+    std::normal_distribution<float> noise(30.0f, 8.0f);
+
+    std::vector<int8_t> llr(n);
+    for (size_t i = 0; i < n; ++i) {
+        float val = noise(rng);
+        llr[i] = static_cast<int8_t>(std::max(-127.0f, std::min(127.0f, val)));
+    }
+
+    LdpcResult result_float = decoder_float.decode(llr.data());
+    LdpcResult result_fxp = decoder_fxp.decode(llr.data());
+
+    // Both should converge
+    EXPECT_TRUE(result_float.converged);
+    EXPECT_TRUE(result_fxp.converged);
+
+    // Compare decoded bits - they should match
+    ASSERT_EQ(result_float.decoded_bits.size(), result_fxp.decoded_bits.size());
+    size_t bit_errors = 0;
+    for (size_t i = 0; i < result_float.decoded_bits.size(); ++i) {
+        if (result_float.decoded_bits[i] != result_fxp.decoded_bits[i]) {
+            ++bit_errors;
+        }
+    }
+
+    // Allow up to 0.1% bit errors due to quantization differences
+    double ber = static_cast<double>(bit_errors) / result_float.decoded_bits.size();
+    EXPECT_LT(ber, 0.001) << "Bit error rate between float and fixed-point: " << ber;
+}
+
+TEST(LdpcDecoderTest, FixedPointAllCodeRates) {
+    // Test fixed-point decoder works for all code rates
+    std::vector<config::CodeRate> rates = {
+        config::CodeRate::RATE_2_15,  config::CodeRate::RATE_3_15,
+        config::CodeRate::RATE_5_15,  config::CodeRate::RATE_7_15,
+        config::CodeRate::RATE_10_15, config::CodeRate::RATE_13_15,
+    };
+
+    for (auto rate : rates) {
+        LdpcConfig config;
+        config.short_codeword = true;
+        config.code_rate = rate;
+        config.max_iterations = 50;
+        config.use_fixed_point = true;
+
+        LdpcDecoder decoder(config);
+        size_t n = decoder.codeword_length();
+
+        // Strong LLRs for all-zero codeword
+        std::vector<int8_t> llr(n, 60);
+
+        LdpcResult result = decoder.decode(llr.data());
+
+        EXPECT_TRUE(result.is_valid) << "Rate: " << static_cast<int>(rate);
+        EXPECT_TRUE(result.converged) << "Rate: " << static_cast<int>(rate);
+    }
+}
+
 }  // namespace
 }  // namespace fec
 }  // namespace atsc3

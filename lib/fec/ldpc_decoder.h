@@ -43,6 +43,10 @@ struct LdpcConfig {
 
     // Min-sum scaling factor (typically 0.75-0.9 for better performance)
     float min_sum_scale = 0.75f;
+
+    // Use fixed-point (int16_t) internal processing for RTL compatibility
+    // When enabled, uses int16_t LLRs internally with saturation arithmetic
+    bool use_fixed_point = false;
 };
 
 // Sparse parity check matrix representation
@@ -97,6 +101,7 @@ struct SparseMatrix {
 // Decoding result
 struct LdpcResult {
     // Decoded information bits (systematic bits only)
+    // cppcheck-suppress unusedStructMember ; used by callers of decode()
     std::vector<uint8_t> decoded_bits;
 
     // Number of iterations used
@@ -204,17 +209,29 @@ private:
     // Syndrome check result
     std::vector<uint8_t> syndrome_;
 
+    // Fixed-point working buffers (int16_t for internal precision)
+    // Used when config_.use_fixed_point is true
+    std::vector<std::vector<int16_t>> llr_cn_fxp_;
+    std::vector<int16_t> llr_app_fxp_;
+
     // Initialize/allocate working buffers
     void allocate_buffers();
 
     // Load parity check matrix for given code rate
     void load_parity_matrix();
 
-    // Min-sum belief propagation iteration
+    // Min-sum belief propagation iteration (floating-point)
     void min_sum_iteration();
+
+    // Min-sum belief propagation iteration (fixed-point int16_t)
+    // Uses saturation arithmetic with 0.75 scaling as (3x + 2) >> 2
+    void min_sum_iteration_fxp();
 
     // Compute hard decision from current LLRs
     void compute_hard_decision();
+
+    // Compute hard decision from fixed-point LLRs
+    void compute_hard_decision_fxp();
 
     // Check if all parity checks are satisfied
     // Returns number of unsatisfied checks

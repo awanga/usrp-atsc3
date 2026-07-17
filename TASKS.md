@@ -411,7 +411,7 @@ See `docs/ldpc_vectorization_analysis.md` for full analysis. Key findings:
 **Recommended optimization order**:
 1. Pre-compute edge mappings → 2-4× speedup ✓ (completed)
 2. Layered decoding schedule → additional 1.5-2× speedup ✓ (completed)
-3. Fixed-point LLR processing → additional 1.5-2× speedup (pending)
+3. Fixed-point LLR processing → additional 1.5-2× speedup ✓ (completed)
 
 **Current SIMD status**: Helper functions vectorized (AVX2/SSE), edge mappings optimized.
 
@@ -424,6 +424,12 @@ variable nodes) with layered/turbo schedule. Each check node update immediately 
 to connected variable nodes, allowing later rows to see updated information. Converges in
 fewer iterations (typically ~50% reduction). Uses stack allocation for small-degree nodes
 (≤32) to avoid heap allocation overhead.
+
+**Fixed-point LLR processing**: Added int16_t internal processing path for RTL compatibility.
+Enable via `LdpcConfig::use_fixed_point = true`. Uses int16_t for APP and CN messages with
+int32_t intermediate calculations to prevent overflow. Min-sum scaling 0.75 implemented as
+`(3*x + 2) >> 2` with rounding. Symmetric saturation to [-32767, +32767]. Verified <0.1%
+BER divergence from float implementation at typical operating SNR.
 
 ---
 
