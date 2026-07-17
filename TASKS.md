@@ -351,10 +351,10 @@ Power-of-2 depths (1, 3, 7, 15 → 2, 4, 8, 16 rows) use bitmask and meet target
 ### 7.4 Performance Profiling & Optimization [~]
 - [x] Profile with `perf` / `gprof`; identify bottleneck block
 - [x] LDPC: vectorize hard decision and early termination with SIMD (SSSE3/AVX2)
-- [ ] LDPC: vectorize min-sum check-node update (complex due to sparse access patterns)
+- [~] LDPC: vectorize min-sum check-node update (analysis complete, implementation in progress)
 - [x] FFT: evaluate FFTW plan modes (`FFTW_MEASURE` vs `FFTW_PATIENT`) for target host
 - [x] Constellation demapper: optimize with direct slicer LLR computation (75× speedup)
-- [ ] Multi-PLP support (currently single PLP decoded)
+- [x] Multi-PLP support: L1 config message ports for auto-configuration
 - [x] Robustness: restart-on-lock-loss without flowgraph teardown
 - [x] Memory: ASAN clean run on deinterleaver and LDPC unit tests
 - [x] Fuzzing: libFuzzer on ALP and ROUTE parsers
@@ -395,6 +395,25 @@ function calls with inline arithmetic.
 
 **Key finding**: With wisdom caching, MEASURE plan time drops from 922ms to 1.9ms.
 Recommendation: Use `FFTW_MEASURE` with wisdom persistence for production deployments.
+
+#### Multi-PLP Support Implementation
+Added L1 config auto-configuration to demapper, time deinterleaver, and FEC decoder:
+- `set_plp_id(int)` / `get_plp_id()` API on each block
+- `l1_config` message input port parses PLP-specific parameters
+- When `plp_id >= 0`, blocks extract config from L1 signaling
+- When `plp_id == -1` (default), manual parameter mode preserved
+
+#### LDPC Min-Sum Vectorization Analysis
+See `docs/ldpc_vectorization_analysis.md` for full analysis. Key findings:
+
+**Primary bottleneck**: O(d²) edge index lookups in `min_sum_iteration()`, not arithmetic.
+
+**Recommended optimization order**:
+1. Pre-compute edge mappings → 2-4× speedup (in progress)
+2. Layered decoding schedule → additional 1.5-2× speedup
+3. Fixed-point LLR processing → additional 1.5-2× speedup
+
+**Current SIMD status**: Helper functions vectorized (AVX2/SSE), core loop scalar.
 
 ---
 

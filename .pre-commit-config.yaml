@@ -23,10 +23,9 @@ repos:
 
   # clang-format for C++ files
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v17.0.6
+    rev: v14.0.6
     hooks:
       - id: clang-format
-        types_or: [c, c++]
         files: \.(cc|cpp|h|hpp)$
         exclude: ^(build/|cmake-build-|hdl/)
 
@@ -64,22 +63,24 @@ repos:
       - id: markdownlint
         args: ['--disable', 'MD013', 'MD033', 'MD041', '--']
 
-# Local hooks for project-specific checks
+  # Local hooks for project-specific checks
   - repo: local
     hooks:
       # Verify git-lfs for large files
       - id: check-lfs
         name: Check git-lfs tracking
-        entry: bash -c 'git lfs status --porcelain | grep -q "^[^-]" && echo "Error: Large files not tracked by git-lfs" && exit 1 || exit 0'
+        entry: bash -c 'git lfs status --porcelain | grep -qE "^[^-]" && echo "Large files not tracked by git-lfs" && exit 1 || exit 0'
         language: system
         pass_filenames: false
         always_run: true
 
-      # cppcheck static analysis
+      # cppcheck static analysis (C++ mode)
       - id: cppcheck
         name: cppcheck static analysis
         entry: cppcheck
         args:
+          - '--language=c++'
+          - '--std=c++17'
           - '--enable=warning,style,performance,portability'
           - '--error-exitcode=1'
           - '--suppressions-list=.cppcheck'
