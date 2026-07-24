@@ -29,7 +29,9 @@ namespace {
 const std::string kCapturesDir = std::string(SOURCE_DIR) + "/test/captures";
 
 // Sample rate for captures (from SigMF metadata)
-constexpr double kCaptureSampleRate = 12.5e6;
+// Note: ch35_20sec uses 6.25 MS/s, ch35_10sec uses 12.5 MS/s
+// We auto-detect from filename or default to 6.25 MS/s
+constexpr double kDefaultSampleRate = 6.25e6;
 
 // Helper to find an available capture file
 std::string find_capture_file() {
@@ -80,11 +82,11 @@ protected:
 
 // Test: FileSource can load real IQ capture
 TEST_F(SignalChainTest, FileSourceLoadsCapture) {
-    auto source = hal::create_file_source(capture_file_, kCaptureSampleRate, false);
+    auto source = hal::create_file_source(capture_file_, kDefaultSampleRate, false);
     ASSERT_NE(source, nullptr) << "Failed to create FileSource for " << capture_file_;
 
     EXPECT_TRUE(source->is_connected());
-    EXPECT_EQ(source->get_sample_rate(), kCaptureSampleRate);
+    EXPECT_EQ(source->get_sample_rate(), kDefaultSampleRate);
 
     // Read some samples
     std::vector<std::complex<float>> buf(10000);
@@ -107,12 +109,12 @@ TEST_F(SignalChainTest, FileSourceLoadsCapture) {
 
 // Test: Bootstrap detection on real capture
 TEST_F(SignalChainTest, BootstrapDetectionOnCapture) {
-    auto source = hal::create_file_source(capture_file_, kCaptureSampleRate, false);
+    auto source = hal::create_file_source(capture_file_, kDefaultSampleRate, false);
     ASSERT_NE(source, nullptr);
 
     // Configure bootstrap detector
     sync::BootstrapConfig config;
-    config.sample_rate_hz = kCaptureSampleRate;
+    config.sample_rate_hz = kDefaultSampleRate;
     config.threshold = 0.6;
     config.averaging_window = 64;
 
@@ -242,7 +244,7 @@ TEST_F(SignalChainTest, ObserverUnregistration) {
 
 // Test: Signal power measurement from capture
 TEST_F(SignalChainTest, SignalPowerMeasurement) {
-    auto source = hal::create_file_source(capture_file_, kCaptureSampleRate, false);
+    auto source = hal::create_file_source(capture_file_, kDefaultSampleRate, false);
     ASSERT_NE(source, nullptr);
 
     // Read a chunk of samples
