@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <mutex>
+#include <pmt/pmt.h>
 #include <vector>
 
 namespace gr {
@@ -24,6 +25,12 @@ class service_selector_impl : public service_selector {
 private:
     int service_id_;
     bool service_locked_;
+
+    // Message port for runtime service selection
+    pmt::pmt_t port_service_select_;
+
+    // Handler for service selection messages
+    void handle_service_select(pmt::pmt_t msg);
 
     // TSI values for selected service
     uint32_t video_tsi_;

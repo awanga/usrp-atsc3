@@ -17,6 +17,7 @@ service_selector_impl::service_selector_impl(int service_id)
                 gr::io_signature::make(2, 2, sizeof(uint8_t))),
       service_id_(service_id),
       service_locked_(false),
+      port_service_select_(pmt::mp("service_select")),
       video_tsi_(0),
       audio_tsi_(0),
       video_bytes_(0),
@@ -25,6 +26,10 @@ service_selector_impl::service_selector_impl(int service_id)
       packets_filtered_(0),
       current_video_toi_(0),
       current_audio_toi_(0) {
+    // Register message port for runtime service selection
+    message_port_register_in(port_service_select_);
+    set_msg_handler(port_service_select_, [this](pmt::pmt_t msg) { handle_service_select(msg); });
+
     // Pre-allocate reassembly buffers
     video_reassembly_.reserve(MAX_SEGMENT_SIZE);
     audio_reassembly_.reserve(MAX_SEGMENT_SIZE);
@@ -246,6 +251,24 @@ bool service_selector_impl::extract_lct_payload(const uint8_t* data, size_t len,
     payload_len = lct_available - lct_header_len;
 
     return payload_len > 0;
+}
+
+void service_selector_impl::handle_service_select(pmt::pmt_t msg) {
+    // Accept either a plain integer or a dict with "service_id" key
+    int new_service_id = -1;
+
+    if (pmt::is_integer(msg)) {
+        new_service_id = static_cast<int>(pmt::to_long(msg));
+    } else if (pmt::is_dict(msg)) {
+        if (pmt::dict_has_key(msg, pmt::mp("service_id"))) {
+            auto val = pmt::dict_ref(msg, pmt::mp("service_id"), pmt::from_long(-1));
+            new_service_id = static_cast<int>(pmt::to_long(val));
+        }
+    }
+
+    if (new_service_id >= 0) {
+        set_service_id(new_service_id);
+    }
 }
 
 }  // namespace atsc3

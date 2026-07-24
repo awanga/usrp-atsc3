@@ -16,6 +16,7 @@ private:
     // Message ports
     pmt::pmt_t port_l1_config_;
     pmt::pmt_t port_l1_info_;
+    pmt::pmt_t port_l1_config_out_;  // Broadcast L1 config to downstream blocks
 
     // Current L1 configuration
     ::atsc3::config::Atsc3Config config_;

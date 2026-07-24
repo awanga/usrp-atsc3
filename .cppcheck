@@ -23,3 +23,6 @@ unusedFunction
 
 # Suppress inline suppression warnings
 inlineSuppressionUnmatchedInlineSuppr
+
+# GNU Radio block impl constructors are intentionally non-explicit (called via make())
+noExplicitConstructor:blocks/*_impl.h

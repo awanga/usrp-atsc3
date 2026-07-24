@@ -16,10 +16,12 @@ l1_monitor_impl::l1_monitor_impl()
     : gr::block("atsc3_l1_monitor", gr::io_signature::make(0, 0, 0),
                 gr::io_signature::make(0, 0, 0)),
       port_l1_config_(pmt::mp("l1_config")),
-      port_l1_info_(pmt::mp("l1_info")) {
+      port_l1_info_(pmt::mp("l1_info")),
+      port_l1_config_out_(pmt::mp("l1_config_out")) {
     // Register message ports
     message_port_register_in(port_l1_config_);
     message_port_register_out(port_l1_info_);
+    message_port_register_out(port_l1_config_out_);  // Broadcast to downstream blocks
 
     // Set message handler
     set_msg_handler(port_l1_config_, [this](pmt::pmt_t msg) { handle_l1_config(msg); });
@@ -111,6 +113,10 @@ void l1_monitor_impl::handle_l1_config(pmt::pmt_t msg) {
     // Publish updated L1 info
     auto l1_info = build_l1_info_pmt();
     message_port_pub(port_l1_info_, l1_info);
+
+    // Broadcast L1 config to downstream blocks for auto-configuration
+    // Re-emit the original message so blocks can extract their specific parameters
+    message_port_pub(port_l1_config_out_, msg);
 }
 
 pmt::pmt_t l1_monitor_impl::build_l1_info_pmt() const {

@@ -9,6 +9,7 @@
 #include <deque>
 #include <framing/alp_demux.h>
 #include <memory>
+#include <pmt/pmt.h>
 #include <vector>
 
 namespace gr {
@@ -27,6 +28,11 @@ private:
     enum class PacketType { IP, TS, SIGNALING, OTHER };
     std::deque<std::vector<uint8_t>> pending_packets_;
     std::deque<PacketType> pending_types_;
+
+    // Message port names
+    pmt::pmt_t port_ip_out_;
+    pmt::pmt_t port_ts_out_;
+    pmt::pmt_t port_sig_out_;
 
     // Statistics (thread-safe)
     std::atomic<uint64_t> packet_count_{0};

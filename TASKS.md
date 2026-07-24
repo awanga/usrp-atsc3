@@ -447,19 +447,19 @@ Goal: End-to-end live reception with audiovisual playback and service selection.
 ### 8.2 Service Discovery Integration [x]
 - [x] `atsc3_route_parser` block — Wrap `lib/framing/RouteParser`
 - [x] `atsc3_service_guide` block — Display available services (JSON output)
-- [ ] ALP demux message ports for IP, TS, and signaling callbacks
-- [ ] Service selection via runtime parameter callback
+- [x] ALP demux message ports for IP, TS, and signaling callbacks
+- [x] Service selection via runtime parameter callback
 
 ### 8.3 Audiovisual Playback Integration [x]
 - [x] `atsc3_service_selector` block — Filter IP packets by selected service TSI
 - [x] `atsc3_av_player` block — Wrap `av/HevcDecoder`, `av/AudioDecoder`, `av/GstPlayer`
 - [x] GStreamer main-thread initialization (documented constraint in start())
-- [ ] End-to-end playback test with real ATSC 3.0 capture
+- [ ] End-to-end playback test with real ATSC 3.0 capture (requires valid ROUTE capture)
 
 ### 8.4 L1 Signaling Display [x]
 - [x] `atsc3_l1_monitor` block — Display L1-Pre/Post signaling info (JSON output)
-- [ ] Expose L1 config via message port for downstream blocks
-- [ ] Integrate L1 info with metrics dashboard
+- [x] Expose L1 config via message port for downstream blocks
+- [ ] Integrate L1 info with metrics dashboard (Python-only, deferred)
 
 ### 8.5 Enhanced Receiver Features [ ]
 - [ ] Service recording (dump ROUTE segments to file)

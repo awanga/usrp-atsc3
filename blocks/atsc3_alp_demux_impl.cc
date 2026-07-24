@@ -14,7 +14,15 @@ alp_demux::sptr alp_demux::make(int plp_id) {
 alp_demux_impl::alp_demux_impl(int plp_id)
     : gr::block("atsc3_alp_demux", gr::io_signature::make(1, 1, sizeof(uint8_t)),
                 gr::io_signature::make(1, 1, sizeof(uint8_t))),
-      plp_id_(plp_id) {
+      plp_id_(plp_id),
+      port_ip_out_(pmt::mp("ip_packets")),
+      port_ts_out_(pmt::mp("ts_packets")),
+      port_sig_out_(pmt::mp("sig_packets")) {
+    // Register message ports for packet outputs
+    message_port_register_out(port_ip_out_);
+    message_port_register_out(port_ts_out_);
+    message_port_register_out(port_sig_out_);
+
     reconfigure();
 
     // Maximum ALP packet size is 65535 bytes
@@ -28,14 +36,20 @@ void alp_demux_impl::reconfigure() {
     ::atsc3::framing::AlpDemuxConfig config;
     alp_demux_ = std::make_unique<::atsc3::framing::AlpDemux>(config);
 
-    // Set up callbacks to collect packets
+    // Set up callbacks to collect packets and emit via message ports
     alp_demux_->set_ip_callback([this](uint8_t plp, const uint8_t* data, size_t len) {
         if (plp_id_ < 0 || plp == static_cast<uint8_t>(plp_id_)) {
-            // Store packet for output
+            // Store packet for stream output
             pending_packets_.emplace_back(data, data + len);
             pending_types_.push_back(PacketType::IP);
             ip_packet_count_++;
             packet_count_++;
+
+            // Emit via message port (plp_id, data blob)
+            pmt::pmt_t msg = pmt::make_dict();
+            msg = pmt::dict_add(msg, pmt::mp("plp"), pmt::from_long(plp));
+            msg = pmt::dict_add(msg, pmt::mp("data"), pmt::make_blob(data, len));
+            message_port_pub(port_ip_out_, msg);
         }
     });
 
@@ -45,6 +59,12 @@ void alp_demux_impl::reconfigure() {
             pending_types_.push_back(PacketType::SIGNALING);
             sig_packet_count_++;
             packet_count_++;
+
+            // Emit via message port
+            pmt::pmt_t msg = pmt::make_dict();
+            msg = pmt::dict_add(msg, pmt::mp("plp"), pmt::from_long(plp));
+            msg = pmt::dict_add(msg, pmt::mp("data"), pmt::make_blob(data, len));
+            message_port_pub(port_sig_out_, msg);
         }
     });
 
@@ -54,6 +74,12 @@ void alp_demux_impl::reconfigure() {
             pending_types_.push_back(PacketType::TS);
             ts_packet_count_++;
             packet_count_++;
+
+            // Emit via message port
+            pmt::pmt_t msg = pmt::make_dict();
+            msg = pmt::dict_add(msg, pmt::mp("plp"), pmt::from_long(plp));
+            msg = pmt::dict_add(msg, pmt::mp("data"), pmt::make_blob(data, len));
+            message_port_pub(port_ts_out_, msg);
         }
     });
 }
