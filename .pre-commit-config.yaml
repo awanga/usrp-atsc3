@@ -66,11 +66,11 @@ repos:
   # Local hooks for project-specific checks
   - repo: local
     hooks:
-      # Verify git-lfs for large files
+      # Verify git-lfs for large files in test/captures/
       - id: check-lfs
         name: Check git-lfs tracking
-        entry: bash -c 'git lfs status --porcelain | grep -qE "^[^-]" && echo "Large files not tracked by git-lfs" && exit 1 || exit 0'
-        language: system
+        entry: scripts/check-lfs.sh
+        language: script
         pass_filenames: false
         always_run: true
 
