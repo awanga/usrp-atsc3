@@ -454,17 +454,23 @@ Goal: End-to-end live reception with audiovisual playback and service selection.
 - [x] `atsc3_service_selector` block — Filter IP packets by selected service TSI
 - [x] `atsc3_av_player` block — Wrap `av/HevcDecoder`, `av/AudioDecoder`, `av/GstPlayer`
 - [x] GStreamer main-thread initialization (documented constraint in start())
-- [ ] End-to-end playback test with real ATSC 3.0 capture (requires valid ROUTE capture)
+- [x] Valid ROUTE capture available (ch35_20sec_20260724 at 6.25 MS/s, SNR ~28 dB)
+- [ ] End-to-end playback test with real ATSC 3.0 capture (requires full demod chain)
 
 ### 8.4 L1 Signaling Display [x]
 - [x] `atsc3_l1_monitor` block — Display L1-Pre/Post signaling info (JSON output)
 - [x] Expose L1 config via message port for downstream blocks
-- [ ] Integrate L1 info with metrics dashboard (Python-only, deferred)
+- [x] Integrate L1 info with metrics dashboard (Python-only)
 
-### 8.5 Enhanced Receiver Features [ ]
-- [ ] Service recording (dump ROUTE segments to file)
-- [ ] Emergency Alert (EAS) detection and display
-- [ ] Closed caption extraction
+### 8.5 Enhanced Receiver Features [x]
+- [x] Service recording (dump ROUTE segments to file) — `apps/record_service.py`
+- [x] Emergency Alert (EAS) detection and display — `apps/eas_monitor.py`
+- [x] Closed caption extraction (IMSC1/TTML) — `apps/cc_extract.py`
+
+### 8.6 Capture & Validation Utilities [x]
+- [x] `apps/capture_iq.py` — IQ capture with real-time validation and SigMF metadata
+- [x] `apps/validate_route.py` — ROUTE/ALP validation for captured IQ files
+- [x] `apps/scanner.py` — Channel scanner for signal discovery
 
 #### Existing A/V Infrastructure (ready to wrap)
 | Component | Location | Status |
