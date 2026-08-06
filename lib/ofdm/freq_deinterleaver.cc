@@ -137,11 +137,25 @@ FreqDeinterleaver::FreqDeinterleaver(const FreqDeinterleaverConfig& config) : co
 FreqDeinterleaver::~FreqDeinterleaver() = default;
 
 void FreqDeinterleaver::compute_permutation() {
+    // Compute num_active_carriers from fft_size if not explicitly set
     size_t n = config_.num_active_carriers;
     if (n == 0) {
-        inv_permutation_.clear();
-        temp_buffer_.clear();
-        return;
+        switch (config_.fft_size) {
+            case 8192:
+                n = 6913;
+                break;
+            case 16384:
+                n = 13825;
+                break;
+            case 32768:
+                n = 27649;
+                break;
+            default:
+                inv_permutation_.clear();
+                temp_buffer_.clear();
+                return;
+        }
+        config_.num_active_carriers = n;
     }
 
     // Use bit-reversal permutation based on carrier count

@@ -26,27 +26,107 @@ using namespace atsc3::ofdm;
 // Reference Interleaver Implementations (ATSC A/322 Section 8)
 //==============================================================================
 
-// Cell interleaver permutation per ATSC A/322 Section 8.1
-// Uses bit-reversal permutation on cell indices
-size_t reference_cell_interleave(size_t input_pos, size_t num_cells) {
-    // Find number of bits needed to represent num_cells
-    size_t num_bits = 0;
-    size_t temp = num_cells - 1;
-    while (temp > 0) {
-        num_bits++;
-        temp >>= 1;
-    }
+// Find the smallest power of 2 >= n
+inline size_t next_power_of_two(size_t n) {
+    if (n == 0)
+        return 1;
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    return n + 1;
+}
 
-    // Bit-reverse the input position
-    size_t reversed = 0;
-    for (size_t i = 0; i < num_bits; i++) {
-        if (input_pos & (1u << i)) {
-            reversed |= (1u << (num_bits - 1 - i));
+// Count bits in a number
+inline size_t count_bits(size_t n) {
+    size_t count = 0;
+    while (n > 0) {
+        n >>= 1;
+        ++count;
+    }
+    return count;
+}
+
+// Bit-reversal of an n-bit number
+inline size_t bit_reverse(size_t x, size_t num_bits) {
+    size_t result = 0;
+    for (size_t i = 0; i < num_bits; ++i) {
+        result = (result << 1) | (x & 1);
+        x >>= 1;
+    }
+    return result;
+}
+
+// Build forward cell interleaver permutation per ATSC A/322 Section 8.1
+// Uses pruned bit-reversal for non-power-of-2 sizes to ensure bijection
+std::vector<size_t> build_cell_interleaver_permutation(size_t num_cells) {
+    size_t n_padded = next_power_of_two(num_cells);
+    size_t num_bits = count_bits(n_padded - 1);
+    if (num_bits == 0)
+        num_bits = 1;
+
+    std::vector<size_t> fwd_perm(num_cells);
+
+    if (num_cells == n_padded) {
+        // Power-of-2: simple bit reversal
+        for (size_t i = 0; i < num_cells; ++i) {
+            fwd_perm[i] = bit_reverse(i, num_bits);
+        }
+    } else {
+        // Non-power-of-2: build permutation by collecting valid mappings
+        std::vector<std::pair<size_t, size_t>> valid_pairs;
+        for (size_t i = 0; i < n_padded; ++i) {
+            size_t rev = bit_reverse(i, num_bits);
+            if (i < num_cells && rev < num_cells) {
+                valid_pairs.push_back({i, rev});
+            }
+        }
+
+        // Build mapping using valid pairs
+        std::vector<bool> src_used(num_cells, false);
+        std::vector<bool> dst_used(num_cells, false);
+
+        for (const auto& [src, dst] : valid_pairs) {
+            if (!src_used[src] && !dst_used[dst]) {
+                fwd_perm[src] = dst;
+                src_used[src] = true;
+                dst_used[dst] = true;
+            }
+        }
+
+        // Fill remaining with identity mapping
+        std::vector<size_t> unused_dst;
+        for (size_t i = 0; i < num_cells; ++i) {
+            if (!dst_used[i]) {
+                unused_dst.push_back(i);
+            }
+        }
+
+        size_t unused_idx = 0;
+        for (size_t i = 0; i < num_cells; ++i) {
+            if (!src_used[i]) {
+                fwd_perm[i] = unused_dst[unused_idx++];
+            }
         }
     }
 
-    // Ensure output is within bounds
-    return reversed % num_cells;
+    return fwd_perm;
+}
+
+// Cell interleaver permutation per ATSC A/322 Section 8.1
+size_t reference_cell_interleave(size_t input_pos, size_t num_cells) {
+    static std::vector<size_t> cached_perm;
+    static size_t cached_size = 0;
+
+    if (num_cells != cached_size) {
+        cached_perm = build_cell_interleaver_permutation(num_cells);
+        cached_size = num_cells;
+    }
+
+    return cached_perm[input_pos];
 }
 
 // Generate reference cell interleaved sequence

@@ -358,8 +358,10 @@ TEST_F(BootstrapVariantTest, DetectionAtVariousPositions) {
         EXPECT_TRUE(result.detected) << "Not detected with offset " << offset;
         if (result.detected) {
             // Detection should be within reasonable range of actual position
+            // Schmidl-Cox metric peaks at END of bootstrap symbol (offset + kBootstrapLength)
+            // plus some delay from falling edge detection and metric smoothing
             int64_t position_error = static_cast<int64_t>(result.sample_index) -
-                                     static_cast<int64_t>(offset + kHalfSymbol);
+                                     static_cast<int64_t>(offset + kBootstrapLength);
             EXPECT_LE(std::abs(position_error), 200)
                 << "Position error " << position_error << " at offset " << offset;
         }

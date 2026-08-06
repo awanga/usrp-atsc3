@@ -57,14 +57,17 @@ TEST(FreqDeinterleaverTest, Construct32KFFT) {
     EXPECT_EQ(deint.get_permutation().size(), 27649u);
 }
 
-TEST(FreqDeinterleaverTest, ConstructZeroCarriers) {
+TEST(FreqDeinterleaverTest, ConstructZeroCarriersAutoComputes) {
+    // When num_active_carriers = 0, it should auto-compute from fft_size
     FreqDeinterleaverConfig config;
     config.fft_size = 8192;
-    config.num_active_carriers = 0;
+    config.num_active_carriers = 0;  // Will be auto-computed
 
     FreqDeinterleaver deint(config);
 
-    EXPECT_TRUE(deint.get_permutation().empty());
+    // Should auto-compute to 6913 carriers for 8K FFT
+    EXPECT_EQ(deint.get_permutation().size(), 6913u);
+    EXPECT_EQ(deint.num_carriers(), 6913u);
 }
 
 //==============================================================================

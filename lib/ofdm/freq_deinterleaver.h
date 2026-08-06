@@ -31,7 +31,11 @@ struct FreqDeinterleaverConfig {
     size_t fft_size = 8192;
 
     // Number of active (data + pilot) carriers
-    size_t num_active_carriers = 6913;
+    // If 0 or unset, will be computed from fft_size:
+    //   8K  -> 6913 carriers
+    //   16K -> 13825 carriers
+    //   32K -> 27649 carriers
+    size_t num_active_carriers = 0;
 };
 
 // Frequency De-interleaver
