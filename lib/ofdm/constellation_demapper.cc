@@ -10,6 +10,8 @@
 
 #include "constellation_demapper.h"
 
+#include "nuc_tables.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -75,12 +77,101 @@ inline int8_t clamp_round(float val, float clip) {
     return static_cast<int8_t>(val >= 0.0f ? val + 0.5f : val - 0.5f);
 }
 
-// NUC-16 default constellation (placeholder)
-const std::vector<std::pair<float, float>> kNuc16Default = {
-    {0.2236f, 0.2236f},   {0.2236f, 0.6708f},   {0.6708f, 0.2236f},   {0.6708f, 0.6708f},
-    {-0.2236f, 0.2236f},  {-0.2236f, 0.6708f},  {-0.6708f, 0.2236f},  {-0.6708f, 0.6708f},
-    {0.2236f, -0.2236f},  {0.2236f, -0.6708f},  {0.6708f, -0.2236f},  {0.6708f, -0.6708f},
-    {-0.2236f, -0.2236f}, {-0.2236f, -0.6708f}, {-0.6708f, -0.2236f}, {-0.6708f, -0.6708f}};
+// Build 2D NUC constellation from base points table
+// Base points cover first quadrant; other quadrants derived via symmetry:
+//   Q1: original, Q2: -conj, Q3: conj, Q4: -point
+template <size_t N>
+std::vector<sample_t> build_2d_nuc(const float table[N][2]) {
+    std::vector<sample_t> points(N * 4);
+    for (size_t i = 0; i < N; ++i) {
+        float re = table[i][0];
+        float im = table[i][1];
+#ifdef ATSC3_FIXED_POINT
+        // Q1: +I, +Q
+        points[i] = sample_t(float_to_q15(re), float_to_q15(im));
+        // Q2: -I, +Q = -conj(point)
+        points[N + i] = sample_t(float_to_q15(-re), float_to_q15(im));
+        // Q3: +I, -Q = conj(point)
+        points[2 * N + i] = sample_t(float_to_q15(re), float_to_q15(-im));
+        // Q4: -I, -Q = -point
+        points[3 * N + i] = sample_t(float_to_q15(-re), float_to_q15(-im));
+#else
+        // Q1: +I, +Q
+        points[i] = sample_t(re, im);
+        // Q2: -I, +Q = -conj(point)
+        points[N + i] = sample_t(-re, im);
+        // Q3: +I, -Q = conj(point)
+        points[2 * N + i] = sample_t(re, -im);
+        // Q4: -I, -Q = -point
+        points[3 * N + i] = sample_t(-re, -im);
+#endif
+    }
+    return points;
+}
+
+// Build 1D NUC constellation from amplitude table
+// 1D NUC uses separable I/Q with amplitude tables and index remapping
+template <size_t N>
+std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t map_size) {
+    size_t side = map_size;
+    size_t total = side * side;
+    std::vector<sample_t> points(total);
+
+    for (size_t i = 0; i < total; ++i) {
+        // Extract bit-interleaved I and Q indices
+        size_t indexodd = 0;
+        size_t indexeven = 0;
+        size_t bits_per_dim = (N == 16) ? 5 : 6;  // 1024: 5 bits, 4096: 6 bits
+
+        for (int n = static_cast<int>(bits_per_dim) - 1; n >= 0; n--) {
+            indexodd |= (i & (0x1u << (n * 2))) >> n;
+        }
+        for (int n = static_cast<int>(bits_per_dim) - 1; n >= 0; n--) {
+            indexeven |= (i & (0x1u << ((n * 2) + 1))) >> (n + 1);
+        }
+
+        // Determine quadrant from MSBs
+        size_t quadrant;
+        if (N == 16) {
+            quadrant = (indexeven >> 4) | ((indexodd & 0x10) >> 3);
+        } else {
+            quadrant = (indexeven >> 5) | ((indexodd & 0x20) >> 4);
+        }
+
+        // Get amplitude from remapped index
+        float amp_i = amps[map[indexodd & (side - 1)]];
+        float amp_q = amps[map[indexeven & (side - 1)]];
+
+        // Apply quadrant signs
+        float re, im;
+        switch (quadrant & 3) {
+            case 0:
+                re = amp_i;
+                im = amp_q;
+                break;
+            case 1:
+                re = amp_i;
+                im = -amp_q;
+                break;
+            case 2:
+                re = -amp_i;
+                im = amp_q;
+                break;
+            case 3:
+            default:
+                re = -amp_i;
+                im = -amp_q;
+                break;
+        }
+
+#ifdef ATSC3_FIXED_POINT
+        points[i] = sample_t(float_to_q15(re), float_to_q15(im));
+#else
+        points[i] = sample_t(re, im);
+#endif
+    }
+    return points;
+}
 
 // Helper to build Gray-coded QAM constellation
 std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
@@ -351,39 +442,41 @@ void ConstellationDemapper::generate_uniform_constellation() {
 }
 
 void ConstellationDemapper::generate_nuc_constellation() {
-    size_t m = get_constellation_size(config_.modulation);
-    constellation_points_.resize(m);
+    size_t rate_idx = code_rate_index(static_cast<uint8_t>(config_.code_rate));
 
     switch (config_.modulation) {
         case config::Modulation::NUC_QPSK:
+            // QPSK is uniform, no code-rate dependent NUC
             constellation_points_ = build_qpsk();
             break;
+
         case config::Modulation::NUC_16:
-            if (kNuc16Default.size() != m) {
-                throw std::runtime_error("NUC-16 table size mismatch");
-            }
-            for (size_t i = 0; i < m; ++i) {
-#ifdef ATSC3_FIXED_POINT
-                constellation_points_[i] = sample_t(float_to_q15(kNuc16Default[i].first),
-                                                    float_to_q15(kNuc16Default[i].second));
-#else
-                constellation_points_[i] =
-                    sample_t(kNuc16Default[i].first, kNuc16Default[i].second);
-#endif
-            }
+            // 2D NUC: 4 base points × 4 quadrants = 16 points
+            constellation_points_ = build_2d_nuc<NUC_16_BASE_POINTS>(NUC_16_TABLE[rate_idx]);
             break;
+
         case config::Modulation::NUC_64:
-            constellation_points_ = build_uniform_qam(6, kQamNorm64);
+            // 2D NUC: 16 base points × 4 quadrants = 64 points
+            constellation_points_ = build_2d_nuc<NUC_64_BASE_POINTS>(NUC_64_TABLE[rate_idx]);
             break;
+
         case config::Modulation::NUC_256:
-            constellation_points_ = build_uniform_qam(8, kQamNorm256);
+            // 2D NUC: 64 base points × 4 quadrants = 256 points
+            constellation_points_ = build_2d_nuc<NUC_256_BASE_POINTS>(NUC_256_TABLE[rate_idx]);
             break;
+
         case config::Modulation::NUC_1024:
-            constellation_points_ = build_uniform_qam(10, kQamNorm1024);
+            // 1D NUC: 32×32 separable constellation
+            constellation_points_ =
+                build_1d_nuc<NUC_1024_AMPLITUDES>(NUC_1024_TABLE[rate_idx], NUC_1024_MAP, 32);
             break;
+
         case config::Modulation::NUC_4096:
-            constellation_points_ = build_uniform_qam(12, kQamNorm4096);
+            // 1D NUC: 64×64 separable constellation
+            constellation_points_ =
+                build_1d_nuc<NUC_4096_AMPLITUDES>(NUC_4096_TABLE[rate_idx], NUC_4096_MAP, 64);
             break;
+
         default:
             throw std::invalid_argument("Unsupported NUC modulation type");
     }
