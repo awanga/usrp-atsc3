@@ -23,6 +23,11 @@ venv/
 # GNU Radio
 .grc_gnuradio/
 *.grc.bak
+# Generated Python from GRC (keep .grc, ignore generated .py)
+apps/*.py
+
+# CTest temporary files
+Testing/
 
 # IDE and editor files
 .idea/
