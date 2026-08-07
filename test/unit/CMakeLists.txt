@@ -7,6 +7,7 @@
 set(LIB_TEST_SOURCES
     test_types.cc
     test_atsc3_config.cc
+    test_simd.cc
     test_bootstrap_detector.cc
     test_cp_removal.cc
     test_fft_engine.cc
@@ -22,6 +23,7 @@ set(LIB_TEST_SOURCES
     test_time_deinterleaver.cc
     test_freq_deinterleaver.cc
     test_ldpc_decoder.cc
+    test_ldpc_matrix.cc
     test_bch_decoder.cc
     test_l1_decoder.cc
     test_config_bus.cc
@@ -95,4 +97,45 @@ target_link_libraries(test_av_ring_buffer
 gtest_discover_tests(test_av_ring_buffer
     PROPERTIES
         LABELS "unit"
+)
+
+#------------------------------------------------------------------------------
+# Performance benchmarks (separate from unit tests)
+#------------------------------------------------------------------------------
+
+add_executable(bench_interleaver bench_interleaver.cc)
+target_link_libraries(bench_interleaver
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+# Label as "benchmark" so it's not run with regular unit tests
+gtest_discover_tests(bench_interleaver
+    PROPERTIES
+        LABELS "benchmark"
+)
+
+add_executable(bench_fftw bench_fftw.cc)
+target_link_libraries(bench_fftw
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+gtest_discover_tests(bench_fftw
+    PROPERTIES
+        LABELS "benchmark"
+)
+
+add_executable(bench_signal_chain bench_signal_chain.cc)
+target_link_libraries(bench_signal_chain
+    PRIVATE
+        atsc3_lib
+        GTest::gtest
+        GTest::gtest_main
+)
+gtest_discover_tests(bench_signal_chain
+    PROPERTIES
+        LABELS "benchmark"
 )

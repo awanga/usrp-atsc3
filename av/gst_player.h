@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // Forward declarations for GStreamer types
@@ -28,6 +29,9 @@ typedef struct _GstElement GstElement;
 typedef struct _GstBus GstBus;
 typedef struct _GstMessage GstMessage;
 typedef struct _GMainLoop GMainLoop;
+typedef struct _GMainContext GMainContext;
+typedef int gboolean;
+typedef unsigned int guint;
 
 namespace atsc3 {
 namespace av {
@@ -181,6 +185,12 @@ public:
     // Get volume
     float get_volume() const;
 
+    // Enable auto-play mode: play() is called automatically when first data arrives
+    // This avoids the race condition of calling play() before data is available
+    void set_auto_play(bool enable) {
+        auto_play_on_data_.store(enable);
+    }
+
     // Process pending messages (call periodically from main thread)
     // Returns false if error occurred
     bool process_messages();
@@ -207,6 +217,21 @@ private:
 
     // Volume
     std::atomic<float> volume_{1.0f};
+
+    // Auto-play: defer play() until first data arrives
+    std::atomic<bool> auto_play_on_data_{false};
+    std::atomic<bool> first_data_received_{false};
+
+    // GMainLoop for event processing (runs in separate thread)
+    GMainLoop* main_loop_ = nullptr;
+    GMainContext* main_context_ = nullptr;
+    std::thread event_thread_;
+    guint bus_watch_id_ = 0;
+
+    // Event loop management
+    void start_event_loop();
+    void stop_event_loop();
+    static gboolean bus_callback(GstBus* bus, GstMessage* msg, void* user_data);
 
     // Internal helpers
     bool create_pipeline();

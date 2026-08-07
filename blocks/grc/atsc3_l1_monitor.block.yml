@@ -1,0 +1,60 @@
+id: atsc3_l1_monitor
+label: ATSC 3.0 L1 Monitor
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters: []
+
+inputs:
+  - label: l1_config
+    domain: message
+
+outputs:
+  - label: l1_info
+    domain: message
+    optional: true
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.l1_monitor()
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_l1_monitor.h>']
+  declarations: 'gr::atsc3::l1_monitor::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::l1_monitor::make();'
+
+documentation: |-
+  ATSC 3.0 L1 Monitor
+
+  Monitors L1 signaling and provides human-readable output
+  for display in GRC or external applications.
+
+  Message Input:
+    l1_config: Atsc3Config updates (PMT dictionary)
+
+  Message Output:
+    l1_info: Formatted L1 information (PMT dictionary with JSON)
+
+  The l1_info output contains:
+    - valid: Configuration validity flag
+    - fft_size: FFT size in samples
+    - fft_size_str: FFT size as string ("8K", "16K", "32K")
+    - cp_samples: Cyclic prefix length in samples
+    - pilot_pattern: Pilot pattern ("PP1" - "PP8")
+    - num_plps: Number of Physical Layer Pipes
+    - plps: Vector of PLP configurations with:
+      - plp_id: PLP identifier
+      - modulation: Modulation type string
+      - code_rate: LDPC code rate string
+      - ti_mode: Time interleaving mode
+      - ti_depth: Time interleaving depth
+    - json: Complete L1 info as JSON string
+
+  Runtime methods:
+    get_fft_size(): Current FFT size
+    get_pilot_pattern(): Current pilot pattern index
+    get_num_plps(): Number of PLPs
+    is_config_valid(): Check if config is valid
+    get_l1_json(): Get L1 info as JSON string
+
+file_format: 1

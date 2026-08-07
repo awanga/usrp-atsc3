@@ -1,0 +1,56 @@
+id: atsc3_service_guide
+label: ATSC 3.0 Service Guide
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters: []
+
+inputs:
+  - label: catalog
+    domain: message
+
+outputs:
+  - label: services
+    domain: message
+    optional: true
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.service_guide()
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_service_guide.h>']
+  declarations: 'gr::atsc3::service_guide::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::service_guide::make();'
+
+documentation: |-
+  ATSC 3.0 Service Guide
+
+  Displays service catalog contents parsed from ROUTE signaling.
+  Connect to the catalog output of the ROUTE Parser block.
+
+  Message Input:
+    catalog: Service catalog updates from route_parser
+
+  Message Output:
+    services: Formatted service list (PMT dictionary with JSON)
+
+  The services output contains:
+    - service_count: Number of services
+    - services: Vector of service dictionaries with:
+      - service_id: Unique service identifier
+      - channel: Channel number string (major.minor)
+      - name: Service name
+      - video_codec: Video codec (typically "HEVC")
+      - audio_codec: Audio codec ("AC-4" or "AAC")
+      - video_resolution: Resolution string (e.g., "1920x1080")
+      - audio_channels: Number of audio channels
+      - active: Service currently active flag
+    - json: Complete service guide as JSON string
+
+  Runtime methods:
+    get_service_count(): Number of services
+    get_service_json(index): Get single service as JSON
+    get_all_services_json(): Get all services as JSON
+
+file_format: 1

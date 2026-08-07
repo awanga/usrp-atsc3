@@ -18,14 +18,12 @@ Options:
 
 import argparse
 import json
+import random
 import sys
 import threading
 import time
-from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
 from typing import Dict, Any, Optional
-import random
 
 
 class MetricsStore:
@@ -34,19 +32,26 @@ class MetricsStore:
     def __init__(self):
         self._lock = threading.Lock()
         self._metrics: Dict[str, Any] = {
-            'rssi_dbm': -120.0,
-            'snr_db': 0.0,
-            'mer_db': 0.0,
-            'evm_percent': 100.0,
-            'ber_pre_fec': 0.5,
-            'fer': 1.0,
-            'ldpc_converged': False,
-            'avg_ldpc_iterations': 50.0,
-            'signal_locked': False,
-            'frame_locked': False,
-            'timestamp_ms': 0,
-            'uptime_ms': 0,
-            'services': []
+            "rssi_dbm": -120.0,
+            "snr_db": 0.0,
+            "mer_db": 0.0,
+            "evm_percent": 100.0,
+            "ber_pre_fec": 0.5,
+            "fer": 1.0,
+            "ldpc_converged": False,
+            "avg_ldpc_iterations": 50.0,
+            "signal_locked": False,
+            "frame_locked": False,
+            "timestamp_ms": 0,
+            "uptime_ms": 0,
+            "services": [],
+            # L1 configuration fields
+            "l1_valid": False,
+            "fft_size": "N/A",
+            "cp_length": "N/A",
+            "pilot_pattern": "N/A",
+            "plp_count": 0,
+            "plps": [],  # List of {plp_id, modulation, code_rate, ti_mode}
         }
         self._start_time = time.time()
 
@@ -54,8 +59,8 @@ class MetricsStore:
         """Update metrics with new values"""
         with self._lock:
             self._metrics.update(metrics)
-            self._metrics['timestamp_ms'] = int(time.time() * 1000)
-            self._metrics['uptime_ms'] = int((time.time() - self._start_time) * 1000)
+            self._metrics["timestamp_ms"] = int(time.time() * 1000)
+            self._metrics["uptime_ms"] = int((time.time() - self._start_time) * 1000)
 
     def get(self) -> Dict[str, Any]:
         """Get current metrics snapshot"""
@@ -119,8 +124,29 @@ class SimulatedMetricsUpdater:
             iterations = max(1, min(50, 5 + int((30 - snr) * 2)))
 
             services = [
-                {'service_id': 1, 'name': 'ATSC3 Main', 'active': True},
-                {'service_id': 2, 'name': 'ATSC3 Sub-1', 'active': True},
+                {"service_id": 1, "name": "ATSC3 Main", "active": True},
+                {"service_id": 2, "name": "ATSC3 Sub-1", "active": True},
+            ]
+
+            # Simulated L1 configuration
+            l1_valid = True
+            fft_size = "8K"
+            cp_length = "1/192"
+            pilot_pattern = "PP3"
+            plp_count = 2
+            plps = [
+                {
+                    "plp_id": 0,
+                    "modulation": "64-QAM",
+                    "code_rate": "10/15",
+                    "ti_mode": "CTI",
+                },
+                {
+                    "plp_id": 1,
+                    "modulation": "QPSK",
+                    "code_rate": "6/15",
+                    "ti_mode": "None",
+                },
             ]
         else:
             snr = 0
@@ -129,19 +155,31 @@ class SimulatedMetricsUpdater:
             ber = 0.5
             iterations = 50
             services = []
+            l1_valid = False
+            fft_size = "N/A"
+            cp_length = "N/A"
+            pilot_pattern = "N/A"
+            plp_count = 0
+            plps = []
 
         metrics = {
-            'rssi_dbm': round(rssi, 1),
-            'snr_db': round(snr, 1),
-            'mer_db': round(mer, 1),
-            'evm_percent': round(evm, 2),
-            'ber_pre_fec': ber,
-            'fer': 0.0 if self._locked else 1.0,
-            'ldpc_converged': self._locked,
-            'avg_ldpc_iterations': iterations,
-            'signal_locked': self._locked,
-            'frame_locked': self._locked,
-            'services': services
+            "rssi_dbm": round(rssi, 1),
+            "snr_db": round(snr, 1),
+            "mer_db": round(mer, 1),
+            "evm_percent": round(evm, 2),
+            "ber_pre_fec": ber,
+            "fer": 0.0 if self._locked else 1.0,
+            "ldpc_converged": self._locked,
+            "avg_ldpc_iterations": iterations,
+            "signal_locked": self._locked,
+            "frame_locked": self._locked,
+            "services": services,
+            "l1_valid": l1_valid,
+            "fft_size": fft_size,
+            "cp_length": cp_length,
+            "pilot_pattern": pilot_pattern,
+            "plp_count": plp_count,
+            "plps": plps,
         }
 
         self.store.update(metrics)
@@ -149,7 +187,7 @@ class SimulatedMetricsUpdater:
 
 def generate_dashboard_html(refresh_rate: float) -> str:
     """Generate HTML dashboard page"""
-    return f'''<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -202,6 +240,42 @@ def generate_dashboard_html(refresh_rate: float) -> str:
             margin: 4px 0;
             border-radius: 4px;
         }}
+        .l1-config {{
+            margin-top: 20px;
+        }}
+        .l1-table {{
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 600px;
+            margin-top: 10px;
+        }}
+        .l1-table th, .l1-table td {{
+            border: 1px solid #444;
+            padding: 6px 10px;
+            text-align: left;
+        }}
+        .l1-table th {{
+            background-color: #2a2a4e;
+            color: #00aaff;
+        }}
+        .plp-table {{
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 800px;
+            margin-top: 10px;
+        }}
+        .plp-table th, .plp-table td {{
+            border: 1px solid #444;
+            padding: 6px 10px;
+            text-align: left;
+        }}
+        .plp-table th {{
+            background-color: #2a2a4e;
+            color: #00aaff;
+        }}
+        .plp-table tr:nth-child(even) {{
+            background-color: #222238;
+        }}
         .timestamp {{
             color: #888;
             font-size: 0.9em;
@@ -230,6 +304,21 @@ def generate_dashboard_html(refresh_rate: float) -> str:
         <tr><td>LDPC Converged</td><td id="ldpc_converged">-</td></tr>
         <tr><td>Avg LDPC Iterations</td><td id="avg_ldpc_iterations">-</td></tr>
     </table>
+
+    <div class="l1-config">
+        <h2>L1 Configuration</h2>
+        <table class="l1-table">
+            <tr><th>Parameter</th><th>Value</th></tr>
+            <tr><td>L1 Valid</td><td id="l1_valid">-</td></tr>
+            <tr><td>FFT Size</td><td id="fft_size">-</td></tr>
+            <tr><td>CP Length</td><td id="cp_length">-</td></tr>
+            <tr><td>Pilot Pattern</td><td id="pilot_pattern">-</td></tr>
+            <tr><td>PLP Count</td><td id="plp_count">-</td></tr>
+        </table>
+
+        <h3>Physical Layer Pipes (PLPs)</h3>
+        <div id="plps">No PLPs configured</div>
+    </div>
 
     <div class="services-list">
         <h2>Services</h2>
@@ -293,12 +382,41 @@ def generate_dashboard_html(refresh_rate: float) -> str:
                 document.getElementById('avg_ldpc_iterations').textContent =
                     data.avg_ldpc_iterations.toFixed(1);
 
+                // Update L1 configuration
+                document.getElementById('l1_valid').innerHTML =
+                    data.l1_valid ?
+                    '<span class="good">Valid</span>' :
+                    '<span class="bad">Invalid</span>';
+
+                document.getElementById('fft_size').textContent = data.fft_size || 'N/A';
+                document.getElementById('cp_length').textContent = data.cp_length || 'N/A';
+                document.getElementById('pilot_pattern').textContent = data.pilot_pattern || 'N/A';
+                document.getElementById('plp_count').textContent = data.plp_count || 0;
+
+                // Update PLPs
+                const plpsDiv = document.getElementById('plps');
+                if (data.plps && data.plps.length > 0) {{
+                    let h = '<table class="plp-table">';
+                    h += '<tr><th>PLP</th><th>Mod</th><th>Rate</th><th>TI</th></tr>';
+                    data.plps.forEach(p => {{
+                        h += `<tr><td>${{p.plp_id}}</td><td>${{p.modulation}}</td>`;
+                        h += `<td>${{p.code_rate}}</td><td>${{p.ti_mode}}</td></tr>`;
+                    }});
+                    h += '</table>';
+                    plpsDiv.innerHTML = h;
+                }} else {{
+                    plpsDiv.textContent = 'No PLPs configured';
+                }}
+
                 // Update services
                 const servicesDiv = document.getElementById('services');
                 if (data.services && data.services.length > 0) {{
-                    servicesDiv.innerHTML = data.services.map(s =>
-                        `<div class="service">${{s.service_id}}: ${{s.name}} (${{s.active ? 'active' : 'inactive'}})</div>`
-                    ).join('');
+                    let sh = '';
+                    data.services.forEach(s => {{
+                        const st = s.active ? 'active' : 'inactive';
+                        sh += `<div class="service">${{s.service_id}}: ${{s.name}} (${{st}})</div>`;
+                    }});
+                    servicesDiv.innerHTML = sh;
                 }} else {{
                     servicesDiv.textContent = 'No services detected';
                 }}
@@ -327,7 +445,7 @@ def generate_dashboard_html(refresh_rate: float) -> str:
     </script>
 </body>
 </html>
-'''
+"""
 
 
 class MetricsHandler(BaseHTTPRequestHandler):
@@ -345,11 +463,11 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Handle GET requests"""
-        if self.path == '/metrics':
+        if self.path == "/metrics":
             self._serve_json()
-        elif self.path == '/' or self.path == '/index.html':
+        elif self.path == "/" or self.path == "/index.html":
             self._serve_dashboard()
-        elif self.path == '/favicon.ico':
+        elif self.path == "/favicon.ico":
             self._serve_404()
         else:
             self._serve_404()
@@ -357,43 +475,49 @@ class MetricsHandler(BaseHTTPRequestHandler):
     def _serve_json(self):
         """Serve metrics as JSON"""
         content = self.metrics_store.get_json(indent=2)
-        self._send_response(200, 'application/json', content)
+        self._send_response(200, "application/json", content)
 
     def _serve_dashboard(self):
         """Serve HTML dashboard"""
         content = generate_dashboard_html(self.refresh_rate)
-        self._send_response(200, 'text/html', content)
+        self._send_response(200, "text/html", content)
 
     def _serve_404(self):
         """Serve 404 response"""
-        self._send_response(404, 'text/plain', 'Not Found')
+        self._send_response(404, "text/plain", "Not Found")
 
     def _send_response(self, code: int, content_type: str, content: str):
         """Send HTTP response"""
         self.send_response(code)
-        self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', len(content))
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", len(content))
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self.wfile.write(content.encode("utf-8"))
 
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='ATSC 3.0 Metrics HTTP Server',
+        description="ATSC 3.0 Metrics HTTP Server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
-    parser.add_argument('--host', default='0.0.0.0',
-                        help='Bind address (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=8080,
-                        help='Listen port (default: 8080)')
-    parser.add_argument('--refresh', type=float, default=1.0, metavar='SECS',
-                        help='Dashboard refresh rate (default: 1.0)')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Verbose output')
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8080, help="Listen port (default: 8080)"
+    )
+    parser.add_argument(
+        "--refresh",
+        type=float,
+        default=1.0,
+        metavar="SECS",
+        help="Dashboard refresh rate (default: 1.0)",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
 
     return parser.parse_args()
 
@@ -417,7 +541,7 @@ def main():
     # Create and start server
     server = HTTPServer((args.host, args.port), MetricsHandler)
 
-    print(f"ATSC 3.0 Metrics Server")
+    print("ATSC 3.0 Metrics Server")
     print(f"  Dashboard: http://{args.host}:{args.port}/")
     print(f"  JSON API:  http://{args.host}:{args.port}/metrics")
     print(f"  Refresh:   {args.refresh}s")
@@ -434,5 +558,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

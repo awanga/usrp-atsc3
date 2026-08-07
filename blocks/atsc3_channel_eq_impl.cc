@@ -22,6 +22,11 @@ channel_eq_impl::channel_eq_impl(int fft_size, int pilot_pattern, bool use_mmse)
       symbol_index_(0) {
     reconfigure();
     set_output_multiple(fft_size);
+
+    // Register message port
+    port_reset_in_ = pmt::intern("reset");
+    message_port_register_in(port_reset_in_);
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
 }
 
 channel_eq_impl::~channel_eq_impl() = default;
@@ -88,6 +93,25 @@ void channel_eq_impl::set_pilot_pattern(int pattern) {
 void channel_eq_impl::set_mmse(bool use_mmse) {
     use_mmse_ = use_mmse;
     reconfigure();
+}
+
+void channel_eq_impl::reset() {
+    // Reset channel estimator and equalizer state
+    if (channel_estimator_) {
+        channel_estimator_->reset();
+    }
+    if (equalizer_) {
+        equalizer_->reset();
+    }
+
+    // Reset metrics
+    snr_db_ = 0.0f;
+    mer_db_ = 0.0f;
+    symbol_index_ = 0;
+}
+
+void channel_eq_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset();
 }
 
 }  // namespace atsc3

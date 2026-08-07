@@ -1,0 +1,59 @@
+# gr-atsc3 Python bindings
+#
+# ATSC 3.0 physical-layer receiver blocks for GNU Radio
+
+"""
+gr-atsc3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
+
+This module provides the following blocks:
+- bootstrap_detect: ATSC 3.0 bootstrap detector
+- ofdm_demod: OFDM demodulator
+- channel_eq: Channel equalizer
+- constellation_demapper: QAM to soft LLR conversion
+- cell_deinterleaver: Cell de-interleaving
+- freq_deinterleaver: Frequency de-interleaving
+- time_deinterleaver: Time de-interleaving
+- fec_decode: LDPC/BCH FEC decoder
+- alp_demux: ALP demultiplexer
+- route_parser: ROUTE/DASH signaling parser
+- service_selector: Service selection and ES extraction
+- av_player: Live A/V playback via GStreamer
+- l1_monitor: L1 signaling display
+- service_guide: Service catalog display
+"""
+
+from gnuradio.atsc3.atsc3_python import (
+    bootstrap_detect,
+    ofdm_demod,
+    channel_eq,
+    constellation_demapper,
+    cell_deinterleaver,
+    freq_deinterleaver,
+    time_deinterleaver,
+    fec_decode,
+    alp_demux,
+    route_parser,
+    service_selector,
+    av_player,
+    l1_monitor,
+    service_guide,
+    PlayerState,
+)
+
+__all__ = [
+    "bootstrap_detect",
+    "ofdm_demod",
+    "channel_eq",
+    "constellation_demapper",
+    "cell_deinterleaver",
+    "freq_deinterleaver",
+    "time_deinterleaver",
+    "fec_decode",
+    "alp_demux",
+    "route_parser",
+    "service_selector",
+    "av_player",
+    "l1_monitor",
+    "service_guide",
+    "PlayerState",
+]

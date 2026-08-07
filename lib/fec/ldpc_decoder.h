@@ -43,6 +43,10 @@ struct LdpcConfig {
 
     // Min-sum scaling factor (typically 0.75-0.9 for better performance)
     float min_sum_scale = 0.75f;
+
+    // Use fixed-point (int16_t) internal processing for RTL compatibility
+    // When enabled, uses int16_t LLRs internally with saturation arithmetic
+    bool use_fixed_point = false;
 };
 
 // Sparse parity check matrix representation
@@ -60,6 +64,12 @@ struct SparseMatrix {
     // col_indices[col] = {row1, row2, row3, ...}
     std::vector<std::vector<uint16_t>> col_indices;
 
+    // Bidirectional edge index mappings (pre-computed for O(1) lookups)
+    // row_to_col_edge[row][i] = edge index in col_indices[row_indices[row][i]]
+    // col_to_row_edge[col][i] = edge index in row_indices[col_indices[col][i]]
+    std::vector<std::vector<uint16_t>> row_to_col_edge;
+    std::vector<std::vector<uint16_t>> col_to_row_edge;
+
     // Number of information bits (codeword - parity)
     size_t info_bits = 0;
 
@@ -67,6 +77,11 @@ struct SparseMatrix {
     bool is_valid() const {
         return num_rows > 0 && num_cols > 0 && row_indices.size() == num_rows &&
                col_indices.size() == num_cols && info_bits <= num_cols;
+    }
+
+    // Check if edge mappings are built
+    bool has_edge_mappings() const {
+        return !row_to_col_edge.empty() && !col_to_row_edge.empty();
     }
 
     // Get degree of a check node (row)
@@ -78,11 +93,15 @@ struct SparseMatrix {
     size_t variable_degree(size_t col) const {
         return col < col_indices.size() ? col_indices[col].size() : 0;
     }
+
+    // Build edge mappings (call after row_indices/col_indices are populated)
+    void build_edge_mappings();
 };
 
 // Decoding result
 struct LdpcResult {
     // Decoded information bits (systematic bits only)
+    // cppcheck-suppress unusedStructMember ; used by callers of decode()
     std::vector<uint8_t> decoded_bits;
 
     // Number of iterations used
@@ -190,17 +209,29 @@ private:
     // Syndrome check result
     std::vector<uint8_t> syndrome_;
 
+    // Fixed-point working buffers (int16_t for internal precision)
+    // Used when config_.use_fixed_point is true
+    std::vector<std::vector<int16_t>> llr_cn_fxp_;
+    std::vector<int16_t> llr_app_fxp_;
+
     // Initialize/allocate working buffers
     void allocate_buffers();
 
     // Load parity check matrix for given code rate
     void load_parity_matrix();
 
-    // Min-sum belief propagation iteration
+    // Min-sum belief propagation iteration (floating-point)
     void min_sum_iteration();
+
+    // Min-sum belief propagation iteration (fixed-point int16_t)
+    // Uses saturation arithmetic with 0.75 scaling as (3x + 2) >> 2
+    void min_sum_iteration_fxp();
 
     // Compute hard decision from current LLRs
     void compute_hard_decision();
+
+    // Compute hard decision from fixed-point LLRs
+    void compute_hard_decision_fxp();
 
     // Check if all parity checks are satisfied
     // Returns number of unsatisfied checks

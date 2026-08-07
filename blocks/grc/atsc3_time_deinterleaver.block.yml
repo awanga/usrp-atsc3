@@ -1,0 +1,90 @@
+id: atsc3_time_deinterleaver
+label: ATSC 3.0 Time De-interleaver
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: ti_mode
+    label: TI Mode
+    dtype: int
+    default: '1'
+    options: ['0', '1', '2']
+    option_labels: ['None', 'CTI', 'HTI']
+  - id: ti_depth
+    label: TI Depth
+    dtype: int
+    default: '0'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']
+  - id: plp_id
+    label: PLP ID
+    dtype: int
+    default: '-1'
+    hide: ${ 'part' if plp_id == -1 else 'none' }
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+  - label: reset
+    domain: message
+    optional: true
+  - label: l1_config
+    domain: message
+    optional: true
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.time_deinterleaver(${ti_mode}, ${ti_depth})
+  callbacks:
+    - set_ti_mode(${ti_mode})
+    - set_ti_depth(${ti_depth})
+    - set_plp_id(${plp_id})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_time_deinterleaver.h>']
+  declarations: 'gr::atsc3::time_deinterleaver::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::time_deinterleaver::make(${ti_mode}, ${ti_depth});'
+  callbacks:
+    - 'this->${id}->set_ti_mode(${ti_mode});'
+    - 'this->${id}->set_ti_depth(${ti_depth});'
+    - 'this->${id}->set_plp_id(${plp_id});'
+
+documentation: |-
+  ATSC 3.0 Time De-interleaver
+
+  Reverses the convolutional time interleaving applied at the transmitter
+  to improve burst error resilience across time. Uses multiple delay lines
+  with progressively longer delays.
+
+  Supports CTI (Convolutional Time Interleaving) mode per ATSC A/322 Section 8.2.
+  HTI (Hybrid Time Interleaving) is not yet implemented.
+
+  Parameters:
+    ti_mode: Time interleaving mode (0=None, 1=CTI, 2=HTI)
+    ti_depth: TI depth (0-15). depth=0 means no time interleaving
+    plp_id: PLP ID for multi-PLP operation (-1 for manual config)
+
+  Note: Initial output blocks will contain invalid data as delay lines fill.
+  Use is_settled() to check when output becomes valid.
+
+  Message Ports:
+    reset (input): Clears delay lines (output becomes invalid until settled)
+    l1_config (input): L1 signaling config for auto-configuration
+
+  API Methods:
+    is_settled(): Check if delay lines have filled
+    get_settling_blocks(): Number of blocks needed to settle
+    reset(): Clear delay lines
+
+  Input:
+    Interleaved LLR cells (int8_t)
+
+  Output:
+    De-interleaved LLR cells (int8_t)
+
+file_format: 1

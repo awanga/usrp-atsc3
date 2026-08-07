@@ -1,0 +1,53 @@
+id: atsc3_cell_deinterleaver
+label: ATSC 3.0 Cell De-interleaver
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters:
+  - id: fft_size
+    label: FFT Size
+    dtype: int
+    default: '8192'
+    options: ['8192', '16384', '32768']
+    option_labels: ['8K', '16K', '32K']
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: out
+    domain: stream
+    dtype: byte
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.cell_deinterleaver(${fft_size})
+  callbacks:
+    - set_fft_size(${fft_size})
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_cell_deinterleaver.h>']
+  declarations: 'gr::atsc3::cell_deinterleaver::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::cell_deinterleaver::make(${fft_size});'
+  callbacks:
+    - 'this->${id}->set_fft_size(${fft_size});'
+
+documentation: |-
+  ATSC 3.0 Cell De-interleaver
+
+  Reverses the cell interleaving applied at the transmitter to improve
+  burst error resilience. Uses a pseudo-random permutation based on
+  cell count per ATSC A/322 Section 8.1.
+
+  Parameters:
+    fft_size: FFT size (determines number of cells per interleaving block)
+
+  Input:
+    Interleaved LLR cells (int8_t)
+
+  Output:
+    De-interleaved LLR cells (int8_t)
+
+file_format: 1

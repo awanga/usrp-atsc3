@@ -15,7 +15,14 @@ add_subdirectory(integration)
 # Hardware tests (require physical USRP)
 add_subdirectory(hw)
 
+# Compliance tests (ATSC A/322 conformance)
+add_subdirectory(compliance)
+
+# Fuzz tests (requires clang with libFuzzer)
+add_subdirectory(fuzz)
+
 # Add label for easy test selection
 # Unit tests: ctest -L unit
 # Integration tests: ctest -L integration
+# Fuzz tests: cmake -DATSC3_BUILD_FUZZ=ON .. && make fuzz_alp_demux
 # All tests: ctest

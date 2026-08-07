@@ -1,10 +1,15 @@
 // ldpc_decoder.cc — ATSC 3.0 LDPC decoding using min-sum algorithm
 //
 // Implements belief propagation for ATSC 3.0 LDPC codes.
+// Includes SIMD-optimized paths for SSSE3 and AVX2 tiers.
 //
 // Reference: ATSC A/322 Section 9 (LDPC Coding)
 
 #include "ldpc_decoder.h"
+
+#include "ldpc_matrix.h"
+#include "simd/cpu_features.h"
+#include "simd/simd_types.h"
 
 #include <algorithm>
 #include <cmath>
@@ -57,7 +62,315 @@ const LdpcCodeParams kLdpcParams[] = {
     {56160, 14040},  // 13/15
 };
 
+// SIMD-optimized operations for min-sum algorithm
+
+#if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// AVX2: Sum 8 floats and return scalar
+inline float hsum_avx2(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    __m128 sum = _mm_add_ps(lo, hi);
+    sum = _mm_hadd_ps(sum, sum);
+    sum = _mm_hadd_ps(sum, sum);
+    return _mm_cvtss_f32(sum);
+}
+
+// AVX2: Compute absolute values for 8 floats
+inline __m256 abs_avx2(__m256 v) {
+    __m256i mask = _mm256_set1_epi32(0x7FFFFFFF);
+    return _mm256_and_ps(v, _mm256_castsi256_ps(mask));
+}
+
+// AVX2: Horizontal minimum of 8 floats
+inline float hmin_avx2(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    __m128 m = _mm_min_ps(lo, hi);
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(2, 3, 0, 1)));
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(1, 0, 3, 2)));
+    return _mm_cvtss_f32(m);
+}
+
+// AVX2: Count negative values (for sign product)
+// Returns number of negative values in vector
+inline int count_negatives_avx2(__m256 v) {
+    int mask = _mm256_movemask_ps(v);  // Sign bits as 8-bit mask
+    return __builtin_popcount(mask);
+}
+
+// AVX2: Vectorized clamp to [-127, 127]
+inline __m256 clamp_llr_avx2(__m256 v) {
+    __m256 min_val = _mm256_set1_ps(-127.0f);
+    __m256 max_val = _mm256_set1_ps(127.0f);
+    return _mm256_max_ps(min_val, _mm256_min_ps(max_val, v));
+}
+
+#endif  // ATSC3_SIMD_AVX2
+
+#if defined(ATSC3_SIMD_SSSE3) || defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
+
+// SSE: Sum 4 floats and return scalar
+inline float hsum_sse(__m128 v) {
+    __m128 shuf = _mm_movehdup_ps(v);
+    __m128 sums = _mm_add_ps(v, shuf);
+    shuf = _mm_movehl_ps(shuf, sums);
+    sums = _mm_add_ss(sums, shuf);
+    return _mm_cvtss_f32(sums);
+}
+
+// SSE: Compute absolute values for 4 floats
+inline __m128 abs_sse(__m128 v) {
+    __m128i mask = _mm_set1_epi32(0x7FFFFFFF);
+    return _mm_and_ps(v, _mm_castsi128_ps(mask));
+}
+
+// SSE: Horizontal minimum of 4 floats
+inline float hmin_sse(__m128 v) {
+    __m128 m = _mm_min_ps(v, _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 3, 0, 1)));
+    m = _mm_min_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(1, 0, 3, 2)));
+    return _mm_cvtss_f32(m);
+}
+
+// SSE: Count negative values
+inline int count_negatives_sse(__m128 v) {
+    int mask = _mm_movemask_ps(v);
+    return __builtin_popcount(mask);
+}
+
+// SSE: Vectorized clamp to [-127, 127]
+inline __m128 clamp_llr_sse(__m128 v) {
+    __m128 min_val = _mm_set1_ps(-127.0f);
+    __m128 max_val = _mm_set1_ps(127.0f);
+    return _mm_max_ps(min_val, _mm_min_ps(max_val, v));
+}
+
+#endif  // ATSC3_SIMD_SSSE3
+
+// Vectorized computation of min1, min2, and sign product for check node
+// Uses SIMD to accelerate finding two smallest magnitudes
+inline void find_two_min_and_sign(const float* values, size_t n, float& min1, float& min2,
+                                  size_t& min1_idx, float& sign_prod) {
+    min1 = std::numeric_limits<float>::max();
+    min2 = std::numeric_limits<float>::max();
+    min1_idx = 0;
+    int neg_count = 0;
+
+#if defined(ATSC3_SIMD_AVX2)
+    // AVX2 path: process 8 at a time
+    size_t i = 0;
+    if (n >= 8) {
+        __m256 vmin1 = _mm256_set1_ps(std::numeric_limits<float>::max());
+        __m256 vmin2 = _mm256_set1_ps(std::numeric_limits<float>::max());
+
+        for (; i + 8 <= n; i += 8) {
+            __m256 v = _mm256_loadu_ps(&values[i]);
+            neg_count += count_negatives_avx2(v);
+            __m256 vabs = abs_avx2(v);
+
+            // Update min2 first (anything smaller than current min1 or min2)
+            __m256 new_min2 = _mm256_min_ps(vmin2, _mm256_max_ps(vmin1, vabs));
+            // Update min1
+            __m256 new_min1 = _mm256_min_ps(vmin1, vabs);
+            vmin2 = new_min2;
+            vmin1 = new_min1;
+        }
+
+        // Horizontal reduction to find scalar min1 and min2
+        float lane_min1 = hmin_avx2(vmin1);
+        float lane_min2 = hmin_avx2(vmin2);
+        if (lane_min1 < min1) {
+            min2 = std::min(min1, lane_min2);
+            min1 = lane_min1;
+        } else if (lane_min1 < min2) {
+            min2 = lane_min1;
+        }
+        if (lane_min2 < min2 && lane_min2 > min1) {
+            min2 = lane_min2;
+        }
+    }
+
+    // Scalar cleanup and find min1_idx
+    for (; i < n; ++i) {
+        float v = values[i];
+        if (v < 0)
+            neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+
+    // Re-scan to find correct min1_idx if it was in SIMD portion
+    if (min1_idx == 0 && n > 1) {
+        for (size_t j = 0; j < n; ++j) {
+            if (std::abs(values[j]) == min1) {
+                min1_idx = j;
+                break;
+            }
+        }
+    }
+
+#elif defined(ATSC3_SIMD_SSSE3)
+    // SSE path: process 4 at a time
+    size_t i = 0;
+    if (n >= 4) {
+        __m128 vmin1 = _mm_set1_ps(std::numeric_limits<float>::max());
+        __m128 vmin2 = _mm_set1_ps(std::numeric_limits<float>::max());
+
+        for (; i + 4 <= n; i += 4) {
+            __m128 v = _mm_loadu_ps(&values[i]);
+            neg_count += count_negatives_sse(v);
+            __m128 vabs = abs_sse(v);
+
+            __m128 new_min2 = _mm_min_ps(vmin2, _mm_max_ps(vmin1, vabs));
+            __m128 new_min1 = _mm_min_ps(vmin1, vabs);
+            vmin2 = new_min2;
+            vmin1 = new_min1;
+        }
+
+        float lane_min1 = hmin_sse(vmin1);
+        float lane_min2 = hmin_sse(vmin2);
+        if (lane_min1 < min1) {
+            min2 = std::min(min1, lane_min2);
+            min1 = lane_min1;
+        } else if (lane_min1 < min2) {
+            min2 = lane_min1;
+        }
+        if (lane_min2 < min2 && lane_min2 > min1) {
+            min2 = lane_min2;
+        }
+    }
+
+    for (; i < n; ++i) {
+        float v = values[i];
+        if (v < 0)
+            neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+
+    if (min1_idx == 0 && n > 1) {
+        for (size_t j = 0; j < n; ++j) {
+            if (std::abs(values[j]) == min1) {
+                min1_idx = j;
+                break;
+            }
+        }
+    }
+
+#else
+    // Scalar path
+    for (size_t i = 0; i < n; ++i) {
+        float v = values[i];
+        if (v < 0)
+            neg_count++;
+        float mag = std::abs(v);
+        if (mag < min1) {
+            min2 = min1;
+            min1 = mag;
+            min1_idx = i;
+        } else if (mag < min2) {
+            min2 = mag;
+        }
+    }
+#endif
+
+    // Sign product is negative if odd number of negatives
+    sign_prod = (neg_count & 1) ? -1.0f : 1.0f;
+}
+
+// Vectorized clamp_llr for array
+inline void clamp_llr_array(float* values, size_t n) {
+#if defined(ATSC3_SIMD_AVX2)
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        __m256 v = _mm256_loadu_ps(&values[i]);
+        v = clamp_llr_avx2(v);
+        _mm256_storeu_ps(&values[i], v);
+    }
+    for (; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#elif defined(ATSC3_SIMD_SSSE3)
+    size_t i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m128 v = _mm_loadu_ps(&values[i]);
+        v = clamp_llr_sse(v);
+        _mm_storeu_ps(&values[i], v);
+    }
+    for (; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#else
+    for (size_t i = 0; i < n; ++i) {
+        values[i] = clamp_llr(values[i]);
+    }
+#endif
+}
+
 }  // namespace
+
+void SparseMatrix::build_edge_mappings() {
+    if (num_rows == 0 || num_cols == 0) {
+        return;
+    }
+
+    // Allocate mapping tables
+    row_to_col_edge.resize(num_rows);
+    col_to_row_edge.resize(num_cols);
+
+    for (size_t row = 0; row < num_rows; ++row) {
+        row_to_col_edge[row].resize(row_indices[row].size());
+    }
+    for (size_t col = 0; col < num_cols; ++col) {
+        col_to_row_edge[col].resize(col_indices[col].size());
+    }
+
+    // Build row_to_col_edge: for each edge (row,col), find edge index in col's list
+    for (size_t row = 0; row < num_rows; ++row) {
+        const auto& cols = row_indices[row];
+        for (size_t edge_in_row = 0; edge_in_row < cols.size(); ++edge_in_row) {
+            uint16_t col = cols[edge_in_row];
+            const auto& rows_for_col = col_indices[col];
+
+            // Find this row in the column's row list
+            for (size_t edge_in_col = 0; edge_in_col < rows_for_col.size(); ++edge_in_col) {
+                if (rows_for_col[edge_in_col] == row) {
+                    row_to_col_edge[row][edge_in_row] = static_cast<uint16_t>(edge_in_col);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Build col_to_row_edge: for each edge (col,row), find edge index in row's list
+    for (size_t col = 0; col < num_cols; ++col) {
+        const auto& rows = col_indices[col];
+        for (size_t edge_in_col = 0; edge_in_col < rows.size(); ++edge_in_col) {
+            uint16_t row = rows[edge_in_col];
+            const auto& cols_for_row = row_indices[row];
+
+            // Find this col in the row's col list
+            for (size_t edge_in_row = 0; edge_in_row < cols_for_row.size(); ++edge_in_row) {
+                if (cols_for_row[edge_in_row] == col) {
+                    col_to_row_edge[col][edge_in_col] = static_cast<uint16_t>(edge_in_row);
+                    break;
+                }
+            }
+        }
+    }
+}
 
 size_t get_ldpc_info_bits(bool short_codeword, config::CodeRate rate) {
     size_t idx = static_cast<size_t>(rate);
@@ -80,18 +393,15 @@ LdpcDecoder::LdpcDecoder(const LdpcConfig& config) : config_(config) {
 LdpcDecoder::~LdpcDecoder() = default;
 
 void LdpcDecoder::load_parity_matrix() {
-    // Get code dimensions
-    size_t codeword_len = codeword_length();
-    size_t info = get_ldpc_info_bits(config_.short_codeword, config_.code_rate);
-    size_t parity = codeword_len - info;
+    // Generate ATSC 3.0 H matrix using quasi-cyclic construction
+    LdpcMatrixGenerator generator;
+    H_ = generator.generate(config_.code_rate, config_.short_codeword);
 
-    H_.num_cols = codeword_len;
-    H_.num_rows = parity;
-    H_.info_bits = info;
-
-    // TODO: Load actual ATSC 3.0 parity matrices from JSON files
-    // For now, generate a simplified test matrix
-    generate_test_matrix();
+    // Validate the generated matrix
+    if (!generator.validate_matrix(H_, config_.code_rate, config_.short_codeword)) {
+        // Fall back to test matrix if validation fails
+        generate_test_matrix();
+    }
 }
 
 void LdpcDecoder::generate_test_matrix() {
@@ -162,6 +472,9 @@ void LdpcDecoder::allocate_buffers() {
     size_t n = H_.num_cols;
     size_t m = H_.num_rows;
 
+    // Build bidirectional edge mappings for O(1) lookups in min_sum_iteration
+    H_.build_edge_mappings();
+
     // Allocate check-to-variable messages (one per edge, grouped by row)
     llr_cn_.resize(m);
     for (size_t row = 0; row < m; ++row) {
@@ -179,6 +492,13 @@ void LdpcDecoder::allocate_buffers() {
     llr_channel_.resize(n, 0.0f);
     hard_decision_.resize(n, 0);
     syndrome_.resize(m, 0);
+
+    // Allocate fixed-point buffers (always, for runtime switching)
+    llr_cn_fxp_.resize(m);
+    for (size_t row = 0; row < m; ++row) {
+        llr_cn_fxp_[row].resize(H_.row_indices[row].size(), 0);
+    }
+    llr_app_fxp_.resize(n, 0);
 }
 
 void LdpcDecoder::set_config(const LdpcConfig& config) {
@@ -188,7 +508,7 @@ void LdpcDecoder::set_config(const LdpcConfig& config) {
 }
 
 void LdpcDecoder::reset() {
-    // Clear working buffers
+    // Clear float working buffers
     for (auto& row : llr_cn_) {
         std::fill(row.begin(), row.end(), 0.0f);
     }
@@ -199,6 +519,12 @@ void LdpcDecoder::reset() {
     std::fill(llr_channel_.begin(), llr_channel_.end(), 0.0f);
     std::fill(hard_decision_.begin(), hard_decision_.end(), 0);
     std::fill(syndrome_.begin(), syndrome_.end(), 0);
+
+    // Clear fixed-point working buffers
+    for (auto& row : llr_cn_fxp_) {
+        std::fill(row.begin(), row.end(), static_cast<int16_t>(0));
+    }
+    std::fill(llr_app_fxp_.begin(), llr_app_fxp_.end(), static_cast<int16_t>(0));
 }
 
 LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
@@ -209,53 +535,118 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
     }
 
     size_t n = H_.num_cols;
-
-    // Initialize channel LLRs from input
-    for (size_t i = 0; i < n; ++i) {
-        llr_channel_[i] = static_cast<float>(llr_in[i]);
-    }
-
-    // Initialize variable-to-check messages with channel LLRs
-    for (size_t col = 0; col < n; ++col) {
-        for (size_t idx = 0; idx < llr_vn_[col].size(); ++idx) {
-            llr_vn_[col][idx] = llr_channel_[col];
-        }
-    }
-
-    // Clear check-to-variable messages
-    for (auto& row : llr_cn_) {
-        std::fill(row.begin(), row.end(), 0.0f);
-    }
-
-    // Iterative decoding
     size_t iter;
-    for (iter = 0; iter < config_.max_iterations; ++iter) {
-        // Min-sum iteration
-        min_sum_iteration();
 
-        // Compute hard decision
-        compute_hard_decision();
-
-        // Check syndrome
-        size_t unsatisfied = check_syndrome();
-        if (unsatisfied == 0) {
-            // All parity checks satisfied
-            result.converged = true;
-            result.iterations_used = iter + 1;
-            break;
+    if (config_.use_fixed_point) {
+        // Fixed-point path: int16_t internal processing
+        // Initialize APP LLRs directly from int8_t input (widened to int16_t)
+        for (size_t i = 0; i < n; ++i) {
+            llr_app_fxp_[i] = static_cast<int16_t>(llr_in[i]);
         }
 
-        // Early termination check based on LLR magnitude
-        if (config_.early_term_threshold > 0.0f) {
-            float avg_magnitude = 0.0f;
-            for (size_t i = 0; i < n; ++i) {
-                avg_magnitude += std::abs(llr_app_[i]);
-            }
-            avg_magnitude /= static_cast<float>(n);
+        // Clear check-to-variable messages
+        for (auto& row : llr_cn_fxp_) {
+            std::fill(row.begin(), row.end(), static_cast<int16_t>(0));
+        }
 
-            if (avg_magnitude > config_.early_term_threshold) {
-                // LLRs are confident but parity failed - likely uncorrectable
+        // Iterative decoding (fixed-point)
+        for (iter = 0; iter < config_.max_iterations; ++iter) {
+            min_sum_iteration_fxp();
+            compute_hard_decision_fxp();
+
+            size_t unsatisfied = check_syndrome();
+            if (unsatisfied == 0) {
                 break;
+            }
+
+            // Early termination check (fixed-point version)
+            if (config_.early_term_threshold > 0.0f) {
+                int32_t sum_magnitude = 0;
+                for (size_t i = 0; i < n; ++i) {
+                    sum_magnitude += std::abs(llr_app_fxp_[i]);
+                }
+                float avg_magnitude = static_cast<float>(sum_magnitude) / static_cast<float>(n);
+                if (avg_magnitude > config_.early_term_threshold) {
+                    break;
+                }
+            }
+        }
+    } else {
+        // Float path (original implementation)
+        // Initialize channel LLRs and APP LLRs from input
+        for (size_t i = 0; i < n; ++i) {
+            llr_channel_[i] = static_cast<float>(llr_in[i]);
+            llr_app_[i] = llr_channel_[i];
+        }
+
+        // Clear check-to-variable messages (layered decoding updates these incrementally)
+        for (auto& row : llr_cn_) {
+            std::fill(row.begin(), row.end(), 0.0f);
+        }
+
+        // Iterative decoding
+        for (iter = 0; iter < config_.max_iterations; ++iter) {
+            // Min-sum iteration
+            min_sum_iteration();
+
+            // Compute hard decision
+            compute_hard_decision();
+
+            // Check syndrome
+            size_t unsatisfied = check_syndrome();
+            if (unsatisfied == 0) {
+                // All parity checks satisfied - exit loop early
+                break;
+            }
+
+            // Early termination check based on LLR magnitude
+            if (config_.early_term_threshold > 0.0f) {
+                float avg_magnitude = 0.0f;
+                size_t i = 0;
+
+#if defined(ATSC3_SIMD_AVX2)
+                // AVX2: Sum absolute values 8 at a time
+                __m256 sum_vec = _mm256_setzero_ps();
+                __m256i abs_mask = _mm256_set1_epi32(0x7FFFFFFF);
+                for (; i + 8 <= n; i += 8) {
+                    __m256 v = _mm256_loadu_ps(&llr_app_[i]);
+                    __m256 abs_v = _mm256_and_ps(v, _mm256_castsi256_ps(abs_mask));
+                    sum_vec = _mm256_add_ps(sum_vec, abs_v);
+                }
+                // Horizontal sum
+                __m128 lo = _mm256_castps256_ps128(sum_vec);
+                __m128 hi = _mm256_extractf128_ps(sum_vec, 1);
+                __m128 sum128 = _mm_add_ps(lo, hi);
+                sum128 = _mm_hadd_ps(sum128, sum128);
+                sum128 = _mm_hadd_ps(sum128, sum128);
+                avg_magnitude = _mm_cvtss_f32(sum128);
+#elif defined(ATSC3_SIMD_SSSE3)
+                // SSE: Sum absolute values 4 at a time
+                __m128 sum_vec = _mm_setzero_ps();
+                __m128i abs_mask = _mm_set1_epi32(0x7FFFFFFF);
+                for (; i + 4 <= n; i += 4) {
+                    __m128 v = _mm_loadu_ps(&llr_app_[i]);
+                    __m128 abs_v = _mm_and_ps(v, _mm_castsi128_ps(abs_mask));
+                    sum_vec = _mm_add_ps(sum_vec, abs_v);
+                }
+                // Horizontal sum
+                __m128 shuf = _mm_movehdup_ps(sum_vec);
+                __m128 sums = _mm_add_ps(sum_vec, shuf);
+                shuf = _mm_movehl_ps(shuf, sums);
+                sums = _mm_add_ss(sums, shuf);
+                avg_magnitude = _mm_cvtss_f32(sums);
+#endif
+
+                // Scalar cleanup
+                for (; i < n; ++i) {
+                    avg_magnitude += std::abs(llr_app_[i]);
+                }
+                avg_magnitude /= static_cast<float>(n);
+
+                if (avg_magnitude > config_.early_term_threshold) {
+                    // LLRs are confident but parity failed - likely uncorrectable
+                    break;
+                }
             }
         }
     }
@@ -294,12 +685,18 @@ int LdpcDecoder::decode(const int8_t* llr_in, uint8_t* bits_out, size_t* iterati
 }
 
 void LdpcDecoder::min_sum_iteration() {
+    // Layered decoding: process one check node at a time and immediately
+    // update connected variable nodes. This converges faster than flooding
+    // because later rows see updated information from earlier rows.
+    //
+    // For each row:
+    // 1. Compute VN→CN messages: vn_msg = APP[col] - old_CN→VN[row][idx]
+    // 2. Compute new CN→VN messages using min-sum on VN→CN
+    // 3. Update APP: APP[col] += (new_CN→VN - old_CN→VN)
+
     size_t m = H_.num_rows;
-    size_t n = H_.num_cols;
     float scale = config_.min_sum_scale;
 
-    // Check node update (horizontal step)
-    // For each check node, compute messages to connected variable nodes
     for (size_t row = 0; row < m; ++row) {
         const auto& cols = H_.row_indices[row];
         size_t degree = cols.size();
@@ -307,28 +704,28 @@ void LdpcDecoder::min_sum_iteration() {
         if (degree == 0)
             continue;
 
-        // Compute product of signs and find two smallest magnitudes
+        // Step 1: Compute VN→CN messages and find min1, min2, sign_prod
         float sign_prod = 1.0f;
-        float min1 = std::numeric_limits<float>::max();  // Smallest
-        float min2 = std::numeric_limits<float>::max();  // Second smallest
+        float min1 = std::numeric_limits<float>::max();
+        float min2 = std::numeric_limits<float>::max();
         size_t min1_idx = 0;
+
+        // Temporary storage for VN→CN messages for this row
+        // Stack allocation for small degrees, heap for large
+        float vn_msgs_stack[32];
+        std::vector<float> vn_msgs_heap;
+        float* vn_msgs =
+            (degree <= 32) ? vn_msgs_stack : (vn_msgs_heap.resize(degree), vn_msgs_heap.data());
 
         for (size_t idx = 0; idx < degree; ++idx) {
             size_t col = cols[idx];
 
-            // Find which edge index this is in the column's perspective
-            const auto& rows_for_col = H_.col_indices[col];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < rows_for_col.size(); ++j) {
-                if (rows_for_col[j] == row) {
-                    edge_idx = j;
-                    break;
-                }
-            }
+            // VN→CN = APP - old CN→VN message
+            float old_cn_msg = llr_cn_[row][idx];
+            float vn_msg = llr_app_[col] - old_cn_msg;
+            vn_msgs[idx] = vn_msg;
 
-            float vn_msg = llr_vn_[col][edge_idx];
             float mag = std::abs(vn_msg);
-
             sign_prod *= sign(vn_msg);
 
             if (mag < min1) {
@@ -340,77 +737,59 @@ void LdpcDecoder::min_sum_iteration() {
             }
         }
 
-        // Compute check-to-variable messages
+        // Step 2 & 3: Compute new CN→VN messages and update APP
         for (size_t idx = 0; idx < degree; ++idx) {
-            // Min-sum approximation: message excludes this variable
-            float this_sign = sign(llr_vn_[cols[idx]][0]);  // Simplified
+            size_t col = cols[idx];
+
+            // Compute new CN→VN message
+            float this_sign = sign(vn_msgs[idx]);
             float msg_sign = sign_prod * this_sign;
-
-            // Use min2 for the minimum variable, min1 for others
             float msg_mag = (idx == min1_idx) ? min2 : min1;
+            float new_cn_msg = clamp_llr(msg_sign * msg_mag * scale);
 
-            // Apply scaling factor for better performance
-            llr_cn_[row][idx] = clamp_llr(msg_sign * msg_mag * scale);
-        }
-    }
+            // Update APP with delta (new - old)
+            float old_cn_msg = llr_cn_[row][idx];
+            llr_app_[col] = clamp_llr(llr_app_[col] - old_cn_msg + new_cn_msg);
 
-    // Variable node update (vertical step)
-    // For each variable node, compute messages to connected check nodes
-    for (size_t col = 0; col < n; ++col) {
-        const auto& rows = H_.col_indices[col];
-        size_t degree = rows.size();
-
-        if (degree == 0) {
-            llr_app_[col] = llr_channel_[col];
-            continue;
-        }
-
-        // Sum all incoming check-to-variable messages
-        float sum_cn = 0.0f;
-        for (size_t idx = 0; idx < degree; ++idx) {
-            size_t row = rows[idx];
-
-            // Find which edge index this is in the row's perspective
-            const auto& cols_for_row = H_.row_indices[row];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < cols_for_row.size(); ++j) {
-                if (cols_for_row[j] == col) {
-                    edge_idx = j;
-                    break;
-                }
-            }
-
-            sum_cn += llr_cn_[row][edge_idx];
-        }
-
-        // A posteriori LLR
-        llr_app_[col] = clamp_llr(llr_channel_[col] + sum_cn);
-
-        // Compute variable-to-check messages (exclude incoming message from each check)
-        for (size_t idx = 0; idx < degree; ++idx) {
-            size_t row = rows[idx];
-
-            // Find edge index in row
-            const auto& cols_for_row = H_.row_indices[row];
-            size_t edge_idx = 0;
-            for (size_t j = 0; j < cols_for_row.size(); ++j) {
-                if (cols_for_row[j] == col) {
-                    edge_idx = j;
-                    break;
-                }
-            }
-
-            float cn_msg = llr_cn_[row][edge_idx];
-            llr_vn_[col][idx] = clamp_llr(llr_app_[col] - cn_msg);
+            // Store new CN→VN message
+            llr_cn_[row][idx] = new_cn_msg;
         }
     }
 }
 
 void LdpcDecoder::compute_hard_decision() {
     size_t n = H_.num_cols;
+    size_t i = 0;
 
-    for (size_t i = 0; i < n; ++i) {
-        // Negative LLR -> bit = 1, Positive LLR -> bit = 0
+#if defined(ATSC3_SIMD_AVX2)
+    // AVX2: Process 8 floats at a time
+    __m256 zero = _mm256_setzero_ps();
+    for (; i + 8 <= n; i += 8) {
+        __m256 v = _mm256_loadu_ps(&llr_app_[i]);
+        // Compare: v < 0 returns all 1s for true lanes
+        __m256 cmp = _mm256_cmp_ps(v, zero, _CMP_LT_OQ);
+        // Extract sign bits as mask
+        int mask = _mm256_movemask_ps(cmp);
+        // Store individual bits
+        for (size_t j = 0; j < 8; ++j) {
+            hard_decision_[i + j] = (mask >> j) & 1;
+        }
+    }
+#elif defined(ATSC3_SIMD_SSSE3)
+    // SSE: Process 4 floats at a time
+    __m128 zero = _mm_setzero_ps();
+    for (; i + 4 <= n; i += 4) {
+        __m128 v = _mm_loadu_ps(&llr_app_[i]);
+        __m128 cmp = _mm_cmplt_ps(v, zero);
+        int mask = _mm_movemask_ps(cmp);
+        for (size_t j = 0; j < 4; ++j) {
+            hard_decision_[i + j] = (mask >> j) & 1;
+        }
+    }
+#endif
+
+    // Scalar cleanup
+    for (; i < n; ++i) {
         hard_decision_[i] = (llr_app_[i] < 0.0f) ? 1 : 0;
     }
 }
@@ -425,6 +804,7 @@ size_t LdpcDecoder::check_syndrome() {
         // XOR all bits in this check
         uint8_t parity = 0;
         for (uint16_t col : cols) {
+            // cppcheck-suppress useStlAlgorithm
             parity ^= hard_decision_[col];
         }
 
@@ -435,6 +815,105 @@ size_t LdpcDecoder::check_syndrome() {
     }
 
     return unsatisfied;
+}
+
+// Fixed-point saturation helper: clamp int32_t to int16_t range
+static inline int16_t saturate_i16(int32_t x) {
+    if (x > 32767)
+        return 32767;
+    if (x < -32767)
+        return -32767;  // Use symmetric range for RTL compatibility
+    return static_cast<int16_t>(x);
+}
+
+// Fixed-point sign: returns +1 for non-negative, -1 for negative
+static inline int16_t sign_fxp(int16_t x) {
+    return (x >= 0) ? 1 : -1;
+}
+
+void LdpcDecoder::min_sum_iteration_fxp() {
+    // Fixed-point layered min-sum decoding using int16_t LLRs
+    // Scaling factor 0.75 = 3/4, implemented as (3*x + 2) >> 2 with rounding
+    //
+    // For each check node row:
+    // 1. Compute VN→CN messages: vn_msg = APP[col] - old_CN→VN[row][idx]
+    // 2. Compute new CN→VN messages using min-sum
+    // 3. Update APP: APP[col] += (new_CN→VN - old_CN→VN)
+
+    size_t m = H_.num_rows;
+
+    for (size_t row = 0; row < m; ++row) {
+        const auto& cols = H_.row_indices[row];
+        size_t degree = cols.size();
+
+        if (degree == 0)
+            continue;
+
+        // Step 1: Compute VN→CN messages and find min1, min2, sign_prod
+        int16_t sign_prod = 1;
+        int16_t min1 = 32767;
+        int16_t min2 = 32767;
+        size_t min1_idx = 0;
+
+        // Temporary storage for VN→CN messages
+        int16_t vn_msgs_stack[32];
+        std::vector<int16_t> vn_msgs_heap;
+        int16_t* vn_msgs =
+            (degree <= 32) ? vn_msgs_stack : (vn_msgs_heap.resize(degree), vn_msgs_heap.data());
+
+        for (size_t idx = 0; idx < degree; ++idx) {
+            size_t col = cols[idx];
+
+            // VN→CN = APP - old CN→VN message (int32_t intermediate to avoid overflow)
+            int32_t old_cn_msg = llr_cn_fxp_[row][idx];
+            int32_t vn_msg_32 = static_cast<int32_t>(llr_app_fxp_[col]) - old_cn_msg;
+            int16_t vn_msg = saturate_i16(vn_msg_32);
+            vn_msgs[idx] = vn_msg;
+
+            int16_t mag = (vn_msg >= 0) ? vn_msg : static_cast<int16_t>(-vn_msg);
+            sign_prod *= sign_fxp(vn_msg);
+
+            if (mag < min1) {
+                min2 = min1;
+                min1 = mag;
+                min1_idx = idx;
+            } else if (mag < min2) {
+                min2 = mag;
+            }
+        }
+
+        // Step 2 & 3: Compute new CN→VN messages and update APP
+        for (size_t idx = 0; idx < degree; ++idx) {
+            size_t col = cols[idx];
+
+            // Compute new CN→VN message with min-sum scaling (0.75 = 3/4)
+            int16_t this_sign = sign_fxp(vn_msgs[idx]);
+            int16_t msg_sign = static_cast<int16_t>(sign_prod * this_sign);
+            int16_t msg_mag = (idx == min1_idx) ? min2 : min1;
+
+            // Apply 0.75 scaling: (3*x + 2) >> 2 with rounding
+            int32_t scaled = (static_cast<int32_t>(msg_mag) * 3 + 2) >> 2;
+            int16_t new_cn_msg = saturate_i16(msg_sign * scaled);
+
+            // Update APP with delta (new - old)
+            int32_t old_cn_msg = llr_cn_fxp_[row][idx];
+            int32_t app_update = static_cast<int32_t>(llr_app_fxp_[col]) - old_cn_msg + new_cn_msg;
+            llr_app_fxp_[col] = saturate_i16(app_update);
+
+            // Store new CN→VN message
+            llr_cn_fxp_[row][idx] = new_cn_msg;
+        }
+    }
+}
+
+void LdpcDecoder::compute_hard_decision_fxp() {
+    size_t n = H_.num_cols;
+
+    // Simple scalar implementation for fixed-point
+    // Negative LLR = bit 1, Non-negative LLR = bit 0
+    for (size_t i = 0; i < n; ++i) {
+        hard_decision_[i] = (llr_app_fxp_[i] < 0) ? 1 : 0;
+    }
 }
 
 }  // namespace fec

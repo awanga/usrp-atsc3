@@ -16,6 +16,8 @@
 //
 // Reference: ATSC A/322 Section 8.3 (Frequency Interleaving)
 
+#include "simd/simd_types.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -29,7 +31,11 @@ struct FreqDeinterleaverConfig {
     size_t fft_size = 8192;
 
     // Number of active (data + pilot) carriers
-    size_t num_active_carriers = 6913;
+    // If 0 or unset, will be computed from fft_size:
+    //   8K  -> 6913 carriers
+    //   16K -> 13825 carriers
+    //   32K -> 27649 carriers
+    size_t num_active_carriers = 0;
 };
 
 // Frequency De-interleaver
@@ -73,7 +79,7 @@ public:
     void set_config(const FreqDeinterleaverConfig& config);
 
     // Get the inverse permutation table
-    const std::vector<size_t>& get_permutation() const {
+    const simd::aligned_vector<size_t>& get_permutation() const {
         return inv_permutation_;
     }
 
@@ -89,10 +95,12 @@ private:
     FreqDeinterleaverConfig config_;
 
     // Inverse permutation: inv_permutation_[i] = source index for output position i
-    std::vector<size_t> inv_permutation_;
+    // Cache-line aligned for optimal memory access
+    simd::aligned_vector<size_t> inv_permutation_;
 
     // Temporary buffer for in-place de-interleaving
-    std::vector<int8_t> temp_buffer_;
+    // Cache-line aligned for SIMD operations
+    simd::aligned_vector<int8_t> temp_buffer_;
 
     // Compute the permutation for given configuration
     void compute_permutation();

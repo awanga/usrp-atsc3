@@ -15,12 +15,22 @@ ofdm_demod_impl::ofdm_demod_impl(int fft_size, int cp_length)
     : gr::sync_block("atsc3_ofdm_demod", gr::io_signature::make(1, 1, sizeof(gr_complex)),
                      gr::io_signature::make(1, 1, sizeof(gr_complex))),
       fft_size_(fft_size),
-      cp_length_(cp_length) {
+      cp_length_(cp_length),
+      state_name_("SEARCHING") {
     reconfigure();
 
     // Input: fft_size + cp_length samples per symbol
     // Output: fft_size samples per symbol
     set_output_multiple(fft_size);
+
+    // Register message ports
+    port_reset_in_ = pmt::intern("reset");
+    port_lock_status_out_ = pmt::intern("lock_status");
+
+    message_port_register_in(port_reset_in_);
+    message_port_register_out(port_lock_status_out_);
+
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
 }
 
 ofdm_demod_impl::~ofdm_demod_impl() = default;
@@ -124,6 +134,36 @@ void ofdm_demod_impl::set_fft_size(int fft_size) {
 void ofdm_demod_impl::set_cp_length(int cp_length) {
     cp_length_ = cp_length;
     reconfigure();
+}
+
+void ofdm_demod_impl::reset() {
+    // Reset CP removal state
+    if (cp_removal_) {
+        cp_removal_->reset();
+    }
+
+    // Clear buffers
+    std::fill(fft_input_.begin(), fft_input_.end(), ::atsc3::sample_t{0, 0});
+    std::fill(fft_output_.begin(), fft_output_.end(), ::atsc3::sample_t{0, 0});
+    symbol_ready_ = false;
+
+    // Reset lock state
+    locked_ = false;
+    prev_locked_ = false;
+    confidence_ = 0.0f;
+    state_name_ = "SEARCHING";
+}
+
+void ofdm_demod_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset();
+}
+
+void ofdm_demod_impl::emit_lock_status() {
+    pmt::pmt_t msg = pmt::make_dict();
+    msg = pmt::dict_add(msg, pmt::intern("locked"), pmt::from_bool(locked_));
+    msg = pmt::dict_add(msg, pmt::intern("state"), pmt::intern(state_name_));
+    msg = pmt::dict_add(msg, pmt::intern("confidence"), pmt::from_float(confidence_));
+    message_port_pub(port_lock_status_out_, msg);
 }
 
 }  // namespace atsc3

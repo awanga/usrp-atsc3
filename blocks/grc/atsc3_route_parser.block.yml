@@ -1,0 +1,60 @@
+id: atsc3_route_parser
+label: ATSC 3.0 ROUTE Parser
+category: '[ATSC 3.0]'
+flags: [python, cpp]
+
+parameters: []
+
+inputs:
+  - label: in
+    domain: stream
+    dtype: byte
+
+outputs:
+  - label: catalog
+    domain: message
+    optional: true
+  - label: segment
+    domain: message
+    optional: true
+
+templates:
+  imports: from gnuradio import atsc3
+  make: atsc3.route_parser()
+
+cpp_templates:
+  includes: ['#include <gnuradio/atsc3/atsc3_route_parser.h>']
+  declarations: 'gr::atsc3::route_parser::sptr ${id};'
+  make: 'this->${id} = gr::atsc3::route_parser::make();'
+
+documentation: |-
+  ATSC 3.0 ROUTE Parser
+
+  Parses ROUTE (Real-time Object delivery over Unidirectional Transport)
+  signaling to discover broadcast services and resolve content URLs.
+
+  Parses:
+    - SLT (Service List Table): Available services
+    - S-TSID: Transport session descriptions
+    - MPD: DASH manifest for A/V segments
+
+  Input:
+    Byte stream from ALP demux signaling output
+
+  Message Outputs:
+    catalog: Service catalog updates (PMT dictionary)
+    segment: DASH segment notifications (PMT dictionary)
+
+  The catalog message contains:
+    - service_count: Number of services
+    - services: Vector of service dictionaries with service_id,
+                major_channel, minor_channel, name
+
+  The segment message contains:
+    - service_id: Service this segment belongs to
+    - toi: Transport Object Identifier
+    - url: Segment URL
+    - byte_offset/byte_length: Position in object
+    - presentation_time/duration: Timing info
+
+file_format: 1

@@ -18,6 +18,7 @@
 // Reference: ATSC A/322 Section 8.2 (Time Interleaving)
 
 #include "config/atsc3_config.h"
+#include "simd/simd_types.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -112,12 +113,20 @@ private:
     // Number of rows (delay lines)
     size_t num_rows_;
 
+    // Bitmask for row selection (num_rows_ - 1 if power-of-2, else 0)
+    size_t row_mask_;
+
     // Delay lines: delay_lines_[row][position]
     // Each row has a different length based on its delay
-    std::vector<std::vector<int8_t>> delay_lines_;
+    // Sizes are padded to power-of-2 for efficient circular buffer wrap
+    // Inner vectors are cache-line aligned for optimal access
+    std::vector<simd::aligned_vector<int8_t>> delay_lines_;
+
+    // Bitmasks for circular buffer wrap (size - 1 for power-of-2 sizes)
+    simd::aligned_vector<size_t> delay_masks_;
 
     // Write position for each delay line (circular buffer)
-    std::vector<size_t> write_pos_;
+    simd::aligned_vector<size_t> write_pos_;
 
     // Number of blocks needed for settling
     size_t settling_blocks_;
@@ -128,7 +137,10 @@ private:
     // Initialize delay lines based on config
     void init_delay_lines();
 
-    // Process a single cell through the appropriate delay line
+    // Process cells in batched row-order for cache efficiency
+    void process_batched(const int8_t* input, int8_t* output, size_t num_cells);
+
+    // Process a single cell through the appropriate delay line (legacy)
     int8_t process_cell(int8_t input_cell, size_t cell_index);
 };
 

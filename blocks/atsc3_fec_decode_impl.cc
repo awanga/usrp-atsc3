@@ -19,8 +19,18 @@ fec_decode_impl::fec_decode_impl(int code_rate, int codeword_length, int max_ite
       max_iterations_(max_iterations),
       total_codewords_(0),
       failed_codewords_(0),
-      iteration_sum_(0.0) {
+      iteration_sum_(0.0),
+      plp_id_(-1),
+      port_reset_in_(pmt::intern("reset")),
+      port_l1_config_(pmt::intern("l1_config")) {
     reconfigure();
+
+    // Register message ports
+    message_port_register_in(port_reset_in_);
+    set_msg_handler(port_reset_in_, [this](pmt::pmt_t msg) { this->handle_reset_msg(msg); });
+
+    message_port_register_in(port_l1_config_);
+    set_msg_handler(port_l1_config_, [this](pmt::pmt_t msg) { this->handle_l1_config(msg); });
 }
 
 fec_decode_impl::~fec_decode_impl() = default;
@@ -118,6 +128,98 @@ void fec_decode_impl::set_code_rate(int code_rate) {
 void fec_decode_impl::set_codeword_length(int length) {
     codeword_length_ = length;
     reconfigure();
+}
+
+void fec_decode_impl::reset_stats() {
+    // Reset LDPC decoder internal state
+    if (ldpc_decoder_) {
+        ldpc_decoder_->reset();
+    }
+
+    // Reset statistics
+    total_codewords_ = 0;
+    failed_codewords_ = 0;
+    iteration_sum_ = 0.0;
+    avg_iterations_.store(0.0f);
+    fer_.store(0.0f);
+    last_converged_.store(false);
+}
+
+void fec_decode_impl::handle_reset_msg(pmt::pmt_t /*msg*/) {
+    reset_stats();
+}
+
+void fec_decode_impl::set_plp_id(int plp_id) {
+    plp_id_ = plp_id;
+}
+
+void fec_decode_impl::handle_l1_config(pmt::pmt_t msg) {
+    // Skip auto-configuration if manual mode (plp_id_ == -1)
+    if (plp_id_ < 0) {
+        return;
+    }
+
+    if (!pmt::is_dict(msg)) {
+        return;
+    }
+
+    pmt::pmt_t plps_key = pmt::intern("plps");
+    if (!pmt::dict_has_key(msg, plps_key)) {
+        return;
+    }
+
+    pmt::pmt_t plps = pmt::dict_ref(msg, plps_key, pmt::PMT_NIL);
+    if (!pmt::is_vector(plps)) {
+        return;
+    }
+
+    // Search for our PLP ID in the configuration
+    size_t num_plps = pmt::length(plps);
+    for (size_t i = 0; i < num_plps; ++i) {
+        pmt::pmt_t plp_config = pmt::vector_ref(plps, i);
+        if (!pmt::is_dict(plp_config)) {
+            continue;
+        }
+
+        pmt::pmt_t plp_id_key = pmt::intern("plp_id");
+        if (!pmt::dict_has_key(plp_config, plp_id_key)) {
+            continue;
+        }
+
+        int config_plp_id = pmt::to_long(pmt::dict_ref(plp_config, plp_id_key, pmt::from_long(-1)));
+        if (config_plp_id != plp_id_) {
+            continue;
+        }
+
+        // Found our PLP - extract code rate and codeword length
+        pmt::pmt_t cr_key = pmt::intern("code_rate");
+        pmt::pmt_t cw_key = pmt::intern("codeword_length");
+
+        bool need_reconfigure = false;
+
+        if (pmt::dict_has_key(plp_config, cr_key)) {
+            int new_cr =
+                pmt::to_long(pmt::dict_ref(plp_config, cr_key, pmt::from_long(code_rate_)));
+            if (new_cr != code_rate_) {
+                code_rate_ = new_cr;
+                need_reconfigure = true;
+            }
+        }
+
+        if (pmt::dict_has_key(plp_config, cw_key)) {
+            int new_cw =
+                pmt::to_long(pmt::dict_ref(plp_config, cw_key, pmt::from_long(codeword_length_)));
+            if (new_cw != codeword_length_) {
+                codeword_length_ = new_cw;
+                need_reconfigure = true;
+            }
+        }
+
+        if (need_reconfigure) {
+            reconfigure();
+        }
+        break;
+    }
 }
 
 }  // namespace atsc3

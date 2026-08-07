@@ -16,6 +16,8 @@
 //
 // Reference: ATSC A/322 Section 8.1 (Cell Interleaving)
 
+#include "simd/simd_types.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -68,7 +70,7 @@ public:
     void set_config(const CellDeinterleaverConfig& config);
 
     // Get the inverse permutation table
-    const std::vector<size_t>& get_permutation() const {
+    const simd::aligned_vector<size_t>& get_permutation() const {
         return inv_permutation_;
     }
 
@@ -79,10 +81,12 @@ private:
     CellDeinterleaverConfig config_;
 
     // Inverse permutation: inv_permutation_[i] = source index for output position i
-    std::vector<size_t> inv_permutation_;
+    // Cache-line aligned for optimal memory access
+    simd::aligned_vector<size_t> inv_permutation_;
 
     // Temporary buffer for in-place de-interleaving
-    std::vector<int8_t> temp_buffer_;
+    // Cache-line aligned for SIMD operations
+    simd::aligned_vector<int8_t> temp_buffer_;
 
     // Compute the inverse permutation for given cell count
     void compute_permutation(size_t num_cells);
