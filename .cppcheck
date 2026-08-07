@@ -26,3 +26,6 @@ inlineSuppressionUnmatchedInlineSuppr
 
 # GNU Radio block impl constructors are intentionally non-explicit (called via make())
 noExplicitConstructor:blocks/*_impl.h
+
+# Suppress style suggestions that don't improve code clarity
+useStlAlgorithm:lib/framing/route_parser.cc

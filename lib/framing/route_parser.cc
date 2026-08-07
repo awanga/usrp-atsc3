@@ -285,7 +285,7 @@ bool RouteParser::parse_slt(const uint8_t* data, size_t len) {
         // Look for BroadcastSvcSignaling element with ROUTE info
         const char* bss = find_tag(service_start, "BroadcastSvcSignaling");
         if (bss != nullptr) {
-            std::string dest_ip = get_xml_attr(bss, "slsDestinationIpAddress");
+            // Post-MVP: Also parse slsDestinationIpAddress for full ROUTE support
             std::string dest_port = get_xml_attr(bss, "slsDestinationUdpPort");
             std::string src_ip = get_xml_attr(bss, "slsSourceIpAddress");
 
@@ -325,7 +325,7 @@ bool RouteParser::parse_stsid(const uint8_t* data, size_t len, uint16_t service_
     // S-TSID parsing is more complex - for now just track receipt
     stats_.stsid_received++;
 
-    // TODO: Full S-TSID parsing for component TSI mapping
+    // Post-MVP: Full S-TSID parsing for component TSI mapping
     (void)service_id;
 
     return true;
@@ -362,7 +362,7 @@ bool RouteParser::parse_mpd(const uint8_t* data, size_t len, uint16_t service_id
         }
     }
 
-    // TODO: Full MPD parsing for segment templates and timelines
+    // Post-MVP: Full MPD parsing for segment templates and timelines
     mpd.valid = true;
     stats_.mpd_received++;
 

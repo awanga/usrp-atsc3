@@ -123,7 +123,7 @@ void L1Decoder::add_observer(ConfigObserver observer) {
 }
 
 void L1Decoder::notify_observers(const config::Atsc3Config& config) {
-    for (auto& observer : observers_) {
+    for (const auto& observer : observers_) {
         observer(config);
     }
 }
@@ -188,7 +188,7 @@ bool L1Decoder::fec_decode(const int8_t* llr_in, size_t num_bits, bool short_ldp
     // For L1 signaling, we use simplified FEC:
     // 1. Hard decision from LLRs (simplified - real impl uses LDPC+BCH)
     // 2. This is a simplified implementation for testing
-    // TODO: Integrate full LDPC+BCH decoding for production
+    // Post-MVP: Integrate full LDPC+BCH decoding for L1 signaling (currently uses hard decision)
 
     // Parameters reserved for full FEC implementation
     (void)short_ldpc;
@@ -202,7 +202,7 @@ bool L1Decoder::fec_decode(const int8_t* llr_in, size_t num_bits, bool short_ldp
         size_t bit_idx = 7 - (i % 8);
 
         // Hard decision: LLR > 0 means bit 0, LLR < 0 means bit 1
-        if (i < num_bits && llr_in[i] < 0) {
+        if (llr_in[i] < 0) {
             out[byte_idx] |= (1 << bit_idx);
         } else {
             out[byte_idx] &= ~(1 << bit_idx);
@@ -301,11 +301,11 @@ config::PlpConfig L1Decoder::unpack_plp_config(const uint8_t* bits, size_t& bit_
     bit_offset += 10;
 
     // Skip reserved/other fields to match PLP_RECORD_BITS
-    size_t fields_consumed = PLP_ID_BITS + PLP_TYPE_BITS + PLP_MOD_BITS + PLP_CODE_RATE_BITS +
-                             PLP_TI_MODE_BITS + PLP_FEC_BLOCK_BITS + 1 + 4 + 10;
-    if (fields_consumed < PLP_RECORD_BITS) {
-        bit_offset += (PLP_RECORD_BITS - fields_consumed);
-    }
+    constexpr size_t fields_consumed = PLP_ID_BITS + PLP_TYPE_BITS + PLP_MOD_BITS +
+                                       PLP_CODE_RATE_BITS + PLP_TI_MODE_BITS + PLP_FEC_BLOCK_BITS +
+                                       1 + 4 + 10;
+    static_assert(fields_consumed < PLP_RECORD_BITS, "PLP field bits must fit in record");
+    bit_offset += (PLP_RECORD_BITS - fields_consumed);
 
     plp.valid = true;
     return plp;
