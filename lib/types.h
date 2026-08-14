@@ -23,8 +23,19 @@ constexpr int32_t ATSC3_Q_SCALE = 1 << ATSC3_Q_FRACTIONAL_BITS;  // 32768
 constexpr float ATSC3_Q_SCALE_INV = 1.0f / static_cast<float>(ATSC3_Q_SCALE);
 
 // Convert float to Q1.15
+// Saturates to [-32767, 32767] (symmetric) rather than wrapping: an
+// unclamped cast is undefined behavior for any x whose scaled value
+// falls outside int16_t range (e.g. float_to_q15(1.0f) scales to
+// exactly 32768).
 inline int16_t float_to_q15(float x) {
-    return static_cast<int16_t>(x * ATSC3_Q_SCALE);
+    float scaled = x * static_cast<float>(ATSC3_Q_SCALE);
+    if (scaled > 32767.0f) {
+        return 32767;
+    }
+    if (scaled < -32767.0f) {
+        return -32767;
+    }
+    return static_cast<int16_t>(scaled);
 }
 
 // Convert Q1.15 to float

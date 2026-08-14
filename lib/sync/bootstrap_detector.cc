@@ -18,7 +18,7 @@ BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
       delay_idx_(0),
       power_buffer_(kHalfSymbol, 0.0),
       power_idx_(0),
-      metric_history_(config.averaging_window, 0.0),
+      metric_history_(std::max<size_t>(1, config.averaging_window), 0.0),
       metric_idx_(0),
       metric_sum_(0.0),
       sample_count_(0),
@@ -49,9 +49,12 @@ void BootstrapDetector::reset() {
 void BootstrapDetector::set_config(const BootstrapConfig& config) {
     config_ = config;
 
-    // Resize metric history if needed
-    if (metric_history_.size() != config.averaging_window) {
-        metric_history_.resize(config.averaging_window, 0.0);
+    // Resize metric history if needed. averaging_window is clamped to a
+    // minimum of 1: a size-0 metric_history_ makes check_detection()'s
+    // modulo-by-size and vector index into it undefined behavior.
+    size_t window = std::max<size_t>(1, config.averaging_window);
+    if (metric_history_.size() != window) {
+        metric_history_.resize(window, 0.0);
         metric_idx_ = 0;
         metric_sum_ = 0.0;
     }

@@ -67,9 +67,17 @@ public:
 
     // Interpolate a single sample at fractional delay mu ∈ [0, 1)
     // buf: circular buffer of at least taps_per_phase samples
-    // buf_idx: index of current sample in buffer
+    // buf_idx: index of current sample in buf's own circular addressing
     // mu: fractional delay (0 = no delay, approaching 1 = almost 1 sample delay)
-    sample_t interpolate(const sample_t* buf, size_t buf_idx, double mu) const;
+    // buf_size: actual capacity of buf's circular addressing. Defaults to
+    //   taps_per_phase (i.e. buf_idx and the tap window share the same
+    //   modulus) for callers whose buffer is exactly taps_per_phase long.
+    //   A caller using a larger ring buffer (as TimingRecovery does, for
+    //   its Gardner-TED history) MUST pass that buffer's real size here --
+    //   otherwise buf_idx gets silently reduced mod taps_per_phase and the
+    //   tap window always reads the same taps_per_phase-sized region of
+    //   buf regardless of buf_idx.
+    sample_t interpolate(const sample_t* buf, size_t buf_idx, double mu, size_t buf_size = 0) const;
 
     // Get configuration
     const PolyphaseConfig& get_config() const {

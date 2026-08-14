@@ -260,7 +260,18 @@ TEST(FftEngineTest, InverseNormalization) {
     // Non-normalized should have magnitude 1.0
     // Normalized should have magnitude 1/N
     EXPECT_NEAR(std::abs(out_no_norm[0]), 1.0f, 0.01f);
+#ifdef ATSC3_FIXED_POINT
+    // Q1.15 can't represent 1.0 exactly (float_to_q15(1.0f) saturates to
+    // 32767/32768), and normalize_inverse's right-shift-by-log2(N) then
+    // truncates rather than rounds, so the fixed-point result is off from
+    // the float-exact 1/N by up to a couple of output-scale LSBs (here,
+    // 1/32768 in the shifted-output's own units). A 1e-6f tolerance is
+    // tighter than one Q1.15 LSB and unachievable by any correct
+    // fixed-point implementation, not just this one.
+    EXPECT_NEAR(std::abs(out_norm[0]), 1.0f / static_cast<float>(n), 2.0f / 32768.0f);
+#else
     EXPECT_NEAR(std::abs(out_norm[0]), 1.0f / static_cast<float>(n), 1e-6f);
+#endif
 }
 
 // Test backend type reporting

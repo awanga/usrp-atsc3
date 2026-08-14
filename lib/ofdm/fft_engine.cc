@@ -158,6 +158,20 @@ bool save_fftw_wisdom(const std::string& path) {
 // Fixed-Point Backend (Cooley-Tukey)
 //==============================================================================
 
+// Saturate a widened intermediate back to Q1.15 range at the RTL-facing
+// I/O boundary (input/output copy only, not the internal butterfly path,
+// which stays widened for the full transform to avoid growth-driven
+// overflow).
+static inline int16_t saturate_i16(int32_t x) {
+    if (x > 32767) {
+        return 32767;
+    }
+    if (x < -32767) {
+        return -32767;
+    }
+    return static_cast<int16_t>(x);
+}
+
 class FixedPointFftEngine : public FftEngine {
 public:
     FixedPointFftEngine(const FftConfig& config)
@@ -178,10 +192,13 @@ public:
     ~FixedPointFftEngine() override = default;
 
     void process(const sample_t* in, sample_t* out) override {
-        // sample_t is complex<int16_t> in fixed-point mode
-        // Copy input with bit-reversal
+        // sample_t is complex<int16_t> in fixed-point mode; work_buf_ is
+        // widened to complex<int32_t> internally so the butterfly network
+        // can grow by up to 1 bit/stage (worst case ~15 stages for a 32K
+        // transform) without per-butterfly saturation. Narrowing back to
+        // int16_t happens only here, at the I/O boundary.
         for (size_t i = 0; i < size_; ++i) {
-            work_buf_[bit_rev_[i]] = in[i];
+            work_buf_[bit_rev_[i]] = WideSample(in[i].real(), in[i].imag());
         }
 
         // Cooley-Tukey radix-2 DIT
@@ -192,12 +209,15 @@ public:
             // Normalize by 1/N using right shift (approximate for power-of-2)
             int shift = log2_size();
             for (size_t i = 0; i < size_; ++i) {
-                int16_t re = static_cast<int16_t>(work_buf_[i].real() >> shift);
-                int16_t im = static_cast<int16_t>(work_buf_[i].imag() >> shift);
+                int16_t re = saturate_i16(work_buf_[i].real() >> shift);
+                int16_t im = saturate_i16(work_buf_[i].imag() >> shift);
                 out[i] = sample_t(re, im);
             }
         } else {
-            std::copy(work_buf_.begin(), work_buf_.end(), out);
+            for (size_t i = 0; i < size_; ++i) {
+                out[i] =
+                    sample_t(saturate_i16(work_buf_[i].real()), saturate_i16(work_buf_[i].imag()));
+            }
         }
     }
 
@@ -269,7 +289,14 @@ private:
     }
 
     void cooley_tukey_dit() {
-        // Radix-2 decimation-in-time FFT
+        // Radix-2 decimation-in-time FFT. work_buf_ is widened
+        // (complex<int32_t>) so intermediate growth across stages doesn't
+        // need per-butterfly saturation (see the class-level comment on
+        // process()). The complex-multiply product is accumulated in
+        // int64_t: odd's real/imag can be up to ~2^31 in magnitude by the
+        // last stage, and the twiddle is Q1.15 (~2^15), so the raw product
+        // needs the extra headroom before the >>15 rescale brings it back
+        // into int32_t range.
         for (size_t stage = 1; stage <= static_cast<size_t>(log2_size()); ++stage) {
             size_t m = 1u << stage;  // Butterfly span
             size_t m2 = m >> 1;      // Half span
@@ -285,31 +312,36 @@ private:
 
                     // Complex multiply: t = w * odd
                     // Using Q15 fixed-point multiplication
-                    sample_t odd = work_buf_[idx_odd];
-                    int32_t t_re = (static_cast<int32_t>(w.real()) * odd.real() -
-                                    static_cast<int32_t>(w.imag()) * odd.imag()) >>
-                                   ATSC3_Q_FRACTIONAL_BITS;
-                    int32_t t_im = (static_cast<int32_t>(w.real()) * odd.imag() +
-                                    static_cast<int32_t>(w.imag()) * odd.real()) >>
-                                   ATSC3_Q_FRACTIONAL_BITS;
+                    WideSample odd = work_buf_[idx_odd];
+                    int32_t t_re =
+                        static_cast<int32_t>((static_cast<int64_t>(w.real()) * odd.real() -
+                                              static_cast<int64_t>(w.imag()) * odd.imag()) >>
+                                             ATSC3_Q_FRACTIONAL_BITS);
+                    int32_t t_im =
+                        static_cast<int32_t>((static_cast<int64_t>(w.real()) * odd.imag() +
+                                              static_cast<int64_t>(w.imag()) * odd.real()) >>
+                                             ATSC3_Q_FRACTIONAL_BITS);
 
-                    sample_t t(static_cast<int16_t>(t_re), static_cast<int16_t>(t_im));
+                    WideSample t(t_re, t_im);
 
                     // Butterfly
-                    sample_t even = work_buf_[idx_even];
-                    work_buf_[idx_even] = sample_t(even.real() + t.real(), even.imag() + t.imag());
-                    work_buf_[idx_odd] = sample_t(even.real() - t.real(), even.imag() - t.imag());
+                    WideSample even = work_buf_[idx_even];
+                    work_buf_[idx_even] =
+                        WideSample(even.real() + t.real(), even.imag() + t.imag());
+                    work_buf_[idx_odd] = WideSample(even.real() - t.real(), even.imag() - t.imag());
                 }
             }
         }
     }
+
+    using WideSample = std::complex<int32_t>;
 
     size_t size_;
     FftDirection direction_;
     bool normalize_inverse_;
 
     std::vector<sample_t> twiddles_;
-    std::vector<sample_t> work_buf_;
+    std::vector<WideSample> work_buf_;
     std::vector<size_t> bit_rev_;
 };
 

@@ -297,8 +297,12 @@ void WienerInterpolator::interpolate_frequency(const std::vector<sample_t>& pilo
             weight_sum += weight;
 
 #ifdef ATSC3_FIXED_POINT
-            sum_re += static_cast<int32_t>(weight * static_cast<float>(h.real()));
-            sum_im += static_cast<int32_t>(weight * static_cast<float>(h.imag()));
+            // Quantize the weight to Q1.15 and do the tap multiply in
+            // integer arithmetic (float_to_q15 saturates, so an
+            // out-of-[-1,1) weight quantizes rather than overflowing).
+            int32_t weight_q15 = float_to_q15(weight);
+            sum_re += (weight_q15 * static_cast<int32_t>(h.real())) >> ATSC3_Q_FRACTIONAL_BITS;
+            sum_im += (weight_q15 * static_cast<int32_t>(h.imag())) >> ATSC3_Q_FRACTIONAL_BITS;
 #else
             sum_re += weight * h.real();
             sum_im += weight * h.imag();
@@ -346,8 +350,9 @@ void WienerInterpolator::filter_time(std::vector<sample_t>& estimate) {
             float weight = time_coeffs_[t];
 
 #ifdef ATSC3_FIXED_POINT
-            sum_re += static_cast<int32_t>(weight * static_cast<float>(h.real()));
-            sum_im += static_cast<int32_t>(weight * static_cast<float>(h.imag()));
+            int32_t weight_q15 = float_to_q15(weight);
+            sum_re += (weight_q15 * static_cast<int32_t>(h.real())) >> ATSC3_Q_FRACTIONAL_BITS;
+            sum_im += (weight_q15 * static_cast<int32_t>(h.imag())) >> ATSC3_Q_FRACTIONAL_BITS;
 #else
             sum_re += weight * h.real();
             sum_im += weight * h.imag();
@@ -391,8 +396,9 @@ sample_t WienerInterpolator::apply_fir(const std::vector<sample_t>& input, size_
         float w = coeffs[i];
 
 #ifdef ATSC3_FIXED_POINT
-        sum_re += static_cast<int32_t>(w * static_cast<float>(s.real()));
-        sum_im += static_cast<int32_t>(w * static_cast<float>(s.imag()));
+        int32_t w_q15 = float_to_q15(w);
+        sum_re += (w_q15 * static_cast<int32_t>(s.real())) >> ATSC3_Q_FRACTIONAL_BITS;
+        sum_im += (w_q15 * static_cast<int32_t>(s.imag())) >> ATSC3_Q_FRACTIONAL_BITS;
 #else
         sum_re += w * s.real();
         sum_im += w * s.imag();

@@ -44,7 +44,16 @@ size_t get_active_carriers(size_t fft_size) {
 
 // Minimum magnitude squared for equalization
 #ifdef ATSC3_FIXED_POINT
-constexpr int32_t kMinMagnitudeSqDefault = 10;  // ~0.0003 in Q30
+// Must be >= 2^15 (1<<15 = 32768): both equalize_zf's `denom = mag_sq
+// >> 15` and equalize_mmse's `denom = denom_q30 >> 15` are zero below
+// this, and the fallback-to-1 divisor that guards the divide-by-zero
+// masks a real deep fade as a near-full-scale output instead of the
+// zeroed carrier this check is meant to produce. This floor is
+// unconditional -- config_.min_channel_magnitude is a separate,
+// user-tunable deep-fade threshold on top of it, not a replacement for
+// it (equalize_mmse doesn't consult min_channel_magnitude at all, so
+// this constant is its only protection).
+constexpr int32_t kMinMagnitudeSqDefault = 1 << 15;
 #else
 constexpr float kMinMagnitudeSqDefault = 1e-6f;
 #endif
@@ -118,9 +127,11 @@ sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     int32_t y_re = y.real();
     int32_t y_im = y.imag();
 
-    // Y * conj(H) in Q30
-    int32_t num_re = y_re * h_re + y_im * h_im;
-    int32_t num_im = y_im * h_re - y_re * h_im;
+    // Y * conj(H) in Q30. Each product is up to ~2^30 in magnitude
+    // (int16 x int16 promoted to int32), so their sum can exceed
+    // INT32_MAX for strong subcarriers -- accumulate in int64_t.
+    int64_t num_re = static_cast<int64_t>(y_re) * h_re + static_cast<int64_t>(y_im) * h_im;
+    int64_t num_im = static_cast<int64_t>(y_im) * h_re - static_cast<int64_t>(y_re) * h_im;
 
     // Divide: result in Q15
     // Scale: (Q30 / Q30) needs to become Q15
@@ -130,12 +141,12 @@ sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     if (denom == 0)
         denom = 1;
 
-    int32_t out_re = num_re / denom;
-    int32_t out_im = num_im / denom;
+    int64_t out_re = num_re / denom;
+    int64_t out_im = num_im / denom;
 
     // Clamp to Q15 range
-    out_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_re));
-    out_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_im));
+    out_re = std::max<int64_t>(-32767, std::min<int64_t>(32767, out_re));
+    out_im = std::max<int64_t>(-32767, std::min<int64_t>(32767, out_im));
 
     return sample_t(static_cast<int16_t>(out_re), static_cast<int16_t>(out_im));
 #else
@@ -182,21 +193,22 @@ sample_t Equalizer::equalize_mmse(sample_t y, sample_t h) const {
     int32_t y_re = y.real();
     int32_t y_im = y.imag();
 
-    // Y * conj(H) in Q30
-    int32_t num_re = y_re * h_re + y_im * h_im;
-    int32_t num_im = y_im * h_re - y_re * h_im;
+    // Y * conj(H) in Q30. Same int64_t widening as equalize_zf -- each
+    // product is up to ~2^30, and their sum can exceed INT32_MAX.
+    int64_t num_re = static_cast<int64_t>(y_re) * h_re + static_cast<int64_t>(y_im) * h_im;
+    int64_t num_im = static_cast<int64_t>(y_im) * h_re - static_cast<int64_t>(y_re) * h_im;
 
     // Divide: (Q30 / Q30) → need Q15
     int32_t denom = denom_q30 >> 15;
     if (denom == 0)
         denom = 1;
 
-    int32_t out_re = num_re / denom;
-    int32_t out_im = num_im / denom;
+    int64_t out_re = num_re / denom;
+    int64_t out_im = num_im / denom;
 
     // Clamp
-    out_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_re));
-    out_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, out_im));
+    out_re = std::max<int64_t>(-32767, std::min<int64_t>(32767, out_re));
+    out_im = std::max<int64_t>(-32767, std::min<int64_t>(32767, out_im));
 
     return sample_t(static_cast<int16_t>(out_re), static_cast<int16_t>(out_im));
 #else
@@ -401,12 +413,14 @@ void Equalizer::apply_phase_correction(std::vector<sample_t>& symbols, float pha
         float new_re = s_re * cos_p - s_im * sin_p;
         float new_im = s_re * sin_p + s_im * cos_p;
 
+        // A phase rotation preserves magnitude, so a near-full-scale
+        // input can rotate to a magnitude above the Q1.15 boundary
+        // (e.g. |s|=1.0 exactly can reach 1.414). float_to_q15() itself
+        // saturates, so no separate post-hoc clamp is needed here --
+        // the previous code cast to int16_t (wrapping on overflow) and
+        // only clamped afterward, which clamped an already-wrapped value.
         int16_t out_re = float_to_q15(new_re);
         int16_t out_im = float_to_q15(new_im);
-
-        // Clamp
-        out_re = std::max<int16_t>(-32767, std::min<int16_t>(32767, out_re));
-        out_im = std::max<int16_t>(-32767, std::min<int16_t>(32767, out_im));
 
         s = sample_t(out_re, out_im);
 #else

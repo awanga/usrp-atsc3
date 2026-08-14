@@ -44,7 +44,13 @@ size_t get_active_carriers(size_t fft_size) {
 
 // Minimum magnitude for division to avoid numerical issues
 #ifdef ATSC3_FIXED_POINT
-constexpr int32_t kMinMagnitudeSq = 100;  // ~0.003 in Q15
+// Must be >= 2^15: the divisor below is (mag_sq >> 15), which is zero
+// for any mag_sq < 32768, and dividing by that zero is UB (SIGFPE in
+// practice). A weaker guard here doesn't actually prevent the
+// divide-by-zero it was meant to catch -- weak-pilot/deep-fade
+// magnitudes in [old threshold, 32768) hit it as a live case, not a
+// corner case.
+constexpr int32_t kMinMagnitudeSq = 1 << 15;  // 32768, in Q30
 #else
 constexpr float kMinMagnitudeSq = 1e-6f;
 #endif

@@ -106,7 +106,8 @@ void PolyphaseInterpolator::init_coefficients() {
     }
 }
 
-sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx, double mu) const {
+sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx, double mu,
+                                            size_t buf_size) const {
     // Clamp mu to [0, 1)
     mu = mu - std::floor(mu);
 
@@ -119,6 +120,11 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
 
     const auto& taps = coeffs_[phase];
     size_t n_taps = config_.taps_per_phase;
+    // wrap: the modulus for addressing buf. Defaults to n_taps so callers
+    // whose buffer is exactly taps_per_phase long see unchanged behavior;
+    // a caller with a larger ring buffer must pass its real size (see the
+    // header comment) or buf_idx's high bits are silently discarded.
+    size_t wrap = (buf_size == 0) ? n_taps : buf_size;
 
 #ifdef ATSC3_FIXED_POINT
     // Fixed-point accumulation in higher precision
@@ -127,7 +133,7 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
 
     for (size_t t = 0; t < n_taps; ++t) {
         // Index into circular buffer (going backwards)
-        size_t idx = (buf_idx + n_taps - 1 - t) % n_taps;
+        size_t idx = (buf_idx + wrap - 1 - t) % wrap;
         acc_re += q15_to_float(buf[idx].real()) * taps[t];
         acc_im += q15_to_float(buf[idx].imag()) * taps[t];
     }
@@ -139,7 +145,7 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
     float acc_im = 0.0f;
 
     for (size_t t = 0; t < n_taps; ++t) {
-        size_t idx = (buf_idx + n_taps - 1 - t) % n_taps;
+        size_t idx = (buf_idx + wrap - 1 - t) % wrap;
         acc_re += buf[idx].real() * taps[t];
         acc_im += buf[idx].imag() * taps[t];
     }
@@ -285,7 +291,7 @@ void TimingRecovery::emit_symbol() {
     }
 
     // Interpolate at current timing offset
-    sample_t symbol = interpolator_.interpolate(buffer_.data(), buf_read_idx_, mu_);
+    sample_t symbol = interpolator_.interpolate(buffer_.data(), buf_read_idx_, mu_, buffer_.size());
 
     // Call user callback
     symbol_callback_(symbol, mu_);
@@ -323,9 +329,9 @@ void TimingRecovery::process_sample(const sample_t& sample) {
             size_t mid_idx = (buf_write_idx_ + buf_sz - 1 - sps / 2) % buf_sz;
             size_t prev_idx = (buf_write_idx_ + buf_sz - 1 - sps) % buf_sz;
 
-            sample_t x_curr = interpolator_.interpolate(buffer_.data(), curr_idx, mu_);
-            sample_t x_mid = interpolator_.interpolate(buffer_.data(), mid_idx, mu_ + 0.5);
-            sample_t x_prev = interpolator_.interpolate(buffer_.data(), prev_idx, mu_);
+            sample_t x_curr = interpolator_.interpolate(buffer_.data(), curr_idx, mu_, buf_sz);
+            sample_t x_mid = interpolator_.interpolate(buffer_.data(), mid_idx, mu_ + 0.5, buf_sz);
+            sample_t x_prev = interpolator_.interpolate(buffer_.data(), prev_idx, mu_, buf_sz);
 
             double error = ted_.compute_error(x_curr, x_mid, x_prev);
             update_loop(error);
