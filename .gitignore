@@ -62,6 +62,14 @@ docs/doxygen/
 *.tar.gz
 *.zip
 
+# HDL toolchain: local Python venv, cocotb/Verilator build products,
+# SymbiYosys work directories (named after the .sby file, no fixed suffix)
+hdl/sim/.venv/
+hdl/sim/cocotb/sim_build/
+hdl/sim/cocotb/__pycache__/
+hdl/sim/cocotb/.pytest_cache/
+hdl/formal/*/
+
 # OS files
 .DS_Store
 Thumbs.db
