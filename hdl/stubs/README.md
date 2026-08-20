@@ -1,5 +1,14 @@
 # HDL Stubs — AXI4-Stream Interface Templates
 
+> **Status:** superseded for active RTL work. `axi4s_interface.vh` here
+> used top-level `parameter` declarations, which are not legal outside a
+> module body in IEEE 1364-2001 — it was never actually compiled. Real
+> RTL blocks live under `hdl/rtl/`, with shared constants/macros in
+> `hdl/rtl/include/axi4s_types.vh` (`` `define``-based, 1364-2001-legal).
+> This directory is kept for its README/spec value (the interface summary
+> below) and as the pre-Phase-9 planning artifact it always was; see
+> `hdl/docs/` for current conventions.
+
 This directory contains RTL port-map templates for FPGA implementation of the
 gr-atsc3 signal processing chain. These stubs define the AXI4-Stream interfaces
 that mirror the C++ `lib/` classes.

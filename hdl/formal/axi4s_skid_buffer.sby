@@ -1,0 +1,24 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -I. axi4s_skid_buffer.v
+read_verilog -formal -sv -I. axi4s_skid_buffer_checks.sv axi4s_skid_buffer_bind.sv
+read_verilog -formal -I. axi4s_skid_buffer_formal.v
+prep -top axi4s_skid_buffer_formal
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+axi4s_skid_buffer.v ../rtl/common/axi4s_skid_buffer.v
+axi4s_skid_buffer_checks.sv
+axi4s_skid_buffer_bind.sv
+axi4s_skid_buffer_formal.v
