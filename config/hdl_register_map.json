@@ -1,0 +1,300 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "gr-atsc3 HDL AXI4-Lite Register Map",
+    "description": "Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. Phase 9.0 deliverable -- see the HDL port plan.",
+    "version": "0.1.0",
+    "conventions": {
+        "address_layout": "One 0x1000-aligned region per block, in Phase 9.x order. Register offsets within a region are 4-byte aligned.",
+        "writable_by": {
+            "host": "Host-writable at any time via AXI4-Lite. Tuning/algorithm-select/test-override parameters not signaled by the ATSC 3.0 transmitter.",
+            "l1": "Read-only to the host. Written internally by the Phase 9.13b config sequencer after L1-Pre/L1-Post decode (or computed from those fields). Reset value is the standalone-test default (see l1_status block) so Phases 9.3-9.12 are independently testable before 9.13b exists.",
+            "const": "Not a real runtime register. Documents a compile-time/spec-fixed constant (tied off at synthesis). Included here for completeness only."
+        },
+        "formats": {
+            "uint32": "Plain unsigned 32-bit integer (counts, sizes, whole-Hz values).",
+            "int32": "Plain signed 32-bit integer.",
+            "int8": "Plain signed 8-bit integer.",
+            "bool": "1-bit register.",
+            "enum": "Integer register using the C++ enum's own explicit underlying values (see enum_values).",
+            "q1_15": "Signed Q1.15 fixed point, scale 32768, range [-1.0, +1.0), truncated toward zero (not rounded) on conversion -- matches lib/types.h float_to_q15()/q15_to_float() exactly (static_cast<int16_t>(x * 32768) truncates). All reset values below were computed with this exact truncation, not round-to-nearest. +1.0 must be represented as 32767, never 32768 (CLAUDE.md's documented convention) -- note that develop's float_to_q15() does not yet enforce this by saturating; that fix exists only on the unmerged bugfix/hdl-golden-model-fixes branch. No register in this map defaults to exactly 1.0, so the distinction doesn't affect any reset value here, but RTL bit-exactness work (Phase 9.0b onward) depends on that branch being merged first. Same truncation/scale convention as the ci16 datapath (hdl/docs/q_format_notes.md).",
+            "milli_fixed32": "Signed 32-bit integer, value = round(real_value * 1000). Used for dimensionless ratios/rates that can legitimately exceed the q1_15 [-1,1) range or need sub-integer-Hz precision.",
+            "angle_tbd": "Format intentionally left undefined. Depends on the CORDIC angle convention Phase 9.0b has not yet chosen (see hdl/docs/formal_conventions.md and the HDL port plan's Decision 7 / Phase 9.0b). Do not implement RTL against this field until that convention is fixed."
+        },
+        "pilot_pattern_source": "Uses lib/ofdm/pilot_extractor.h's PP1-PP8 {Dx,Dy} table (config::PilotPattern / PilotPattern enum), not config/atsc3_modes.json's separate SP3_2/SP3_4/... representation -- resolving the Phase 9.0 open item on which of the two inconsistent pilot representations this register map follows. Nothing in lib/ reads atsc3_modes.json's SP*_* list (TASKS.md's claim that it's used is stale, matching pilot_extractor.cc's hardcoded constexpr table)."
+    },
+    "known_default_inconsistencies": [
+        {
+            "field": "cp_length / cp_fraction at 8K",
+            "description": "Three C++ structs default this to two different values. lib/sync/frame_sync.h FrameSyncConfig::frame_params.cp_length = 512 (1/16, comment says '1/16 of 8K'). lib/ofdm/cp_removal.h CpRemovalConfig::cp_fraction = CpFraction::k1024_8192 (1024, 1/8) and lib/framing/l1_decoder.h L1Pre::cp_length = CpLength::CP_1024_8192 (also 1/8) agree with each other but not with FrameSyncConfig.",
+            "resolution": "l1_status.cp_length below uses 1024 (1/8), matching CpRemovalConfig and L1Pre (2 of 3 sources, and the actual Phase 9.3 RTL target). FrameSyncConfig's frame_params default is the outlier -- flagged as a candidate lib/ fix, not corrected here (out of this deliverable's scope; not one of the original 7 bugs on bugfix/hdl-golden-model-fixes)."
+        },
+        {
+            "field": "modulation (demapper vs. PLP)",
+            "description": "lib/ofdm/constellation_demapper.h DemapperConfig::modulation defaults to QAM64. lib/config/atsc3_config.h PlpConfig::modulation (the L1-signaled per-PLP value the demapper is actually supposed to run with) defaults to QPSK.",
+            "resolution": "l1_status.modulation below uses QPSK, matching PlpConfig (the true L1-derived source). DemapperConfig's own QAM64 default only matters when the demapper is unit-tested standalone outside the L1 pipeline; flagged as a candidate lib/ fix, not corrected here."
+        },
+        {
+            "field": "symbol_rate_hz",
+            "description": "lib/sync/timing_recovery.h TimingRecoveryConfig::symbol_rate_hz defaults to a hardcoded 718.75 (comment: '~6.25e6/8704'). The exact value for the paired fft_size=8192/cp_length=512 defaults is 6.25e6/8704 = 718.1985..., about 0.08% off.",
+            "resolution": "Minor; register uses the literal C++ default (718750 milli-Hz) rather than the exact recomputation, since that's what the golden model actually runs with."
+        }
+    ],
+    "l1_status": {
+        "description": "Canonical mirror of L1-Pre/L1-Post/active-PLP decode results (lib/framing/l1_decoder.h L1Pre, L1Post, and the single active entry of config::PlpConfig -- multi-PLP context switching is out of scope, see the HDL port plan). Every other block's l1-owned fields are wired internally from this bank, not independently stored -- there is exactly one copy of each L1-derived value in the register file. Written by the Phase 9.13b sequencer; reset values below are the standalone-test defaults used before 9.13b exists.",
+        "base_address": "0x0000",
+        "registers": [
+            {"name": "L1PRE_VERSION", "offset": "0x00", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::version"},
+            {"name": "FFT_SIZE", "offset": "0x04", "width": 8, "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::fft_size (config::FftSize)"},
+            {"name": "CP_LENGTH", "offset": "0x08", "width": 8, "format": "enum", "enum_values": {"CP_192_8192": 0, "CP_384_8192": 1, "CP_512_8192": 2, "CP_768_8192": 3, "CP_1024_8192": 4, "CP_1536_8192": 5, "CP_2048_8192": 6, "CP_2432_8192": 7, "CP_3072_8192": 8, "CP_3648_8192": 9, "CP_4096_8192": 10}, "reset": "CP_1024_8192", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::cp_length (config::CpLength); see known_default_inconsistencies"},
+            {"name": "PILOT_PATTERN", "offset": "0x0C", "width": 8, "format": "enum", "enum_values": {"PP1": 1, "PP2": 2, "PP3": 3, "PP4": 4, "PP5": 5, "PP6": 6, "PP7": 7, "PP8": 8}, "reset": "PP3", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::pilot_pattern (config::PilotPattern)"},
+            {"name": "L1_POST_SIZE_CELLS", "offset": "0x10", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_size_cells"},
+            {"name": "L1_POST_MODULATION", "offset": "0x14", "width": 8, "format": "enum", "enum_values": {"QPSK": 0, "QAM16": 1, "QAM64": 2, "QAM256": 3, "QAM1024": 4, "QAM4096": 5, "NUC_QPSK": 6, "NUC_16": 7, "NUC_64": 8, "NUC_256": 9, "NUC_1024": 10, "NUC_4096": 11}, "reset": "QPSK", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_modulation (config::Modulation)"},
+            {"name": "L1_POST_CODE_RATE", "offset": "0x18", "width": 8, "format": "enum", "enum_values": {"RATE_2_15": 0, "RATE_3_15": 1, "RATE_4_15": 2, "RATE_5_15": 3, "RATE_6_15": 4, "RATE_7_15": 5, "RATE_8_15": 6, "RATE_9_15": 7, "RATE_10_15": 8, "RATE_11_15": 9, "RATE_12_15": 10, "RATE_13_15": 11}, "reset": "RATE_5_15", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_code_rate (config::CodeRate)"},
+            {"name": "L1_POST_SCRAMBLED", "offset": "0x1C", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_scrambled"},
+            {"name": "L1_POST_FEC_TYPE", "offset": "0x20", "width": 8, "format": "enum", "enum_values": {"BCH_16K_LDPC": 0, "BCH_64K_LDPC": 1}, "reset": "BCH_16K_LDPC", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_fec_type", "notes": "C++ field is a raw uint8_t, not an enum class -- the two named values here come from its doc comment ('0 = BCH + 16K LDPC, 1 = BCH + 64K LDPC'), not a C++ enum definition."},
+            {"name": "NUM_SUBFRAMES", "offset": "0x24", "width": 8, "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::num_subframes"},
+            {"name": "PREAMBLE_REDUCED_CARRIERS", "offset": "0x28", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::preamble_reduced_carriers"},
+            {"name": "L1PRE_CRC_VALID", "offset": "0x2C", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::crc_valid"},
+            {"name": "NUM_PLPS", "offset": "0x30", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1PostConfigurable::num_plps"},
+            {"name": "L1POST_TIME_INFO_PRESENT", "offset": "0x34", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1PostConfigurable::time_info_present"},
+            {"name": "FRAME_INDEX", "offset": "0x38", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Post::frame_index"},
+            {"name": "L1_CHANGE_COUNTER", "offset": "0x3C", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Post::l1_change_counter"},
+            {"name": "L1POST_CRC_VALID", "offset": "0x40", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Post::crc_valid"},
+            {"name": "PLP_ID", "offset": "0x44", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::plp_id (active PLP only; multi-PLP out of scope)"},
+            {"name": "PLP_TYPE", "offset": "0x48", "width": 8, "format": "enum", "enum_values": {"NON_DISPERSED": 0, "DISPERSED": 1}, "reset": "NON_DISPERSED", "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::plp_type"},
+            {"name": "MODULATION", "offset": "0x4C", "width": 8, "format": "enum", "enum_values": {"QPSK": 0, "QAM16": 1, "QAM64": 2, "QAM256": 3, "QAM1024": 4, "QAM4096": 5, "NUC_QPSK": 6, "NUC_16": 7, "NUC_64": 8, "NUC_256": 9, "NUC_1024": 10, "NUC_4096": 11}, "reset": "QPSK", "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::modulation; see known_default_inconsistencies", "consumers": ["constellation_demapper"]},
+            {"name": "CODE_RATE", "offset": "0x50", "width": 8, "format": "enum", "enum_values": {"RATE_2_15": 0, "RATE_3_15": 1, "RATE_4_15": 2, "RATE_5_15": 3, "RATE_6_15": 4, "RATE_7_15": 5, "RATE_8_15": 6, "RATE_9_15": 7, "RATE_10_15": 8, "RATE_11_15": 9, "RATE_12_15": 10, "RATE_13_15": 11}, "reset": "RATE_7_15", "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::code_rate", "consumers": ["constellation_demapper", "ldpc_decoder"]},
+            {"name": "CODEWORD_LENGTH_SHORT", "offset": "0x54", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::codeword_length (LONG=64800/false, SHORT=16200/true)", "consumers": ["ldpc_decoder", "bch_decoder"]},
+            {"name": "TI_MODE", "offset": "0x58", "width": 8, "format": "enum", "enum_values": {"NONE": 0, "CTI": 1, "HTI": 2}, "reset": "CTI", "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::ti_mode", "consumers": ["time_deinterleaver"]},
+            {"name": "TI_DEPTH", "offset": "0x5C", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::ti_depth (0-15)", "consumers": ["time_deinterleaver"]},
+            {"name": "TI_NUM_BLOCKS", "offset": "0x60", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::ti_num_blocks", "consumers": ["time_deinterleaver"]},
+            {"name": "TI_EXTENDED", "offset": "0x64", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::ti_extended"},
+            {"name": "NUM_FEC_BLOCKS", "offset": "0x68", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::num_fec_blocks", "consumers": ["cell_deinterleaver (num_cells derived from this)"]},
+            {"name": "FEC_BLOCK_START", "offset": "0x6C", "width": 32, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::fec_block_start"},
+            {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x70", "width": 16, "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "computed from FFT_SIZE (8K->6913, 16K->13825, 32K->27649), per lib/ofdm/pilot_extractor.cc / freq_deinterleaver.cc auto-compute logic", "consumers": ["pilot_extractor", "channel_estimator", "equalizer", "freq_deinterleaver"]}
+        ],
+        "excluded_fields": [
+            {"field": "PlpConfig::plp_layer, PlpConfig::ldm_injection_level", "reason": "Layered Division Multiplexing (LDM) fields. The HDL port plan does not discuss LDM anywhere -- it's not listed as in-scope (no LDM combining/splitting stage appears in the 13-block signal chain) or explicitly out-of-scope. Left out of this register map as an open scope question for whoever picks up LDM, rather than silently including registers for a capability no RTL block implements."},
+            {"field": "PlpConfig::valid", "reason": "C++ object-model validity flag (whether this PlpConfig was ever populated). Not a hardware concept -- the l1_status bank's own CRC_VALID registers are the RTL-meaningful equivalent."}
+        ]
+    },
+    "blocks": {
+        "bootstrap_detector": {
+            "phase": "9.1",
+            "base_address": "0x1000",
+            "registers": [
+                {"name": "SAMPLE_RATE_HZ", "offset": "0x00", "format": "uint32", "reset": 6250000, "writable_by": "host", "c_source": "lib/sync/bootstrap_detector.h:BootstrapConfig::sample_rate_hz", "notes": "System RF sample rate; not L1-signaled."},
+                {"name": "THRESHOLD", "offset": "0x04", "format": "q1_15", "reset_float": 0.7, "reset": 22937, "writable_by": "host", "c_source": "lib/sync/bootstrap_detector.h:BootstrapConfig::threshold"},
+                {"name": "AVERAGING_WINDOW", "offset": "0x08", "format": "uint32", "reset": 64, "writable_by": "host", "c_source": "lib/sync/bootstrap_detector.h:BootstrapConfig::averaging_window", "notes": "Must be >=1 (bugfix/hdl-golden-model-fixes clamps this in C++; RTL should reject 0 at the register-write boundary, see Phase 9.15 formal target)."}
+            ]
+        },
+        "timing_recovery": {
+            "phase": "9.2",
+            "base_address": "0x2000",
+            "registers": [
+                {"name": "SAMPLE_RATE_HZ", "offset": "0x00", "format": "uint32", "reset": 6250000, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:TimingRecoveryConfig::sample_rate_hz"},
+                {"name": "SYMBOL_RATE_MILLIHZ", "offset": "0x04", "format": "milli_fixed32", "reset_float": 718.75, "reset": 718750, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:TimingRecoveryConfig::symbol_rate_hz; see known_default_inconsistencies"},
+                {"name": "LOOP_BANDWIDTH_HZ", "offset": "0x08", "format": "uint32", "reset": 1, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:TimingRecoveryConfig::loop_bandwidth_hz"},
+                {"name": "LOOP_DAMPING_MILLI", "offset": "0x0C", "format": "milli_fixed32", "reset_float": 1.0, "reset": 1000, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:TimingRecoveryConfig::loop_damping"},
+                {"name": "POLYPHASE_NUM_PHASES", "offset": "0x10", "format": "uint32", "reset": 16, "writable_by": "const", "c_source": "lib/sync/timing_recovery.h:PolyphaseConfig::num_phases", "notes": "Fixes the polyphase bank RTL structure (16 banks) -- not runtime-reconfigurable, tied off at synthesis."},
+                {"name": "POLYPHASE_TAPS_PER_PHASE", "offset": "0x14", "format": "uint32", "reset": 32, "writable_by": "const", "c_source": "lib/sync/timing_recovery.h:PolyphaseConfig::taps_per_phase", "notes": "Fixes the FIR tap-ROM depth -- synthesis-time constant."},
+                {"name": "SAMPLES_PER_SYMBOL", "offset": "0x18", "format": "uint32", "reset": 2, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:PolyphaseConfig::samples_per_symbol"},
+                {"name": "INITIAL_OFFSET", "offset": "0x1C", "format": "q1_15", "reset_float": 0.0, "reset": 0, "writable_by": "host", "c_source": "lib/sync/timing_recovery.h:TimingRecoveryConfig::initial_offset"}
+            ]
+        },
+        "cp_removal": {
+            "phase": "9.3",
+            "base_address": "0x3000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/ofdm/cp_removal.h:CpRemovalConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE, not independently stored."},
+                {"name": "CP_LENGTH", "offset": "0x04", "format": "enum", "enum_values": {"CP_192_8192": 192, "CP_384_8192": 384, "CP_512_8192": 512, "CP_768_8192": 768, "CP_1024_8192": 1024, "CP_1536_8192": 1536, "CP_2048_8192": 2048, "CP_2432_8192": 2432, "CP_3072_8192": 3072, "CP_3648_8192": 3648, "CP_4096_8192": 4096}, "reset": "CP_1024_8192", "writable_by": "l1", "c_source": "lib/ofdm/cp_removal.h:CpRemovalConfig::cp_fraction (CpFraction, encoded as the literal sample count)", "notes": "Wired from l1_status.CP_LENGTH, not independently stored."}
+            ]
+        },
+        "fft_engine": {
+            "phase": "9.4",
+            "base_address": "0x4000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"k4K": 4096, "k8K": 8192, "k16K": 16384, "k32K": 32768}, "reset": "k8K", "writable_by": "l1", "c_source": "lib/ofdm/fft_engine.h:FftConfig::size", "notes": "Wired from l1_status.FFT_SIZE for data symbols; bootstrap correlation always uses k4K regardless (CLAUDE.md Common Pitfalls) and is not register-controlled."},
+                {"name": "DIRECTION", "offset": "0x04", "format": "enum", "enum_values": {"kForward": 0, "kInverse": 1}, "reset": "kForward", "writable_by": "const", "c_source": "lib/ofdm/fft_engine.h:FftConfig::direction", "notes": "Receiver is forward-FFT-only in RTL scope; inverse direction is a C++-only capability not ported (no transmit path in this receiver)."}
+            ],
+            "excluded_fields": [
+                {"field": "wisdom_path", "reason": "FFTW-specific plan-caching path; C++-only, no RTL equivalent (RTL's memory-based radix-2 DIT has no planning phase, Decision 2)."},
+                {"field": "use_patient_plan", "reason": "Same as wisdom_path -- FFTW planning knob, not applicable to RTL."},
+                {"field": "normalize_inverse", "reason": "Only meaningful for inverse FFT, which is out of RTL scope (see DIRECTION above)."}
+            ]
+        },
+        "pilot_extractor": {
+            "phase": "9.5",
+            "base_address": "0x5000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
+                {"name": "PILOT_PATTERN", "offset": "0x04", "format": "enum", "enum_values": {"PP1": 1, "PP2": 2, "PP3": 3, "PP4": 4, "PP5": 5, "PP6": 6, "PP7": 7, "PP8": 8}, "reset": "PP3", "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::pattern", "notes": "Wired from l1_status.PILOT_PATTERN."},
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x08", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::num_active_carriers", "notes": "Wired from l1_status.NUM_ACTIVE_CARRIERS."}
+            ],
+            "open_items": [
+                "Pilot dedup precedence (SCATTERED > CONTINUAL > EDGE) needs an explicit rule fixed in lib/ before this block's RTL is bit-exact (Phase 9.0 item from the plan's pass-2 review); not resolved by this register-map deliverable."
+            ]
+        },
+        "freq_correction": {
+            "phase": "9.5",
+            "base_address": "0x6000",
+            "registers": [
+                {"name": "SAMPLE_RATE_HZ", "offset": "0x00", "format": "uint32", "reset": 6250000, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:FreqCorrectionConfig::sample_rate_hz"},
+                {"name": "INITIAL_CFO_HZ", "offset": "0x04", "format": "int32", "reset": 0, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:FreqCorrectionConfig::initial_cfo_hz", "notes": "Seeded from bootstrap_detector's CFO estimate at acquisition; host-writable for standalone test."},
+                {"name": "ENABLE_FINE_TRACKING", "offset": "0x08", "format": "bool", "reset": true, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:FreqCorrectionConfig::enable_fine_tracking"},
+                {"name": "FINE_LOOP_BANDWIDTH_HZ", "offset": "0x0C", "format": "uint32", "reset": 10, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:FreqCorrectionConfig::fine_loop_bandwidth_hz"},
+                {"name": "PHASE_TRACKER_FFT_SIZE", "offset": "0x10", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
+                {"name": "PHASE_TRACKER_AVERAGING_WINDOW", "offset": "0x14", "format": "uint32", "reset": 4, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::averaging_window"},
+                {"name": "PHASE_TRACKER_UNWRAP_THRESHOLD", "offset": "0x18", "format": "angle_tbd", "reset_float": 3.14159265358979, "reset": null, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::unwrap_threshold", "notes": "Default is exactly M_PI, which is why this can't use q1_15 (out of [-1,1) range) -- needs the Phase 9.0b CORDIC angle convention before this register's format/reset can be finalized."}
+            ]
+        },
+        "frame_sync": {
+            "phase": "9.6",
+            "base_address": "0x7000",
+            "registers": [
+                {"name": "SAMPLE_RATE_HZ", "offset": "0x00", "format": "uint32", "reset": 6250000, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::sample_rate_hz"},
+                {"name": "FFT_SIZE", "offset": "0x04", "format": "uint32", "reset": 8192, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
+                {"name": "CP_LENGTH", "offset": "0x08", "format": "uint32", "reset": 1024, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.cp_length", "notes": "Wired from l1_status.CP_LENGTH (1024); see known_default_inconsistencies for why this isn't FrameParams's own literal default of 512."},
+                {"name": "SYMBOLS_PER_SUBFRAME", "offset": "0x0C", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.symbols_per_subframe"},
+                {"name": "SUBFRAMES_PER_FRAME", "offset": "0x10", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.subframes_per_frame", "notes": "Wired from l1_status.NUM_SUBFRAMES."},
+                {"name": "PREAMBLE_SYMBOLS", "offset": "0x14", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.preamble_symbols"},
+                {"name": "DETECTION_THRESHOLD", "offset": "0x18", "format": "q1_15", "reset_float": 0.7, "reset": 22937, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::detection_threshold"},
+                {"name": "LOCK_ACQUIRE_COUNT", "offset": "0x1C", "format": "uint32", "reset": 3, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::lock_acquire_count"},
+                {"name": "LOCK_LOSS_COUNT", "offset": "0x20", "format": "uint32", "reset": 5, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::lock_loss_count"},
+                {"name": "HOLDOVER_FRAMES", "offset": "0x24", "format": "uint32", "reset": 10, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::holdover_frames"},
+                {"name": "SEARCH_WINDOW", "offset": "0x28", "format": "uint32", "reset": 64, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::search_window", "notes": "Directly sizes the acquisition correlator's search width -- see the HDL port plan's Phase 9.6 cycle-budget note (~2M complex MACs/call at default width, largest correlator in the design)."}
+            ]
+        },
+        "channel_estimator": {
+            "phase": "9.7",
+            "base_address": "0x8000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x04", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::num_active_carriers", "notes": "Wired from l1_status.NUM_ACTIVE_CARRIERS."},
+                {"name": "BACKEND", "offset": "0x08", "format": "enum", "enum_values": {"LS_ONLY": 0, "LS_WIENER": 1, "ML_ONNX": 2}, "reset": "LS_ONLY", "writable_by": "host", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::backend", "notes": "ML_ONNX is a post-MVP stub, out of RTL scope -- writing this value is host-legal but has no RTL implementation to select."},
+                {"name": "INTERPOLATION", "offset": "0x0C", "format": "enum", "enum_values": {"LINEAR": 0, "CUBIC": 1, "WIENER": 2}, "reset": "LINEAR", "writable_by": "host", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::interpolation"},
+                {"name": "NOISE_VARIANCE", "offset": "0x10", "format": "q1_15", "reset_float": 0.0, "reset": 0, "writable_by": "host", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::noise_variance"},
+                {"name": "ENABLE_AVERAGING", "offset": "0x14", "format": "bool", "reset": false, "writable_by": "host", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::enable_averaging"},
+                {"name": "AVERAGING_ALPHA", "offset": "0x18", "format": "q1_15", "reset_float": 0.1, "reset": 3276, "writable_by": "host", "c_source": "lib/channel/channel_estimator.h:ChannelEstimatorConfig::averaging_alpha"}
+            ]
+        },
+        "wiener_interpolator": {
+            "phase": "9.7",
+            "base_address": "0x9000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::fft_size"},
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x04", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::num_active_carriers"},
+                {"name": "FREQ_TAPS", "offset": "0x08", "format": "uint32", "reset": 8, "writable_by": "const", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::freq_taps", "notes": "Sizes the FIR tap-ROM -- synthesis-time constant."},
+                {"name": "TIME_TAPS", "offset": "0x0C", "format": "uint32", "reset": 4, "writable_by": "const", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::time_taps", "notes": "Synthesis-time constant, same reasoning as FREQ_TAPS."},
+                {"name": "PROFILE", "offset": "0x10", "format": "enum", "enum_values": {"AWGN": 0, "PEDESTRIAN": 1, "VEHICULAR": 2, "URBAN": 3, "STATIC_MULTIPATH": 4}, "reset": "PEDESTRIAN", "writable_by": "host", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::profile", "notes": "Selects which precomputed Wiener filter coefficient ROM to use."},
+                {"name": "NOISE_VARIANCE", "offset": "0x14", "format": "q1_15", "reset_float": 0.01, "reset": 327, "writable_by": "host", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::noise_variance"},
+                {"name": "PILOT_SPACING_FREQ", "offset": "0x18", "format": "uint32", "reset": 6, "writable_by": "l1", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_freq", "notes": "Dx; wired from l1_status.PILOT_PATTERN's {Dx,Dy} (PP3 default matches Dx=6)."},
+                {"name": "PILOT_SPACING_TIME", "offset": "0x1C", "format": "uint32", "reset": 4, "writable_by": "l1", "c_source": "lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_time", "notes": "Dy; wired from l1_status.PILOT_PATTERN (PP3 default matches Dy=4)."}
+            ]
+        },
+        "equalizer": {
+            "phase": "9.8",
+            "base_address": "0xA000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/channel/equalizer.h:EqualizerConfig::fft_size"},
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x04", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/channel/equalizer.h:EqualizerConfig::num_active_carriers"},
+                {"name": "MODE", "offset": "0x08", "format": "enum", "enum_values": {"ZERO_FORCING": 0, "MMSE": 1}, "reset": "ZERO_FORCING", "writable_by": "host", "c_source": "lib/channel/equalizer.h:EqualizerConfig::mode", "notes": "ZF and MMSE need separate eq_complex_divider.v paths per the HDL port plan (Phase 9.8) -- do not reuse the channel estimator's divider."},
+                {"name": "NOISE_VARIANCE", "offset": "0x0C", "format": "q1_15", "reset_float": 0.01, "reset": 327, "writable_by": "host", "c_source": "lib/channel/equalizer.h:EqualizerConfig::noise_variance"},
+                {"name": "ENABLE_PHASE_TRACKING", "offset": "0x10", "format": "bool", "reset": true, "writable_by": "host", "c_source": "lib/channel/equalizer.h:EqualizerConfig::enable_phase_tracking", "notes": "Default true -- the phase-tracking clamp-after-overflow bug fixed on bugfix/hdl-golden-model-fixes is live at this default, not an edge case."},
+                {"name": "PHASE_TRACKING_ALPHA", "offset": "0x14", "format": "q1_15", "reset_float": 0.3, "reset": 9830, "writable_by": "host", "c_source": "lib/channel/equalizer.h:EqualizerConfig::phase_tracking_alpha"},
+                {"name": "MIN_CHANNEL_MAGNITUDE", "offset": "0x18", "format": "q1_15", "reset_float": 0.01, "reset": 327, "writable_by": "host", "c_source": "lib/channel/equalizer.h:EqualizerConfig::min_channel_magnitude", "notes": "This config value alone does not set the RTL deep-fade floor -- equalize_mmse always applies its own structural kMinMagnitudeSqDefault (fixed at 1<<15 post-bugfix) regardless of this register; see the HDL port plan's Phase 9.8 formal target ('the fallback divisor path is never taken')."}
+            ]
+        },
+        "constellation_demapper": {
+            "phase": "9.9",
+            "base_address": "0xB000",
+            "registers": [
+                {"name": "MODULATION", "offset": "0x00", "format": "enum", "enum_values": {"QPSK": 0, "QAM16": 1, "QAM64": 2, "QAM256": 3, "QAM1024": 4, "QAM4096": 5, "NUC_QPSK": 6, "NUC_16": 7, "NUC_64": 8, "NUC_256": 9, "NUC_1024": 10, "NUC_4096": 11}, "reset": "QPSK", "writable_by": "l1", "c_source": "lib/ofdm/constellation_demapper.h:DemapperConfig::modulation; see known_default_inconsistencies", "notes": "Wired from l1_status.MODULATION (QPSK) -- not DemapperConfig's own standalone-unit-test default of QAM64."},
+                {"name": "CODE_RATE", "offset": "0x04", "format": "enum", "enum_values": {"RATE_2_15": 0, "RATE_3_15": 1, "RATE_4_15": 2, "RATE_5_15": 3, "RATE_6_15": 4, "RATE_7_15": 5, "RATE_8_15": 6, "RATE_9_15": 7, "RATE_10_15": 8, "RATE_11_15": 9, "RATE_12_15": 10, "RATE_13_15": 11}, "reset": "RATE_7_15", "writable_by": "l1", "c_source": "lib/ofdm/constellation_demapper.h:DemapperConfig::code_rate", "notes": "Wired from l1_status.CODE_RATE. Needed for NUC table selection (see hdl/docs/placeholder_status.md re: nuc_tables.h license check)."},
+                {"name": "NOISE_VARIANCE", "offset": "0x08", "format": "q1_15", "reset_float": 0.1, "reset": 3276, "writable_by": "host", "c_source": "lib/ofdm/constellation_demapper.h:DemapperConfig::noise_variance"},
+                {"name": "USE_MAX_LOG", "offset": "0x0C", "format": "bool", "reset": true, "writable_by": "const", "c_source": "lib/ofdm/constellation_demapper.h:DemapperConfig::use_max_log", "notes": "Per the HDL port plan's Phase 9.0b, the generalized boundary-slicer (compute_1d_llr) becomes the one fixed-point path for every mode -- the exact-LLR (non-max-log) alternative is not planned for RTL, so this is effectively tied to true rather than a real runtime choice."},
+                {"name": "LLR_CLIP", "offset": "0x10", "format": "int8", "reset": 127, "writable_by": "host", "c_source": "lib/ofdm/constellation_demapper.h:DemapperConfig::llr_clip"}
+            ]
+        },
+        "cell_deinterleaver": {
+            "phase": "9.10",
+            "base_address": "0xC000",
+            "registers": [
+                {"name": "NUM_CELLS", "offset": "0x00", "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/cell_deinterleaver.h:CellDeinterleaverConfig::num_cells", "notes": "Derived, not directly signaled: varies continuously with modulation x code rate x FEC block count. See the HDL port plan's Phase 9.10 note -- NOT simply ROM-able like the frequency deinterleaver; needs an on-chip permutation-builder FSM or an enumerated num_cells restriction (open design question, not resolved by this register-map deliverable)."}
+            ]
+        },
+        "time_deinterleaver": {
+            "phase": "9.10",
+            "base_address": "0xD000",
+            "registers": [
+                {"name": "MODE", "offset": "0x00", "format": "enum", "enum_values": {"NONE": 0, "CTI": 1, "HTI": 2}, "reset": "CTI", "writable_by": "l1", "c_source": "lib/ofdm/time_deinterleaver.h:TimeDeinterleaverConfig::mode", "notes": "Wired from l1_status.TI_MODE."},
+                {"name": "DEPTH", "offset": "0x04", "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/time_deinterleaver.h:TimeDeinterleaverConfig::depth", "notes": "Wired from l1_status.TI_DEPTH. Directly drives the delay-line RAM budget -- see the HDL port plan's Phase 9.10 note (up to ~31 Mbit at depth=15/QPSK)."},
+                {"name": "NUM_TI_BLOCKS", "offset": "0x08", "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/time_deinterleaver.h:TimeDeinterleaverConfig::num_ti_blocks", "notes": "Wired from l1_status.TI_NUM_BLOCKS."},
+                {"name": "CELLS_PER_BLOCK", "offset": "0x0C", "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/time_deinterleaver.h:TimeDeinterleaverConfig::cells_per_block", "notes": "Derived from NUM_FEC_BLOCKS and the modulation/code-rate cells-per-FEC-block, not itself a literal L1 bitstream field."}
+            ]
+        },
+        "freq_deinterleaver": {
+            "phase": "9.10",
+            "base_address": "0xE000",
+            "registers": [
+                {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/ofdm/freq_deinterleaver.h:FreqDeinterleaverConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE. Selects one of exactly 3 precomputed permutation ROMs (n in {6913,13825,27649}) -- see the HDL port plan's Phase 9.10 note."},
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x04", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/ofdm/freq_deinterleaver.h:FreqDeinterleaverConfig::num_active_carriers", "notes": "Wired from l1_status.NUM_ACTIVE_CARRIERS."}
+            ]
+        },
+        "ldpc_decoder": {
+            "phase": "9.11",
+            "base_address": "0xF000",
+            "registers": [
+                {"name": "CODE_RATE", "offset": "0x00", "format": "enum", "enum_values": {"RATE_2_15": 0, "RATE_3_15": 1, "RATE_4_15": 2, "RATE_5_15": 3, "RATE_6_15": 4, "RATE_7_15": 5, "RATE_8_15": 6, "RATE_9_15": 7, "RATE_10_15": 8, "RATE_11_15": 9, "RATE_12_15": 10, "RATE_13_15": 11}, "reset": "RATE_7_15", "writable_by": "l1", "c_source": "lib/fec/ldpc_decoder.h:LdpcConfig::code_rate", "notes": "Wired from l1_status.CODE_RATE. Selects the per-rate sparse H-matrix ROM (non-spec placeholder matrices, see hdl/docs/placeholder_status.md)."},
+                {"name": "SHORT_CODEWORD", "offset": "0x04", "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/fec/ldpc_decoder.h:LdpcConfig::short_codeword", "notes": "Wired from l1_status.CODEWORD_LENGTH_SHORT."},
+                {"name": "MAX_ITERATIONS", "offset": "0x08", "format": "uint32", "reset": 50, "writable_by": "host", "c_source": "lib/fec/ldpc_decoder.h:LdpcConfig::max_iterations"},
+                {"name": "EARLY_TERM_THRESHOLD", "offset": "0x0C", "format": "q1_15", "reset_float": 0.0, "reset": 0, "writable_by": "host", "c_source": "lib/fec/ldpc_decoder.h:LdpcConfig::early_term_threshold", "notes": "0 = disabled."},
+                {"name": "MIN_SUM_SCALE", "offset": "0x10", "format": "q1_15", "reset_float": 0.75, "reset": 24576, "writable_by": "host", "c_source": "lib/fec/ldpc_decoder.h:LdpcConfig::min_sum_scale"}
+            ],
+            "excluded_fields": [
+                {"field": "use_fixed_point", "reason": "C++-only build-mode switch selecting between the float and int16 decoder paths; RTL is inherently the fixed-point path, so this doesn't apply."}
+            ]
+        },
+        "bch_decoder": {
+            "phase": "9.12",
+            "base_address": "0x10000",
+            "registers": [
+                {"name": "CODEWORD_LENGTH", "offset": "0x00", "format": "uint32", "reset": 57600, "writable_by": "l1", "c_source": "lib/fec/bch_decoder.h:BchConfig::codeword_length", "notes": "Varies with the selected LDPC frame size/code rate (l1_status.CODEWORD_LENGTH_SHORT and CODE_RATE)."},
+                {"name": "INFO_LENGTH", "offset": "0x04", "format": "uint32", "reset": 57408, "writable_by": "l1", "c_source": "lib/fec/bch_decoder.h:BchConfig::info_length"},
+                {"name": "T", "offset": "0x08", "format": "uint32", "reset": 12, "writable_by": "const", "c_source": "lib/fec/bch_decoder.h:BchConfig::t", "notes": "ATSC A/322-fixed BCH error-correction capability -- not a runtime choice."},
+                {"name": "M", "offset": "0x0C", "format": "uint32", "reset": 16, "writable_by": "const", "c_source": "lib/fec/bch_decoder.h:BchConfig::m", "notes": "GF(2^16) -- spec-fixed, sizes the gf_exp_/gf_log_ ROMs."}
+            ]
+        },
+        "l1_decoder": {
+            "phase": "9.13a",
+            "base_address": "0x11000",
+            "description": "Control registers only -- decoded L1 field values themselves live in the top-level l1_status bank, not duplicated here.",
+            "registers": [
+                {"name": "MAX_LDPC_ITERATIONS", "offset": "0x00", "format": "uint32", "reset": 25, "writable_by": "host", "c_source": "lib/framing/l1_decoder.h:L1DecoderConfig::max_ldpc_iterations", "notes": "L1 decode itself is a bare LLR hard-decision slicer today (no real LDPC/BCH), see hdl/docs/placeholder_status.md -- this register is forward-looking for when that's fixed."},
+                {"name": "CHECK_CRC", "offset": "0x04", "format": "bool", "reset": true, "writable_by": "host", "c_source": "lib/framing/l1_decoder.h:L1DecoderConfig::check_crc", "notes": "Test/debug override."},
+                {"name": "L1_PRE_SHORT_LDPC", "offset": "0x08", "format": "bool", "reset": true, "writable_by": "const", "c_source": "lib/framing/l1_decoder.h:L1DecoderConfig::l1_pre_short_ldpc", "notes": "L1-Pre always uses the short (16200) LDPC codeword per spec -- not a runtime choice."}
+            ]
+        },
+        "alp_demux": {
+            "phase": "9.14",
+            "base_address": "0x12000",
+            "registers": [
+                {"name": "MAX_DATAGRAM_SIZE", "offset": "0x00", "format": "uint32", "reset": 65535, "writable_by": "host", "c_source": "lib/framing/alp_demux.h:AlpDemuxConfig::max_datagram_size", "notes": "Can only reduce, never exceed, the synthesis-time input_buffer_ depth bound (the Phase 9.14 rule-5 fix -- see the HDL port plan; the unbounded resize() in the golden model is the actual defect being fixed, not ported)."},
+                {"name": "CHECK_CRC", "offset": "0x04", "format": "bool", "reset": true, "writable_by": "host", "c_source": "lib/framing/alp_demux.h:AlpDemuxConfig::check_crc", "notes": "Test/debug override."}
+            ],
+            "excluded_fields": [
+                {"field": "reassembly_timeout_packets", "reason": "check_reassembly_timeouts() is unimplemented (no-op) in the golden model -- see hdl/docs/placeholder_status.md. No RTL timeout mechanism is built to match a reference that doesn't exist."},
+                {"field": "MAX_REASSEMBLY_CONTEXTS", "reason": "static constexpr = 16, already a compile-time array bound (std::array<ReassemblyContext,16>) in the golden model -- synthesis-time constant, not a register."},
+                {"field": "MAX_ALP_PACKET_SIZE", "reason": "static constexpr = 65535 -- synthesis-time constant, not a register."}
+            ]
+        }
+    },
+    "explicitly_out_of_scope_blocks": {
+        "description": "Config structs found in lib/ that are not part of this register map, per the HDL port plan's 'Explicitly out of scope' section.",
+        "entries": [
+            {"path": "lib/metrics/*.h", "reason": "SNR/MER/BER/RSSI metrics status registers -- out of scope this milestone (log10-based, no CORDIC hyperbolic-mode support planned yet)."},
+            {"path": "lib/framing/route_parser.h", "reason": "ROUTE/DASH is host software, downstream of the ALP demux RTL output boundary."},
+            {"path": "lib/config/mode_config.h", "reason": "Flagged in the HDL port plan as unaudited surface worth a pass before its dependent phases start; not yet reviewed for this register map."}
+        ]
+    }
+}
