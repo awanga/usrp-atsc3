@@ -8,6 +8,7 @@ set(LIB_TEST_SOURCES
     test_types.cc
     test_atsc3_config.cc
     test_simd.cc
+    test_cordic.cc
     test_bootstrap_detector.cc
     test_cp_removal.cc
     test_fft_engine.cc
