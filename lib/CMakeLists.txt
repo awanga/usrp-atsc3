@@ -3,6 +3,7 @@
 
 # Add subdirectory CMake files (sets SYNC_SOURCES, OFDM_SOURCES, etc.)
 add_subdirectory(simd)
+add_subdirectory(dsp)
 add_subdirectory(sync)
 add_subdirectory(ofdm)
 add_subdirectory(channel)
@@ -14,6 +15,7 @@ add_subdirectory(metrics)
 set(LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/config/config_bus.cc
     ${SIMD_SOURCES}
+    ${DSP_SOURCES}
     ${SYNC_SOURCES}
     ${OFDM_SOURCES}
     ${CHANNEL_SOURCES}
@@ -25,6 +27,7 @@ set(LIB_SOURCES
 set(LIB_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/types.h
     ${SIMD_HEADERS}
+    ${DSP_HEADERS}
     ${SYNC_HEADERS}
     ${OFDM_HEADERS}
     ${CHANNEL_HEADERS}
@@ -40,6 +43,7 @@ target_include_directories(atsc3_lib
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/config>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/simd>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/dsp>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sync>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ofdm>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/channel>
