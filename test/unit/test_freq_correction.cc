@@ -5,7 +5,9 @@
 #include "freq_correction.h"
 
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
+#include <random>
 #include <vector>
 
 namespace atsc3 {
@@ -390,6 +392,103 @@ TEST(FreqCorrectionTest, CorrectionOfNegative500HzCfo) {
     EXPECT_LT(std::abs(residual_freq_hz), 10.0)
         << "Residual frequency " << residual_freq_hz << " Hz exceeds 10 Hz limit";
 }
+
+#ifdef ATSC3_FIXED_POINT
+
+//==============================================================================
+// Phase 9.0b equivalence: fixed-point NCO rewrite vs. the pre-rewrite
+// double std::cos/sin algorithm. Per the HDL port plan, each Phase 9.0b
+// block needs its own >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL
+// phase starts.
+//
+// Unlike TimingRecovery's closed loop, FreqCorrection's phase accumulator
+// has no feedback: it advances by a fixed increment every sample,
+// entirely open-loop with respect to its own output. A quantized
+// increment therefore produces a small, *linearly accumulating* phase
+// error (ordinary clock-skew-like drift), not the chaotic trajectory
+// bifurcation a quantized closed-loop state can produce -- so a
+// per-sample SNR comparison over many samples is meaningful here, unlike
+// there.
+//==============================================================================
+
+namespace {
+
+// Pre-rewrite reference: double phase accumulator, std::cos/sin per
+// sample, matching FreqCorrection::process() before this rewrite exactly.
+class ReferenceFreqCorrection {
+public:
+    explicit ReferenceFreqCorrection(double cfo_hz, double sample_rate_hz) : phase_(0.0) {
+        phase_increment_ = -2.0 * M_PI * cfo_hz / sample_rate_hz;
+    }
+
+    std::complex<double> process_sample(std::complex<double> in) {
+        double cos_p = std::cos(phase_);
+        double sin_p = std::sin(phase_);
+        std::complex<double> out(in.real() * cos_p - in.imag() * sin_p,
+                                 in.real() * sin_p + in.imag() * cos_p);
+        phase_ += phase_increment_;
+        if (phase_ > M_PI) {
+            phase_ -= 2.0 * M_PI;
+        } else if (phase_ < -M_PI) {
+            phase_ += 2.0 * M_PI;
+        }
+        return out;
+    }
+
+private:
+    double phase_increment_;
+    double phase_;
+};
+
+}  // namespace
+
+TEST(FreqCorrectionTest, FixedPointVsReferenceEquivalence) {
+    double signal_power = 0.0;
+    double error_power = 0.0;
+    long sample_count = 0;
+
+    for (double cfo : {-500.0, -100.0, -10.0, 10.0, 100.0, 500.0, 1500.0}) {
+        FreqCorrectionConfig config;
+        config.sample_rate_hz = 6.25e6;
+        config.initial_cfo_hz = cfo;
+        FreqCorrection fixed(config);
+        ReferenceFreqCorrection ref(cfo, config.sample_rate_hz);
+
+        std::mt19937 rng(static_cast<uint32_t>(cfo) + 1000);
+        std::uniform_real_distribution<double> phase_dist(-kPi, kPi);
+
+        for (int i = 0; i < 5000; ++i) {
+            // Broadband-ish input: random phase, fixed amplitude, so the
+            // rotation is exercised across the full angle range, not just
+            // one input phase.
+            double p = phase_dist(rng);
+            float re = 0.7f * static_cast<float>(std::cos(p));
+            float im = 0.7f * static_cast<float>(std::sin(p));
+            sample_t in(float_to_q15(re), float_to_q15(im));
+            sample_t out;
+            fixed.process(&in, &out, 1);
+
+            std::complex<double> ref_in(q15_to_float(in.real()), q15_to_float(in.imag()));
+            std::complex<double> ref_out = ref.process_sample(ref_in);
+
+            double fixed_re = q15_to_float(out.real());
+            double fixed_im = q15_to_float(out.imag());
+
+            signal_power += ref_out.real() * ref_out.real() + ref_out.imag() * ref_out.imag();
+            double dr = fixed_re - ref_out.real();
+            double di = fixed_im - ref_out.imag();
+            error_power += dr * dr + di * di;
+            ++sample_count;
+        }
+    }
+
+    ASSERT_GT(sample_count, 1000);
+    double snr_db_value = 10.0 * std::log10(signal_power / error_power);
+    EXPECT_GE(snr_db_value, 40.0) << "fixed-point NCO SNR vs. double reference: " << snr_db_value
+                                  << " dB over " << sample_count << " samples";
+}
+
+#endif  // ATSC3_FIXED_POINT
 
 //==============================================================================
 // PilotPhaseTracker Tests
