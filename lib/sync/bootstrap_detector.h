@@ -103,34 +103,84 @@ public:
         return sample_count_;
     }
 
+    // Current (most recent) smoothed detection metric and CFO estimate,
+    // updated every process()/process_sample() call regardless of
+    // detection FSM state (unlike BootstrapDetection::metric/cfo_hz,
+    // which are only meaningful when detected == true). Useful for
+    // link-quality monitoring, and for the Phase 9.0b fixed-point-vs-
+    // reference equivalence test (test_bootstrap_detector.cc), which
+    // needs same-instant comparisons rather than only the FSM-gated
+    // "detected" event -- two independently-evolving EWMAs (different
+    // alpha) can trigger their peak/falling-edge detection on slightly
+    // different samples even when tracking the same underlying signal.
+    double get_current_metric() const;
+    double get_current_cfo_hz() const;
+
 private:
     BootstrapConfig config_;
 
     // Schmidl-Cox state
     // P = sum of x[n] * conj(x[n - L]) for n in window
     // R = sum of |x[n - L]|^2 for n in window
+#ifdef ATSC3_FIXED_POINT
+    // Genuine fixed-point state (Phase 9.0b rewrite), not double with
+    // quantized I/O. p_sum_re_/p_sum_im_ hold the EWMA of
+    // x[n]*conj(x[n-L]) as raw (unshifted) Q1.15 x Q1.15 products; the
+    // shift-based alpha approximation (1/1024) and the rest of the fixed-
+    // point design are documented in bootstrap_detector.cc.
+    int64_t p_sum_re_;
+    int64_t p_sum_im_;
+    int64_t r_sum_;
+#else
     std::complex<double> p_sum_;
     double r_sum_;
+#endif
 
     // Circular buffer for delayed samples (size = kHalfSymbol)
     std::vector<sample_t> delay_buffer_;
     size_t delay_idx_;
 
     // Circular buffer for power computation (size = kHalfSymbol)
+#ifdef ATSC3_FIXED_POINT
+    std::vector<int64_t> power_buffer_;
+#else
     std::vector<double> power_buffer_;
+#endif
     size_t power_idx_;
 
     // Metric history for smoothing
+#ifdef ATSC3_FIXED_POINT
+    // Q1.15-scaled squared correlation ratio (see check_detection()).
+    std::vector<int32_t> metric_history_;
+    int64_t metric_sum_;
+#else
     std::vector<double> metric_history_;
-    size_t metric_idx_;
     double metric_sum_;
+#endif
+    size_t metric_idx_;
 
     // Detection state
     size_t sample_count_;
     bool in_detection_;
+#ifdef ATSC3_FIXED_POINT
+    int32_t peak_metric_;
+    int16_t
+        peak_angle_q15_;  // CORDIC angle format (dsp::cordic_vector); replaces peak_correlation_
+#else
     double peak_metric_;
-    size_t peak_sample_;
     std::complex<double> peak_correlation_;
+#endif
+    size_t peak_sample_;
+
+    // Backing state for get_current_metric()/get_current_cfo_hz(),
+    // stashed at the top of check_detection() every call.
+#ifdef ATSC3_FIXED_POINT
+    int64_t last_smoothed_metric_q15_;
+    int16_t last_angle_q15_;
+#else
+    double last_smoothed_metric_;
+    double last_phase_;
+#endif
 
     // Process one sample (internal)
     void process_sample(sample_t sample);
