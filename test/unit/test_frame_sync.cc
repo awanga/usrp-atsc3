@@ -5,7 +5,9 @@
 #include "frame_sync.h"
 
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
+#include <random>
 #include <vector>
 
 namespace atsc3 {
@@ -243,6 +245,104 @@ TEST(FrameEventTest, DefaultInitialization) {
     EXPECT_EQ(event.symbol_number, 7u);
     EXPECT_NEAR(event.confidence, 0.95, 0.01);
 }
+
+#ifdef ATSC3_FIXED_POINT
+
+//==============================================================================
+// Phase 9.0b equivalence: fixed-point correlator rewrite vs. the
+// pre-rewrite double std::sqrt-based algorithm. Per the HDL port plan,
+// each Phase 9.0b block needs its own >=40 dB SNR-vs-pre-rewrite
+// checkpoint before its RTL phase starts.
+//
+// correlate_preamble() is memoryless (no dependence on prior calls or FSM
+// state), so -- unlike TimingRecovery's closed loop -- a per-call SNR
+// comparison over many independent trials is meaningful here.
+// compute_correlation() (a thin public forwarder added for exactly this)
+// exercises the real private implementation directly.
+//==============================================================================
+
+namespace {
+
+// Reference preamble reference generator, matching
+// FrameSync::init_preamble_reference() exactly (same placeholder pattern
+// -- see hdl/docs/placeholder_status.md -- reproduced here in double so
+// the comparison isolates the rewrite's arithmetic, not the (unchanged,
+// out of scope) reference sequence itself).
+std::vector<std::complex<double>> reference_preamble(size_t fft_size) {
+    std::vector<std::complex<double>> ref(fft_size);
+    for (size_t k = 0; k < fft_size; ++k) {
+        double phase = 2.0 * 3.14159265358979 * ((k * 7) % 13) / 13.0;
+        ref[k] = std::complex<double>(std::cos(phase) * 0.5, std::sin(phase) * 0.5);
+    }
+    return ref;
+}
+
+double reference_correlate(const std::vector<std::complex<double>>& symbols,
+                           const std::vector<std::complex<double>>& ref, size_t offset) {
+    if (offset + ref.size() > symbols.size()) {
+        return 0.0;
+    }
+    double corr_re = 0.0, corr_im = 0.0, sig_power = 0.0, ref_power = 0.0;
+    for (size_t i = 0; i < ref.size(); ++i) {
+        const auto& sig = symbols[offset + i];
+        const auto& r = ref[i];
+        corr_re += sig.real() * r.real() + sig.imag() * r.imag();
+        corr_im += sig.imag() * r.real() - sig.real() * r.imag();
+        sig_power += sig.real() * sig.real() + sig.imag() * sig.imag();
+        ref_power += r.real() * r.real() + r.imag() * r.imag();
+    }
+    double norm = std::sqrt(sig_power * ref_power);
+    if (norm < 1e-10) {
+        return 0.0;
+    }
+    return std::sqrt(corr_re * corr_re + corr_im * corr_im) / norm;
+}
+
+}  // namespace
+
+TEST(FrameSyncTest, FixedPointVsReferenceEquivalence) {
+    FrameSyncConfig config;
+    config.frame_params.fft_size = 256;  // smaller than the 8192 default for test speed
+    FrameSync sync(config);
+
+    auto ref_preamble = reference_preamble(config.frame_params.fft_size);
+
+    std::mt19937 rng(777);
+    std::uniform_real_distribution<float> amp_dist(-0.5f, 0.5f);
+
+    double signal_power = 0.0;
+    double error_power = 0.0;
+    long trial_count = 0;
+
+    for (int trial = 0; trial < 200; ++trial) {
+        size_t buf_len = config.frame_params.fft_size + 64;
+        std::vector<sample_t> symbols_fixed(buf_len);
+        std::vector<std::complex<double>> symbols_ref(buf_len);
+        for (size_t i = 0; i < buf_len; ++i) {
+            float re = amp_dist(rng);
+            float im = amp_dist(rng);
+            symbols_fixed[i] = sample_t(float_to_q15(re), float_to_q15(im));
+            symbols_ref[i] = std::complex<double>(q15_to_float(symbols_fixed[i].real()),
+                                                  q15_to_float(symbols_fixed[i].imag()));
+        }
+        size_t offset = static_cast<size_t>(rng() % 64);
+
+        double fixed_corr = sync.compute_correlation(symbols_fixed.data(), buf_len, offset);
+        double ref_corr = reference_correlate(symbols_ref, ref_preamble, offset);
+
+        signal_power += ref_corr * ref_corr;
+        double d = fixed_corr - ref_corr;
+        error_power += d * d;
+        ++trial_count;
+    }
+
+    ASSERT_GT(trial_count, 100);
+    double snr_db_value = 10.0 * std::log10(signal_power / error_power);
+    EXPECT_GE(snr_db_value, 40.0) << "fixed-point frame sync correlator SNR vs. double reference: "
+                                  << snr_db_value << " dB over " << trial_count << " trials";
+}
+
+#endif  // ATSC3_FIXED_POINT
 
 }  // namespace
 }  // namespace sync

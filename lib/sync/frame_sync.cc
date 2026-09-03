@@ -4,11 +4,58 @@
 
 #include "frame_sync.h"
 
+#include "dsp/cordic.h"
+
 #include <algorithm>
 #include <cmath>
 
 namespace atsc3 {
 namespace sync {
+
+namespace {
+
+#ifdef ATSC3_FIXED_POINT
+int16_t saturate_i16(int64_t v) {
+    if (v > 32767) {
+        return 32767;
+    }
+    if (v < -32767) {
+        return -32767;
+    }
+    return static_cast<int16_t>(v);
+}
+
+// Exact floor(sqrt(x)) via binary digit recurrence -- shifts, compares,
+// add/subtract only, no float, no library sqrt call. Needed alongside
+// CORDIC rather than instead of it: correlate_preamble()'s normalization
+// denominator is sqrt(sig_power * ref_power), a square root of a scalar
+// *product* of two power accumulators, not a vector magnitude. CORDIC's
+// circular vectoring mode (lib/dsp/cordic.h) computes sqrt(x^2 + y^2) for
+// a 2D point and is exactly right for the correlation magnitude below,
+// but there is no circular-mode identity for a scalar sqrt like this one
+// -- that needs hyperbolic-mode CORDIC, out of scope this milestone (see
+// hdl/docs/placeholder_status.md). This is a different, equally
+// legitimate fixed-point primitive, not a workaround.
+uint64_t integer_sqrt(uint64_t x) {
+    uint64_t res = 0;
+    uint64_t bit = uint64_t(1) << 62;  // highest even power of 4 <= x
+    while (bit > x) {
+        bit >>= 2;
+    }
+    while (bit != 0) {
+        if (x >= res + bit) {
+            x -= res + bit;
+            res = (res >> 1) + bit;
+        } else {
+            res >>= 1;
+        }
+        bit >>= 2;
+    }
+    return res;
+}
+#endif
+
+}  // namespace
 
 FrameSync::FrameSync(const FrameSyncConfig& config)
     : config_(config),
@@ -120,29 +167,85 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
         return 0.0;
     }
 
+    size_t corr_len = std::min(preamble_ref_.size(), n - offset);
+
+#ifdef ATSC3_FIXED_POINT
+    // Genuine fixed-point cross-correlation (Phase 9.0b rewrite) -- no
+    // per-sample double, no q15_to_float. Accumulated as raw (unshifted)
+    // Q1.15 x Q1.15 products, up to corr_len (<= fft_size, up to 32768)
+    // terms, in wide int64 accumulators.
+    int64_t corr_re = 0;
+    int64_t corr_im = 0;
+    int64_t sig_power = 0;
+    int64_t ref_power = 0;
+
+    for (size_t i = 0; i < corr_len; ++i) {
+        const sample_t& sig = symbols[offset + i];
+        const sample_t& ref = preamble_ref_[i];
+
+        int64_t sig_re = sig.real();
+        int64_t sig_im = sig.imag();
+        int64_t ref_re = ref.real();
+        int64_t ref_im = ref.imag();
+
+        // Correlation: sig * conj(ref)
+        corr_re += sig_re * ref_re + sig_im * ref_im;
+        corr_im += sig_im * ref_re - sig_re * ref_im;
+
+        sig_power += sig_re * sig_re + sig_im * sig_im;
+        ref_power += ref_re * ref_re + ref_im * ref_im;
+    }
+
+    if (sig_power <= 0 || ref_power <= 0) {
+        return 0.0;
+    }
+
+    // Normalization denominator: sqrt(sig_power) * sqrt(ref_power), not
+    // sqrt(sig_power * ref_power) -- the product alone can reach ~1e26
+    // for fft_size=32768 at full scale, far beyond even int64/uint64.
+    // Computing each factor's sqrt first keeps every intermediate well
+    // within uint64 (each accumulator is bounded by ~fft_size * 2 *
+    // 32767^2, comfortably < 2^63).
+    uint64_t sig_mag = integer_sqrt(static_cast<uint64_t>(sig_power));
+    uint64_t ref_mag = integer_sqrt(static_cast<uint64_t>(ref_power));
+    uint64_t norm = sig_mag * ref_mag;
+    if (norm == 0) {
+        return 0.0;
+    }
+
+    // Correlation magnitude via CORDIC vectoring (this part genuinely is
+    // a 2D vector magnitude, unlike the denominator above). corr_re/
+    // corr_im can be far outside int16_t range -- normalize into range
+    // with an adaptive shift first and scale the result back, same
+    // technique as bootstrap_detector's metric computation (see that
+    // file for why this must not simply saturate).
+    int64_t re = corr_re;
+    int64_t im = corr_im;
+    int shift = 0;
+    while ((re > 32767 || re < -32767 || im > 32767 || im < -32767) && shift < 48) {
+        re >>= 1;
+        im >>= 1;
+        ++shift;
+    }
+    dsp::CordicVectorResult vec = dsp::cordic_vector(saturate_i16(re), saturate_i16(im));
+    uint64_t corr_mag = static_cast<uint64_t>(vec.magnitude) << shift;
+
+    return static_cast<double>(corr_mag) / static_cast<double>(norm);
+#else
     // Cross-correlation between received symbols and reference
     double corr_re = 0.0;
     double corr_im = 0.0;
     double sig_power = 0.0;
     double ref_power = 0.0;
 
-    size_t corr_len = std::min(preamble_ref_.size(), n - offset);
-
     for (size_t i = 0; i < corr_len; ++i) {
         const sample_t& sig = symbols[offset + i];
         const sample_t& ref = preamble_ref_[i];
 
-#ifdef ATSC3_FIXED_POINT
-        double sig_re = q15_to_float(sig.real());
-        double sig_im = q15_to_float(sig.imag());
-        double ref_re = q15_to_float(ref.real());
-        double ref_im = q15_to_float(ref.imag());
-#else
         double sig_re = sig.real();
         double sig_im = sig.imag();
         double ref_re = ref.real();
         double ref_im = ref.imag();
-#endif
 
         // Correlation: sig * conj(ref)
         corr_re += sig_re * ref_re + sig_im * ref_im;
@@ -159,6 +262,7 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
     }
 
     return std::sqrt(corr_re * corr_re + corr_im * corr_im) / norm;
+#endif
 }
 
 void FrameSync::emit_frame_event(FrameEvent::Type type) {
