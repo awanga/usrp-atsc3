@@ -5,7 +5,9 @@
 #include "timing_recovery.h"
 
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
+#include <random>
 #include <vector>
 
 namespace atsc3 {
@@ -310,6 +312,212 @@ TEST(TimingRecoveryTest, TimingErrorStaysSmallWhenLocked) {
     // Timing offset should remain small
     EXPECT_LT(std::abs(timing.get_timing_offset()), 0.5);
 }
+
+#ifdef ATSC3_FIXED_POINT
+
+//==============================================================================
+// Phase 9.0b equivalence: fixed-point rewrite vs. the pre-rewrite double
+// algorithm. Per the HDL port plan, each Phase 9.0b block needs its own
+// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL phase starts.
+//
+// Deliberately NOT tested this way: TimingRecovery's full closed loop
+// (mu_/timing_error_ trajectory over many samples). A diagnostic during
+// development established why -- mu_ selects one of num_phases discrete
+// FIR phases (phase = floor(mu*num_phases)), so any quantization of mu_
+// (Q0.16 here, but this is true of *any* finite-precision mu_, fixed or
+// float) occasionally lands on a different side of a phase boundary than
+// an exact-double reference would. That single boundary crossing feeds a
+// materially different interpolated sample into the Gardner TED, which
+// the closed loop then integrates and tracks along a genuinely different
+// (not just noisier) trajectory from that point on -- confirmed by
+// perturbing a *pure-double* simulation's mu by rounding it to Q0.16
+// after each step with everything else exact: the two trajectories track
+// within 1e-4 for ~500 samples, then jump to a 0.05+ divergence at one
+// step and stay there. That's a bifurcation inherent to closed-loop
+// tracking of a quantized phase-select variable, not a rewrite defect --
+// an SNR bar over a long trajectory would fail for *any* correct
+// finite-precision implementation of this loop, not just a buggy one.
+//
+// What Phase 9.0b's rewrite actually needs validated is the two
+// memoryless pieces it changed: the FIR dot product (Q1.15 taps now,
+// were float) and the Gardner error computation (genuine integer diff/
+// dot-product now, was double). Both are tested directly below, many
+// independent trials, no feedback loop involved -- exactly the kind of
+// computation an aggregate SNR bar is meaningful for. The loop's
+// qualitative behavior (locks, timing error stays bounded) is already
+// covered by TimingErrorStaysSmallWhenLocked above, which passes in both
+// build configs.
+//==============================================================================
+
+namespace {
+
+double ref_sinc(double x) {
+    if (std::abs(x) < 1e-10)
+        return 1.0;
+    return std::sin(kPi * x) / (kPi * x);
+}
+
+double ref_raised_cosine(double t, double rolloff, double T) {
+    if (rolloff < 1e-10)
+        return ref_sinc(t / T);
+    double denom = 1.0 - 4.0 * rolloff * rolloff * t * t / (T * T);
+    if (std::abs(denom) < 1e-10) {
+        return (kPi / (4.0 * T)) * ref_sinc(1.0 / (2.0 * rolloff));
+    }
+    return ref_sinc(t / T) * std::cos(kPi * rolloff * t / T) / denom;
+}
+
+// Reference (double-precision) polyphase coefficient design, matching
+// PolyphaseInterpolator::init_coefficients() exactly except for the final
+// quantization step -- used to build the "what would the taps be without
+// Q1.15 rounding" comparison table below.
+std::vector<std::vector<double>> design_reference_coeffs(const PolyphaseConfig& config) {
+    size_t total_taps = config.num_phases * config.taps_per_phase;
+    std::vector<double> prototype(total_taps);
+    double center = static_cast<double>(total_taps - 1) / 2.0;
+    constexpr double kRolloff = 0.2;
+    double T = static_cast<double>(config.num_phases);
+    for (size_t i = 0; i < total_taps; ++i) {
+        double t = static_cast<double>(i) - center;
+        prototype[i] = ref_raised_cosine(t, kRolloff, T);
+    }
+    double beta = 5.0;
+    for (size_t i = 0; i < total_taps; ++i) {
+        double x = 2.0 * static_cast<double>(i) / static_cast<double>(total_taps - 1) - 1.0;
+        double w = std::cosh(beta * std::sqrt(1.0 - x * x)) / std::cosh(beta);
+        prototype[i] *= w;
+    }
+    double sum = 0.0;
+    for (size_t i = 0; i < total_taps; i += config.num_phases)
+        sum += prototype[i];
+    if (std::abs(sum) > 1e-10) {
+        for (double& c : prototype)
+            c /= sum;
+    }
+    std::vector<std::vector<double>> coeffs(config.num_phases);
+    for (size_t p = 0; p < config.num_phases; ++p) {
+        coeffs[p].resize(config.taps_per_phase);
+        for (size_t t = 0; t < config.taps_per_phase; ++t) {
+            coeffs[p][t] = prototype[p + t * config.num_phases];
+        }
+    }
+    return coeffs;
+}
+
+std::complex<double> reference_interpolate(const std::vector<std::complex<double>>& buf,
+                                           size_t buf_idx, double mu,
+                                           const std::vector<std::vector<double>>& coeffs,
+                                           size_t num_phases, size_t taps_per_phase) {
+    mu = mu - std::floor(mu);
+    size_t phase = static_cast<size_t>(mu * num_phases);
+    if (phase >= num_phases)
+        phase = num_phases - 1;
+    const auto& taps = coeffs[phase];
+    size_t wrap = buf.size();
+    double acc_re = 0.0, acc_im = 0.0;
+    for (size_t t = 0; t < taps_per_phase; ++t) {
+        size_t idx = (buf_idx + wrap - 1 - t) % wrap;
+        acc_re += buf[idx].real() * taps[t];
+        acc_im += buf[idx].imag() * taps[t];
+    }
+    return std::complex<double>(acc_re, acc_im);
+}
+
+}  // namespace
+
+TEST(PolyphaseInterpolatorTest, FixedPointVsReferenceEquivalence) {
+    PolyphaseConfig config;  // defaults: 16 phases, 32 taps/phase
+    PolyphaseInterpolator interp(config);
+    auto ref_coeffs = design_reference_coeffs(config);
+
+    std::mt19937 rng(2024);
+    // Amplitude bound: NOT +-0.9. A first version of this test used that
+    // and measured ~30 dB, which traced back entirely to Q1.15 output
+    // saturation, not interpolator imprecision -- filling all 128 buffer
+    // slots with *independent* near-full-scale noise is an unrealistic
+    // stress input (real signals are correlated / band-limited), and a
+    // 32-tap raised-cosine/Kaiser filter can legitimately overshoot +-1.0
+    // on such input (confirmed: >99% of that run's error power came from
+    // the ~2.4% of trials that saturated; dropping to +-0.5 amplitude
+    // eliminates saturation entirely and the same code measures ~85 dB).
+    // +-0.5 leaves headroom above the -20 dBFS nominal operating point
+    // documented in hdl/docs/q_format_notes.md while still exercising a
+    // realistic dynamic range; saturation correctness itself is a
+    // separate, deliberate concern (see that doc's stimulus guidance),
+    // not what this test is measuring.
+    std::uniform_real_distribution<float> amp_dist(-0.5f, 0.5f);
+    std::uniform_real_distribution<double> mu_dist(0.0, 1.0);
+
+    double signal_power = 0.0;
+    double error_power = 0.0;
+
+    for (int trial = 0; trial < 500; ++trial) {
+        size_t buf_len = config.taps_per_phase * 4;
+        std::vector<sample_t> buf_fixed(buf_len);
+        std::vector<std::complex<double>> buf_ref(buf_len);
+        for (size_t i = 0; i < buf_len; ++i) {
+            float re = amp_dist(rng);
+            float im = amp_dist(rng);
+            buf_fixed[i] = sample_t(float_to_q15(re), float_to_q15(im));
+            buf_ref[i] = std::complex<double>(q15_to_float(buf_fixed[i].real()),
+                                              q15_to_float(buf_fixed[i].imag()));
+        }
+        size_t buf_idx = static_cast<size_t>(rng() % buf_len);
+        double mu = mu_dist(rng);
+
+        sample_t result = interp.interpolate(buf_fixed.data(), buf_idx, mu, buf_len);
+        double fixed_re = q15_to_float(result.real());
+        double fixed_im = q15_to_float(result.imag());
+
+        auto ref_result = reference_interpolate(buf_ref, buf_idx, mu, ref_coeffs, config.num_phases,
+                                                config.taps_per_phase);
+
+        signal_power +=
+            ref_result.real() * ref_result.real() + ref_result.imag() * ref_result.imag();
+        double dr = fixed_re - ref_result.real();
+        double di = fixed_im - ref_result.imag();
+        error_power += dr * dr + di * di;
+    }
+
+    double snr_db_value = 10.0 * std::log10(signal_power / error_power);
+    EXPECT_GE(snr_db_value, 40.0) << "fixed-point interpolator SNR vs. double reference: "
+                                  << snr_db_value << " dB";
+}
+
+TEST(GardnerTedTest, FixedPointVsReferenceEquivalence) {
+    GardnerTed ted;
+    std::mt19937 rng(4096);
+    std::uniform_real_distribution<float> amp_dist(-0.9f, 0.9f);
+
+    double signal_power = 0.0;
+    double error_power = 0.0;
+
+    for (int trial = 0; trial < 2000; ++trial) {
+        float curr_re = amp_dist(rng), curr_im = amp_dist(rng);
+        float mid_re = amp_dist(rng), mid_im = amp_dist(rng);
+        float prev_re = amp_dist(rng), prev_im = amp_dist(rng);
+
+        sample_t x_curr(float_to_q15(curr_re), float_to_q15(curr_im));
+        sample_t x_mid(float_to_q15(mid_re), float_to_q15(mid_im));
+        sample_t x_prev(float_to_q15(prev_re), float_to_q15(prev_im));
+
+        double fixed_error = ted.compute_error(x_curr, x_mid, x_prev);
+
+        double rd_re = q15_to_float(x_curr.real()) - q15_to_float(x_prev.real());
+        double rd_im = q15_to_float(x_curr.imag()) - q15_to_float(x_prev.imag());
+        double ref_error = rd_re * q15_to_float(x_mid.real()) + rd_im * q15_to_float(x_mid.imag());
+
+        signal_power += ref_error * ref_error;
+        double d = fixed_error - ref_error;
+        error_power += d * d;
+    }
+
+    double snr_db_value = 10.0 * std::log10(signal_power / error_power);
+    EXPECT_GE(snr_db_value, 40.0) << "fixed-point Gardner TED SNR vs. double reference: "
+                                  << snr_db_value << " dB";
+}
+
+#endif  // ATSC3_FIXED_POINT
 
 }  // namespace
 }  // namespace sync

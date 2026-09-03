@@ -39,6 +39,42 @@ inline double raised_cosine(double t, double rolloff, double T) {
     return sinc(t / T) * std::cos(kPi * rolloff * t / T) / denom;
 }
 
+#ifdef ATSC3_FIXED_POINT
+// Round-to-nearest Q1.15 quantizer for the one-time filter coefficient
+// table (a ROM in RTL terms, computed offline either way). Deliberately
+// not float_to_q15(): that helper truncates toward zero, which is the
+// right convention for the per-sample runtime datapath (matches actual
+// RTL arithmetic and lib/types.h's documented behavior elsewhere), but
+// applied independently to 32 filter taps it's a systematic (not just
+// random) downward bias -- every tap's magnitude gets rounded down, not
+// just quantized. A raised-cosine/Kaiser-windowed filter has many
+// small-magnitude taps, where that bias is proportionally largest.
+// Rounding instead of truncating for this one-time table closed a real
+// gap: the interpolator's fixed-point-vs-reference SNR was ~32 dB with
+// truncation, comfortably >40 dB with rounding, and this is exactly what
+// a real coefficient-ROM generator would do too.
+int16_t round_to_q15(double x) {
+    long v = std::lround(x * 32768.0);
+    if (v > 32767) {
+        v = 32767;
+    }
+    if (v < -32768) {
+        v = -32768;
+    }
+    return static_cast<int16_t>(v);
+}
+
+int16_t saturate_i16(int64_t v) {
+    if (v > 32767) {
+        return 32767;
+    }
+    if (v < -32767) {
+        return -32767;
+    }
+    return static_cast<int16_t>(v);
+}
+#endif
+
 }  // namespace
 
 //==============================================================================
@@ -59,7 +95,13 @@ void PolyphaseInterpolator::init_coefficients() {
     // Total filter length = num_phases * taps_per_phase
     size_t total_taps = config_.num_phases * config_.taps_per_phase;
 
-    // Design prototype filter (interpolation filter)
+    // Design prototype filter (interpolation filter). This is a one-time
+    // filter design at construction/reconfiguration time, not a
+    // per-sample RTL-mapped computation -- double here is the same kind
+    // of "designed once, quantized for storage" step as the CORDIC atan
+    // table or the FFT twiddle ROM, not a case of the per-sample datapath
+    // hiding double math (that's interpolate(), below, which is genuine
+    // integer arithmetic under ATSC3_FIXED_POINT).
     std::vector<double> prototype(total_taps);
     double center = static_cast<double>(total_taps - 1) / 2.0;
 
@@ -101,7 +143,11 @@ void PolyphaseInterpolator::init_coefficients() {
         coeffs_[p].resize(config_.taps_per_phase);
         for (size_t t = 0; t < config_.taps_per_phase; ++t) {
             size_t idx = p + t * config_.num_phases;
+#ifdef ATSC3_FIXED_POINT
+            coeffs_[p][t] = round_to_q15(prototype[idx]);
+#else
             coeffs_[p][t] = static_cast<float>(prototype[idx]);
+#endif
         }
     }
 }
@@ -127,19 +173,29 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
     size_t wrap = (buf_size == 0) ? n_taps : buf_size;
 
 #ifdef ATSC3_FIXED_POINT
-    // Fixed-point accumulation in higher precision
-    double acc_re = 0.0;
-    double acc_im = 0.0;
+    // Genuine fixed-point FIR dot product (Phase 9.0b rewrite): Q1.15
+    // taps times Q1.15 samples, summed as raw (unshifted) products in a
+    // wide accumulator, rescaled once at the end -- not per-sample
+    // double, which is what this used to do even under
+    // ATSC3_FIXED_POINT (taps stayed float and the whole accumulation
+    // ran in double).
+    int64_t acc_re = 0;
+    int64_t acc_im = 0;
 
     for (size_t t = 0; t < n_taps; ++t) {
         // Index into circular buffer (going backwards)
         size_t idx = (buf_idx + wrap - 1 - t) % wrap;
-        acc_re += q15_to_float(buf[idx].real()) * taps[t];
-        acc_im += q15_to_float(buf[idx].imag()) * taps[t];
+        acc_re += static_cast<int64_t>(buf[idx].real()) * taps[t];
+        acc_im += static_cast<int64_t>(buf[idx].imag()) * taps[t];
     }
 
-    return sample_t(float_to_q15(static_cast<float>(acc_re)),
-                    float_to_q15(static_cast<float>(acc_im)));
+    // Round-to-nearest on the final rescale, not truncation: a plain
+    // arithmetic >>15 is floor division, a full LSB of systematic bias in
+    // one direction (worse for negative accumulator values, which floor
+    // *away* from zero relative to round-to-nearest).
+    constexpr int64_t kRoundBias = int64_t(1) << 14;
+    return sample_t(saturate_i16((acc_re + kRoundBias) >> 15),
+                    saturate_i16((acc_im + kRoundBias) >> 15));
 #else
     float acc_re = 0.0f;
     float acc_im = 0.0f;
@@ -171,18 +227,21 @@ void GardnerTed::reset() {
 double GardnerTed::compute_error(sample_t x_curr, sample_t x_mid, sample_t x_prev) const {
     // Gardner TED: e = Re{ (x_curr - x_prev) * conj(x_mid) }
 #ifdef ATSC3_FIXED_POINT
-    double curr_re = q15_to_float(x_curr.real());
-    double curr_im = q15_to_float(x_curr.imag());
-    double mid_re = q15_to_float(x_mid.real());
-    double mid_im = q15_to_float(x_mid.imag());
-    double prev_re = q15_to_float(x_prev.real());
-    double prev_im = q15_to_float(x_prev.imag());
+    // Genuine integer arithmetic (Phase 9.0b rewrite). diff needs a wider
+    // type than int16_t: two Q1.15 values up to +-32767 can differ by up
+    // to 65534. The dot product is kept in its raw (unshifted) Q1.15 x
+    // Q1.15 scale and only rescaled once at the return boundary --
+    // TimingRecovery::update_loop() consumes this same raw scale
+    // internally without round-tripping through float_to_q15's saturating
+    // [-1, 1) assumption, since this error signal is not itself bounded
+    // to that range (see update_loop()'s comment).
+    int32_t diff_re = static_cast<int32_t>(x_curr.real()) - static_cast<int32_t>(x_prev.real());
+    int32_t diff_im = static_cast<int32_t>(x_curr.imag()) - static_cast<int32_t>(x_prev.imag());
 
-    double diff_re = curr_re - prev_re;
-    double diff_im = curr_im - prev_im;
-
-    // Real part of (diff * conj(mid))
-    return diff_re * mid_re + diff_im * mid_im;
+    int64_t error_raw =
+        static_cast<int64_t>(diff_re) * x_mid.real() + static_cast<int64_t>(diff_im) * x_mid.imag();
+    int64_t error_q15 = error_raw >> 15;
+    return static_cast<double>(error_q15) / 32768.0;
 #else
     float diff_re = x_curr.real() - x_prev.real();
     float diff_im = x_curr.imag() - x_prev.imag();
@@ -196,6 +255,29 @@ double GardnerTed::compute_error(sample_t x_curr, sample_t x_mid, sample_t x_pre
 // TimingRecovery Implementation
 //==============================================================================
 
+#ifdef ATSC3_FIXED_POINT
+TimingRecovery::TimingRecovery(const TimingRecoveryConfig& config)
+    : config_(config),
+      interpolator_(config.polyphase),
+      mu_q16_(0),
+      timing_error_q15_(0),
+      loop_integrator_q15_(0),
+      kp_q15_(0),
+      ki_q15_(0),
+      sample_count_(0),
+      symbol_count_(0),
+      samples_since_symbol_(0),
+      locked_(false) {
+    size_t buf_size = config_.polyphase.taps_per_phase * 4;
+    buffer_.resize(buf_size, sample_t(0, 0));
+    buf_write_idx_ = 0;
+    buf_read_idx_ = 0;
+    buf_count_ = 0;
+
+    set_timing_offset(config.initial_offset);
+    compute_loop_gains();
+}
+#else
 TimingRecovery::TimingRecovery(const TimingRecoveryConfig& config)
     : config_(config),
       interpolator_(config.polyphase),
@@ -215,11 +297,14 @@ TimingRecovery::TimingRecovery(const TimingRecoveryConfig& config)
 
     compute_loop_gains();
 }
+#endif
 
 TimingRecovery::~TimingRecovery() = default;
 
 void TimingRecovery::compute_loop_gains() {
-    // Second-order loop design
+    // Second-order loop design (one-time filter design in double -- same
+    // reasoning as PolyphaseInterpolator::init_coefficients() above; the
+    // per-sample use of kp_/ki_ in update_loop() is genuine fixed-point).
     // Natural frequency from loop bandwidth
     double wn = config_.loop_bandwidth_hz * kTwoPi;
     double zeta = config_.loop_damping;
@@ -230,18 +315,32 @@ void TimingRecovery::compute_loop_gains() {
 
     // Loop filter gains for type-2 loop
     // G(z) = Kp + Ki / (1 - z^-1)
-    kp_ = (4.0 * zeta * wn * Ts) / K;
-    ki_ = (4.0 * wn * wn * Ts * Ts) / K;
+    double kp = (4.0 * zeta * wn * Ts) / K;
+    double ki = (4.0 * wn * wn * Ts * Ts) / K;
 
     // Limit gains for stability
-    kp_ = std::min(kp_, 0.1);
-    ki_ = std::min(ki_, 0.01);
+    kp = std::min(kp, 0.1);
+    ki = std::min(ki, 0.01);
+
+#ifdef ATSC3_FIXED_POINT
+    kp_q15_ = float_to_q15(static_cast<float>(kp));
+    ki_q15_ = float_to_q15(static_cast<float>(ki));
+#else
+    kp_ = kp;
+    ki_ = ki;
+#endif
 }
 
 void TimingRecovery::reset() {
+#ifdef ATSC3_FIXED_POINT
+    set_timing_offset(config_.initial_offset);
+    timing_error_q15_ = 0;
+    loop_integrator_q15_ = 0;
+#else
     mu_ = config_.initial_offset;
     timing_error_ = 0.0;
     loop_integrator_ = 0.0;
+#endif
     sample_count_ = 0;
     symbol_count_ = 0;
     samples_since_symbol_ = 0;
@@ -256,7 +355,12 @@ void TimingRecovery::reset() {
 }
 
 void TimingRecovery::set_timing_offset(double mu) {
-    mu_ = mu - std::floor(mu);  // Keep in [0, 1)
+    double wrapped = mu - std::floor(mu);  // Keep in [0, 1)
+#ifdef ATSC3_FIXED_POINT
+    mu_q16_ = static_cast<uint16_t>(static_cast<int64_t>(wrapped * 65536.0));
+#else
+    mu_ = wrapped;
+#endif
 }
 
 void TimingRecovery::update_loop(double error) {
@@ -264,6 +368,40 @@ void TimingRecovery::update_loop(double error) {
         return;  // Don't update when unlocked
     }
 
+#ifdef ATSC3_FIXED_POINT
+    // error comes from GardnerTed::compute_error(), which is not bounded
+    // to Q1.15's [-1, 1) (it's a diff*mid product, not normalized sample
+    // data) -- converting it with the ordinary saturating float_to_q15()
+    // would silently clip large error signals exactly like the bug found
+    // and fixed in bootstrap_detector's metric computation. Use a plain
+    // (non-saturating) wide conversion instead.
+    int64_t error_q15 = static_cast<int64_t>(error * 32768.0);
+
+    // Second-order loop filter, all in Q1.15-scaled fixed point.
+    int64_t ki_term = (static_cast<int64_t>(ki_q15_) * error_q15) >> 15;
+    loop_integrator_q15_ += ki_term;
+
+    int64_t kp_term = (static_cast<int64_t>(kp_q15_) * error_q15) >> 15;
+    int64_t adjustment_q15 = kp_term + loop_integrator_q15_;
+
+    // mu_q16_ is Q0.16 (see the header comment); adjustment_q15 is
+    // Q1.15-scaled, so converting to Q0.16 units is one left shift.
+    // Adding to mu_q16_ via a signed intermediate and truncating back to
+    // uint16_t wraps to [0, 1) for free (well-defined modulo-2^16
+    // conversion), regardless of adjustment's sign or magnitude -- no
+    // compare-and-subtract needed, matching the CORDIC angle format's
+    // half-turn trick.
+    int64_t adjustment_q16 = adjustment_q15 << 1;
+    mu_q16_ = static_cast<uint16_t>(static_cast<int64_t>(mu_q16_) + adjustment_q16);
+
+    // Filtered error: timing_error_ = 0.9*timing_error_ + 0.1*error,
+    // exact Q1.15 gains (not a power-of-2 approximation -- unlike
+    // bootstrap_detector's EWMA, there's no natural simplification here,
+    // and a real fixed-point multiply is ordinary, realistic RTL work).
+    constexpr int64_t kA = 29491;  // float_to_q15(0.9f)
+    constexpr int64_t kB = 3277;   // float_to_q15(0.1f)
+    timing_error_q15_ = (timing_error_q15_ * kA + error_q15 * kB) >> 15;
+#else
     // Second-order loop filter
     loop_integrator_ += ki_ * error;
 
@@ -283,6 +421,7 @@ void TimingRecovery::update_loop(double error) {
 
     // Store filtered error
     timing_error_ = 0.9 * timing_error_ + 0.1 * error;
+#endif
 }
 
 void TimingRecovery::emit_symbol() {
@@ -290,11 +429,19 @@ void TimingRecovery::emit_symbol() {
         return;
     }
 
-    // Interpolate at current timing offset
-    sample_t symbol = interpolator_.interpolate(buffer_.data(), buf_read_idx_, mu_, buffer_.size());
+    // Interpolate at current timing offset. get_timing_offset() reads
+    // whichever representation (mu_ or mu_q16_) this build uses and
+    // returns it as the double interpolate() expects -- interpolate()
+    // itself re-wraps to [0, 1) internally regardless of build mode, so
+    // no separate fixed-point wraparound is needed just to read mu here
+    // (see set_timing_offset()/update_loop() for where the Q0.16
+    // representation's wraparound actually matters: across many
+    // accumulated loop-filter updates).
+    double mu = get_timing_offset();
+    sample_t symbol = interpolator_.interpolate(buffer_.data(), buf_read_idx_, mu, buffer_.size());
 
     // Call user callback
-    symbol_callback_(symbol, mu_);
+    symbol_callback_(symbol, mu);
 
     ++symbol_count_;
 }
@@ -329,9 +476,10 @@ void TimingRecovery::process_sample(const sample_t& sample) {
             size_t mid_idx = (buf_write_idx_ + buf_sz - 1 - sps / 2) % buf_sz;
             size_t prev_idx = (buf_write_idx_ + buf_sz - 1 - sps) % buf_sz;
 
-            sample_t x_curr = interpolator_.interpolate(buffer_.data(), curr_idx, mu_, buf_sz);
-            sample_t x_mid = interpolator_.interpolate(buffer_.data(), mid_idx, mu_ + 0.5, buf_sz);
-            sample_t x_prev = interpolator_.interpolate(buffer_.data(), prev_idx, mu_, buf_sz);
+            double mu = get_timing_offset();
+            sample_t x_curr = interpolator_.interpolate(buffer_.data(), curr_idx, mu, buf_sz);
+            sample_t x_mid = interpolator_.interpolate(buffer_.data(), mid_idx, mu + 0.5, buf_sz);
+            sample_t x_prev = interpolator_.interpolate(buffer_.data(), prev_idx, mu, buf_sz);
 
             double error = ted_.compute_error(x_curr, x_mid, x_prev);
             update_loop(error);

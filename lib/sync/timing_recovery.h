@@ -92,8 +92,21 @@ public:
 private:
     PolyphaseConfig config_;
 
-    // Filter coefficients: [phase][tap]
+    // Filter coefficients: [phase][tap]. Designed in double (raised
+    // cosine, Kaiser window, normalization -- one-time filter design at
+    // construction/reconfiguration time, not a per-sample RTL-mapped
+    // computation, so double is fine here the same way it's fine for the
+    // CORDIC atan table or the FFT twiddle ROM). Under ATSC3_FIXED_POINT,
+    // the final coefficients are quantized to Q1.15 for storage; the
+    // per-sample dot product in interpolate() is genuine integer
+    // arithmetic either way (Phase 9.0b rewrite -- previously taps stayed
+    // float and the whole accumulation ran in double even in the
+    // fixed-point build).
+#ifdef ATSC3_FIXED_POINT
+    std::vector<std::vector<int16_t>> coeffs_;
+#else
     std::vector<std::vector<float>> coeffs_;
+#endif
 
     // Initialize filter coefficients (raised cosine with rolloff)
     void init_coefficients();
@@ -170,12 +183,20 @@ public:
 
     // Get current timing estimate (fractional samples)
     double get_timing_offset() const {
+#ifdef ATSC3_FIXED_POINT
+        return static_cast<double>(mu_q16_) / 65536.0;
+#else
         return mu_;
+#endif
     }
 
     // Get current timing error (filtered)
     double get_timing_error() const {
+#ifdef ATSC3_FIXED_POINT
+        return static_cast<double>(timing_error_q15_) / 32768.0;
+#else
         return timing_error_;
+#endif
     }
 
     // Get symbol count
@@ -212,7 +233,21 @@ private:
     size_t buf_read_idx_;
     size_t buf_count_;
 
-    // Timing loop state
+    // Timing loop state (Phase 9.0b rewrite: genuine fixed-point under
+    // ATSC3_FIXED_POINT, not double with quantized I/O -- previously this
+    // entire loop filter ran in double regardless of build mode).
+#ifdef ATSC3_FIXED_POINT
+    // Q0.16 unsigned fraction of a sample, value/65536 in [0, 1). Chosen
+    // (rather than signed Q1.15) specifically so it wraps to [0, 1) for
+    // free via plain unsigned overflow -- no compare-and-subtract needed,
+    // matching the same reasoning as the CORDIC angle format's half-turn
+    // trick (see lib/dsp/cordic.h).
+    uint16_t mu_q16_;
+    int64_t timing_error_q15_;     // Q1.15, filtered TED error
+    int64_t loop_integrator_q15_;  // Q1.15-scaled; widened, not itself bounded to [-1,1)
+    int16_t kp_q15_;               // Q1.15 proportional gain
+    int16_t ki_q15_;               // Q1.15 integral gain
+#else
     double mu_;               // Fractional timing offset [0, 1)
     double timing_error_;     // Filtered timing error
     double loop_integrator_;  // Second-order loop integrator
@@ -220,6 +255,7 @@ private:
     // Loop filter gains (computed from bandwidth and damping)
     double kp_;  // Proportional gain
     double ki_;  // Integral gain
+#endif
 
     // Output state
     SymbolCallback symbol_callback_;
