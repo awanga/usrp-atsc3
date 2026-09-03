@@ -176,6 +176,18 @@ public:
         return config_;
     }
 
+    // Normalized correlation of symbols[offset .. offset+preamble_len)
+    // against the preamble reference, in [0, 1]. Exposed (forwards to the
+    // private implementation) for monitoring and for the Phase 9.0b
+    // fixed-point-vs-reference equivalence test (test_frame_sync.cc) --
+    // this computation is memoryless (no dependence on prior calls or
+    // FSM state), so it can be compared call-by-call against a double
+    // reference without the closed-loop trajectory concerns
+    // TimingRecovery's equivalence test ran into.
+    double compute_correlation(const sample_t* symbols, size_t n, size_t offset) {
+        return correlate_preamble(symbols, n, offset);
+    }
+
 private:
     FrameSyncConfig config_;
     FrameSyncState state_;
@@ -208,7 +220,12 @@ private:
     void handle_locked(const sample_t* symbols, size_t n);
     void handle_holdover(const sample_t* symbols, size_t n);
 
-    // Correlation
+    // Correlation. Return type stays double regardless of build mode
+    // (this class's existing public/internal contract -- the state
+    // machine above compares this against config_.detection_threshold,
+    // a double); under ATSC3_FIXED_POINT the computation itself is
+    // genuine fixed-point, converted only at this one boundary (Phase
+    // 9.0b rewrite, see frame_sync.cc).
     double correlate_preamble(const sample_t* symbols, size_t n, size_t offset);
 
     // Event emission
