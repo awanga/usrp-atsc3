@@ -12,6 +12,7 @@
 //
 // Reference: ATSC A/322 Section 5.2 (Bootstrap), Section 7.2 (Pilots)
 
+#include "dsp/cordic.h"
 #include "types.h"
 
 #include <cmath>
@@ -76,9 +77,13 @@ public:
     // Get current total CFO estimate (coarse + fine)
     double get_total_cfo() const;
 
-    // Get current phase accumulator value
+    // Get current phase accumulator value (radians)
     double get_phase() const {
+#ifdef ATSC3_FIXED_POINT
+        return (static_cast<double>(phase_accum_q31_) / 2147483648.0) * M_PI;
+#else
         return phase_;
+#endif
     }
 
     // Get configuration
@@ -100,11 +105,41 @@ private:
     // Fine CFO from pilot tracking (Hz)
     double fine_cfo_hz_;
 
-    // Phase increment per sample (radians)
+    // Phase increment per sample (radians) and the running phase
+    // accumulator. Phase 9.0b rewrite: under ATSC3_FIXED_POINT, the
+    // per-sample NCO (process()) is genuine fixed-point -- a CORDIC
+    // rotation driven by a phase accumulator, replacing the manual
+    // if(phase_>pi)/else-if(phase_<-pi) wrap below with free wraparound
+    // via integer overflow (same idea as TimingRecovery's mu_q16_).
+    //
+    // The accumulator is int32_t, *wider* than the int16_t angle format
+    // CORDIC itself takes (see lib/dsp/cordic.h), for the same reason
+    // real NCO/DDS hardware uses a wide phase accumulator with only its
+    // top bits feeding the sin/cos table address: a typical CFO's
+    // per-sample phase increment is a tiny fraction of a full turn (e.g.
+    // ~5.24/32768 turns for a 500 Hz CFO at 6.25 MHz), and an int16_t
+    // increment quantizes that down to whole counts -- 5 instead of
+    // 5.24, a ~4.6% relative error that shows up directly as ~23 Hz of
+    // residual uncorrected offset on a 500 Hz CFO (measured before this
+    // widening; ATSC 3.0 requires <10 Hz). The 32-bit accumulator keeps
+    // ~17 more fractional bits than the increment alone would have at
+    // int16_t width; process() feeds only its top 16 bits to
+    // dsp::cordic_rotate() each sample (see the .cc), same convention,
+    // 65536x finer.
+    //
+    // coarse_cfo_hz_/fine_cfo_hz_/phase_increment_'s *design* (Hz domain,
+    // updated by set_coarse_cfo()/update_fine_cfo(), not the per-sample
+    // datapath) stays double in both builds -- same reasoning as
+    // TimingRecovery::compute_loop_gains(): a control-plane computation,
+    // not the per-sample RTL-mapped one, and only quantized once per
+    // update instead of every sample.
+#ifdef ATSC3_FIXED_POINT
+    int32_t phase_increment_q31_;
+    int32_t phase_accum_q31_;
+#else
     double phase_increment_;
-
-    // Current phase accumulator
     double phase_;
+#endif
 
     // Sample counter
     size_t sample_count_;
