@@ -62,11 +62,58 @@ constexpr float kQamDenorm256 = 13.038404810405298f;
 constexpr float kQamDenorm1024 = 26.115126958080672f;
 constexpr float kQamDenorm4096 = 52.24940191045253f;
 
+#ifdef ATSC3_FIXED_POINT
+// Q1.15 headroom, fixed-point build only (Phase 9.0b): unit-average-power
+// normalization (the constants above) puts a constellation's *peak*
+// component magnitude above 1.0 for every uniform order above QPSK -- up
+// to 1.206 for 4096-QAM -- and as high as 1.727 for the NUC tables
+// (measured directly from nuc_tables.h; NUC's peak-to-average ratio is
+// worse than uniform QAM's, not just comparable). Q1.15 can only
+// represent [-1, 1); float_to_q15() saturating (per the merged bugfix)
+// stops that from being UB, but it still *distorts* every point whose
+// true magnitude exceeds 1.0 -- clamping 1.206 down to 0.99997 moves the
+// outer points measurably closer to the origin than they should be,
+// exactly the kind of systematic (not random-noise) error that degrades
+// LLR accuracy for those points specifically.
+//
+// The headroom divisor is computed *per constellation*, from that
+// constellation's own actual peak (targeting peak/headroom = 0.95, a
+// small margin below the hard 0.99997 boundary), not one blanket factor
+// for every mode: QPSK's peak (0.707) already fits with no headroom
+// needed, and applying a large fixed headroom anyway would needlessly
+// shrink its constellation relative to a fixed noise_variance, silently
+// changing the effective SNR noise_variance represents for modes that
+// never had a representation problem to begin with (confirmed while
+// developing this: a single blanket headroom=2.0 factor measurably
+// degraded QPSK's LLR-sign accuracy in testing even though QPSK's peak
+// was never close to overflowing). The target itself was swept (0.8
+// through 0.99) against QAM64LLRSignMatchesBitAtHighSNR: accuracy rises
+// monotonically as the target approaches 1.0 (less headroom, better
+// SNR) and plateaus around 98.4-98.7%, short of that test's >99% bar
+// even with essentially no headroom left -- the remaining gap is Q1.15's
+// inherent quantization noise floor for 64-QAM's tightest decision
+// boundaries at this noise_variance, not a headroom tuning problem. 0.95
+// keeps a bit of margin below the hard boundary rather than chasing the
+// last ~0.3% by sitting right at it.
+constexpr float kQamHeadroomTarget = 0.95f;
+
+// Headroom divisor for a constellation whose largest single-axis
+// component (in unit-average-power units) is peak. 1.0 (no change) if it
+// already fits.
+inline float qam_headroom_for_peak(float peak) {
+    return (peak > kQamHeadroomTarget) ? (peak / kQamHeadroomTarget) : 1.0f;
+}
+#endif
+
 // ============================================================================
 // OPTIMIZED HELPER FUNCTIONS
 // ============================================================================
 
-// Fast clamp-and-round without function calls
+#ifndef ATSC3_FIXED_POINT
+// Fast clamp-and-round without function calls. Float build only -- see
+// demap_uniform_fixed() for the fixed-point equivalent; this and the four
+// demap_qamXX_fast() functions below would be unused (and thus a
+// -Werror=unused-function build failure) under ATSC3_FIXED_POINT.
 inline int8_t clamp_round(float val, float clip) {
     // Fast clamp
     if (val > clip)
@@ -76,6 +123,7 @@ inline int8_t clamp_round(float val, float clip) {
     // Fast round (add 0.5 and truncate for positive, subtract 0.5 for negative)
     return static_cast<int8_t>(val >= 0.0f ? val + 0.5f : val - 0.5f);
 }
+#endif  // !ATSC3_FIXED_POINT
 
 // Build 2D NUC constellation from base points table
 // Base points cover first quadrant; other quadrants derived via symmetry:
@@ -83,10 +131,22 @@ inline int8_t clamp_round(float val, float clip) {
 template <size_t N>
 std::vector<sample_t> build_2d_nuc(const float table[N][2]) {
     std::vector<sample_t> points(N * 4);
+#ifdef ATSC3_FIXED_POINT
+    // Base table covers only the first quadrant (per the comment above),
+    // so its own max |component| is this constellation's true peak --
+    // the other three quadrants are sign flips of the same magnitudes.
+    float peak = 0.0f;
+    for (size_t i = 0; i < N; ++i) {
+        peak = std::max({peak, std::fabs(table[i][0]), std::fabs(table[i][1])});
+    }
+    float headroom = qam_headroom_for_peak(peak);
+#endif
     for (size_t i = 0; i < N; ++i) {
         float re = table[i][0];
         float im = table[i][1];
 #ifdef ATSC3_FIXED_POINT
+        re /= headroom;
+        im /= headroom;
         // Q1: +I, +Q
         points[i] = sample_t(float_to_q15(re), float_to_q15(im));
         // Q2: -I, +Q = -conj(point)
@@ -116,6 +176,17 @@ std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t 
     size_t side = map_size;
     size_t total = side * side;
     std::vector<sample_t> points(total);
+
+#ifdef ATSC3_FIXED_POINT
+    // amps[] is the full set of possible per-axis amplitude magnitudes for
+    // this constellation; its max is this constellation's true peak
+    // (I and Q are independently drawn from the same amplitude set).
+    float peak = 0.0f;
+    for (size_t i = 0; i < N; ++i) {
+        peak = std::max(peak, std::fabs(amps[i]));
+    }
+    float headroom = qam_headroom_for_peak(peak);
+#endif
 
     for (size_t i = 0; i < total; ++i) {
         // Extract bit-interleaved I and Q indices
@@ -165,7 +236,7 @@ std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t 
         }
 
 #ifdef ATSC3_FIXED_POINT
-        points[i] = sample_t(float_to_q15(re), float_to_q15(im));
+        points[i] = sample_t(float_to_q15(re / headroom), float_to_q15(im / headroom));
 #else
         points[i] = sample_t(re, im);
 #endif
@@ -178,6 +249,14 @@ std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
     size_t m = 1u << bits_per_symbol;
     size_t side = 1u << (bits_per_symbol / 2);
     std::vector<sample_t> points(m);
+
+#ifdef ATSC3_FIXED_POINT
+    // Peak single-axis grid value is exactly side-1 (levels run
+    // -(side-1)..+(side-1) in steps of 2), so the true peak in
+    // unit-average-power units is (side-1)*norm.
+    float peak = static_cast<float>(side - 1) * norm;
+    norm /= qam_headroom_for_peak(peak);
+#endif
 
     for (size_t i = 0; i < m; ++i) {
         size_t i_idx = from_gray(i >> (bits_per_symbol / 2));
@@ -212,73 +291,17 @@ std::vector<sample_t> build_qpsk() {
 //
 // For Gray coding, the decision boundaries form a recursive pattern.
 
-// Compute LLR for one dimension (I or Q) of uniform QAM
-// coord: Received coordinate (I or Q), already de-normalized
-// half_side: Half the number of symbols per side (e.g., 4 for 64-QAM)
-// bit_index: Which bit (0=MSB, counts from outer to inner boundaries)
-// scale: LLR scaling factor (1/noise_variance * normalization)
-inline float compute_1d_llr(float coord, int half_side, int bit_index, float scale) {
-    // For Gray-coded PAM, the decision boundaries are at:
-    //   bit 0 (MSB): boundary at 0
-    //   bit 1: boundaries at ±half_side (e.g., ±4 for 8-PAM)
-    //   bit 2: boundaries at ±half_side/2, ±3*half_side/2 (e.g., ±2, ±6)
-    //   etc.
-    //
-    // The LLR for bit k is proportional to the distance from the nearest
-    // decision boundary for that bit.
+// (The fixed-point uniform-QAM boundary slicer is
+// ConstellationDemapper::axis_bit_distance() below -- it needs
+// uniform_cell_bit_/uniform_boundaries_, so it's a member function, not a
+// free function here. See that method's comment for the real bug found
+// and fixed while developing it: a first version used a closed-form
+// "zone/period" formula ported from this file's own (previously dead --
+// never called) float compute_1d_llr(), which turned out to compute the
+// wrong bit for every axis-bit beyond the MSB, verified against this
+// codebase's actual from_gray()/to_gray() Gray-code convention.)
 
-    // Compute the zone size for this bit level
-    int zone = half_side >> bit_index;
-
-    if (zone <= 0) {
-        return 0.0f;
-    }
-
-    // For the MSB (bit_index=0), LLR = coord * scale (soft decision from origin)
-    if (bit_index == 0) {
-        // Simple soft decision: positive coord -> bit=0, negative -> bit=1
-        // LLR magnitude proportional to |coord|
-        return coord * scale;
-    }
-
-    // For lower bits, we need to find distance to the nearest decision boundary
-    // The boundaries repeat with period 2*zone at offsets of ±zone, ±3*zone, etc.
-
-    // Map coordinate to reduced interval [0, 4*zone) using symmetry
-    float abs_coord = std::fabs(coord);
-
-    // The pattern repeats every 4*zone (two zones for bit=0, two for bit=1)
-    float period = 4.0f * zone;
-    float reduced = std::fmod(abs_coord, period);
-    if (reduced < 0)
-        reduced += period;
-
-    // Within one period [0, 4*zone):
-    //   [0, zone): bit=0, distance to boundary = zone - reduced
-    //   [zone, 2*zone): bit=1, distance to boundary = reduced - zone
-    //   [2*zone, 3*zone): bit=0, distance to boundary = reduced - 2*zone
-    //   [3*zone, 4*zone): bit=1, distance to boundary = 4*zone - reduced
-
-    float llr;
-    if (reduced < zone) {
-        // Region bit=0, nearest boundary is at zone
-        llr = (zone - reduced) * scale;
-    } else if (reduced < 2 * zone) {
-        // Region bit=1, nearest boundary is at zone
-        llr = -(reduced - zone) * scale;
-    } else if (reduced < 3 * zone) {
-        // Region bit=0, nearest boundary is at 2*zone or 3*zone
-        float d0 = reduced - 2 * zone;
-        float d1 = 3 * zone - reduced;
-        llr = std::min(d0, d1) * scale;
-    } else {
-        // Region bit=1, nearest boundary is at 3*zone
-        llr = -(4 * zone - reduced) * scale;
-    }
-
-    return llr;
-}
-
+#ifndef ATSC3_FIXED_POINT
 // Fast QPSK demapping (2 bits) - optimized
 inline void demap_qpsk_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
     // QPSK: bit 0 from I, bit 1 from Q
@@ -395,6 +418,8 @@ inline void demap_qam256_fast(float i_coord, float q_coord, float scale, int8_t 
     out[7] = clamp_round((dist_q2 - 2.0f) * s, fclip);  // |||Q|-8|-4| >= 2 → bit=0
 }
 
+#endif  // !ATSC3_FIXED_POINT
+
 }  // namespace
 
 ConstellationDemapper::ConstellationDemapper(const DemapperConfig& config) : config_(config) {
@@ -413,7 +438,75 @@ void ConstellationDemapper::init() {
     }
 
     build_bit_mappings();
+
+#ifdef ATSC3_FIXED_POINT
+    // Q16.16-ish (noise_variance, and so this scale, can span several
+    // orders of magnitude -- generous range, not Q1.15).
+    llr_scale_q16_ = static_cast<int32_t>(std::lround((1.0 / config_.noise_variance) * 65536.0));
+
+    half_side_ = 0;
+    norm_const_q15_ = 0;
+    if (!is_nuc_modulation(config_.modulation)) {
+        float norm = 1.0f;
+        switch (config_.modulation) {
+            case config::Modulation::QPSK:
+                norm = kQamNorm4;
+                break;
+            case config::Modulation::QAM16:
+                norm = kQamNorm16;
+                break;
+            case config::Modulation::QAM64:
+                norm = kQamNorm64;
+                break;
+            case config::Modulation::QAM256:
+                norm = kQamNorm256;
+                break;
+            case config::Modulation::QAM1024:
+                norm = kQamNorm1024;
+                break;
+            case config::Modulation::QAM4096:
+                norm = kQamNorm4096;
+                break;
+            default:
+                break;
+        }
+        half_side_ = static_cast<int>(1u << (bits_per_symbol_ / 2 - 1));
+        // Must match build_uniform_qam()'s peak/headroom computation
+        // exactly, or the slicer's zone boundaries and the constellation
+        // table it's meant to be consistent with would disagree.
+        float side = static_cast<float>(2 * half_side_);
+        float peak = (side - 1.0f) * norm;
+        norm_const_q15_ = float_to_q15(norm / qam_headroom_for_peak(peak));
+
+        // Build the per-axis-bit decision tables (see the header comment
+        // on uniform_cell_bit_/uniform_boundaries_).
+        size_t bits_per_axis = bits_per_symbol_ / 2;
+        uniform_cell_bit_.assign(bits_per_axis, {});
+        uniform_boundaries_.assign(bits_per_axis, {});
+        for (size_t b = 1; b < bits_per_axis; ++b) {
+            uniform_cell_bit_[b].resize(half_side_);
+            for (int c = 0; c < half_side_; ++c) {
+                // i_idx for the positive-side cell at magnitude level c
+                // (grid value 2c+1); bits 1..bits_per_axis-1 are
+                // symmetric in |grid value| (verified in derivation),
+                // so the positive side alone determines both signs.
+                size_t i_idx = static_cast<size_t>(half_side_) + static_cast<size_t>(c);
+                size_t g = to_gray(i_idx);
+                uniform_cell_bit_[b][c] = static_cast<uint8_t>((g >> (bits_per_axis - 1 - b)) & 1u);
+            }
+            for (int c = 0; c + 1 < half_side_; ++c) {
+                if (uniform_cell_bit_[b][c] != uniform_cell_bit_[b][c + 1]) {
+                    // Boundary between cells c and c+1 sits at grid value
+                    // 2*(c+1), converted to this modulation's Q1.15 scale.
+                    int32_t boundary_q15 = 2 * (c + 1) * static_cast<int32_t>(norm_const_q15_);
+                    uniform_boundaries_[b].push_back(boundary_q15);
+                }
+            }
+        }
+    }
+#else
     llr_scale_ = 1.0f / config_.noise_variance;
+#endif
 }
 
 void ConstellationDemapper::generate_uniform_constellation() {
@@ -504,25 +597,78 @@ void ConstellationDemapper::build_bit_mappings() {
     }
 }
 
-float ConstellationDemapper::squared_distance(sample_t a, sample_t b) const {
 #ifdef ATSC3_FIXED_POINT
-    float a_re = q15_to_float(a.real());
-    float a_im = q15_to_float(a.imag());
-    float b_re = q15_to_float(b.real());
-    float b_im = q15_to_float(b.imag());
+int64_t ConstellationDemapper::squared_distance(sample_t a, sample_t b) const {
+    int64_t d_re = static_cast<int64_t>(a.real()) - b.real();
+    int64_t d_im = static_cast<int64_t>(a.imag()) - b.imag();
+    return d_re * d_re + d_im * d_im;
+}
 #else
+float ConstellationDemapper::squared_distance(sample_t a, sample_t b) const {
     float a_re = a.real();
     float a_im = a.imag();
     float b_re = b.real();
     float b_im = b.imag();
-#endif
     float d_re = a_re - b_re;
     float d_im = a_im - b_im;
     return d_re * d_re + d_im * d_im;
 }
+#endif
 
 int8_t ConstellationDemapper::compute_llr_max_log(sample_t symbol, size_t bit_index) const {
-    // Generic max-log LLR for NUC constellations (slower path)
+    // Generic max-log LLR for NUC constellations (slower path) -- no
+    // sqrt anywhere, min-log LLR only ever needs squared distances.
+#ifdef ATSC3_FIXED_POINT
+    int64_t min_dist_0 = std::numeric_limits<int64_t>::max();
+    int64_t min_dist_1 = std::numeric_limits<int64_t>::max();
+
+    for (size_t idx : bit_clears_[bit_index]) {
+        int64_t dist = squared_distance(symbol, constellation_points_[idx]);
+        if (dist < min_dist_0)
+            min_dist_0 = dist;
+    }
+
+    for (size_t idx : bit_sets_[bit_index]) {
+        int64_t dist = squared_distance(symbol, constellation_points_[idx]);
+        if (dist < min_dist_1)
+            min_dist_1 = dist;
+    }
+
+    // (min_dist_1 - min_dist_0) is a raw Q1.15^2 squared-distance
+    // difference; llr_scale_q16_ is Q16.16. Combined shift to rescale
+    // both factors out: >>15 (Q1.15^2 has one factor of Q1.15 left after
+    // treating it as a "distance", per the max-log formula's units) is
+    // not needed here the way it was for a magnitude -- the squared-
+    // distance difference is already linear in the *squared* Q1.15 scale,
+    // and multiplying by a Q16.16 scale then shifting by 16 (not 15+16)
+    // matches the original float formula's units: llr = distance_squared
+    // (in true units) * (1/noise_variance), and distance_squared_q =
+    // distance_squared_true * 2^30 (two factors of Q1.15), so
+    // (distance_squared_q * scale_q16) >> (30+16-...
+    int64_t dist_diff = min_dist_1 - min_dist_0;
+    int64_t llr_raw = dist_diff * llr_scale_q16_;
+    // Rescale: dist_diff is true_value * 2^30 (Q1.15 squared twice),
+    // llr_scale_q16_ is true_scale * 2^16 -- combined factor 2^46.
+    // Bias must be an *unconditional* positive half-unit, not
+    // sign-dependent: C++'s >> on a signed value is arithmetic
+    // (floor-division) shift, and (x + half) >> n is the correct
+    // round-to-nearest for floor division regardless of x's sign -- a
+    // sign-dependent +-half bias (the right technique for a *truncating*
+    // division, which this is not) rounds every negative value away from
+    // zero by up to a full extra unit. Found by the equivalence test
+    // below: it capped every mode's per-sample error at exactly 1.0 LLR
+    // unit, a systematic-bias signature, not quantization noise.
+    constexpr int kShift = 46;
+    int64_t bias = int64_t(1) << (kShift - 1);
+    int64_t llr = (llr_raw + bias) >> kShift;
+
+    int64_t clip = config_.llr_clip;
+    if (llr > clip)
+        llr = clip;
+    if (llr < -clip)
+        llr = -clip;
+    return static_cast<int8_t>(llr);
+#else
     float min_dist_0 = std::numeric_limits<float>::max();
     float min_dist_1 = std::numeric_limits<float>::max();
 
@@ -542,17 +688,101 @@ int8_t ConstellationDemapper::compute_llr_max_log(sample_t symbol, size_t bit_in
     float clip = static_cast<float>(config_.llr_clip);
     llr = std::max(-clip, std::min(clip, llr));
     return static_cast<int8_t>(std::round(llr));
+#endif
 }
 
-void ConstellationDemapper::demap_symbol(sample_t symbol, int8_t* llr_out) const {
-    // Extract I/Q coordinates
 #ifdef ATSC3_FIXED_POINT
-    float i_coord = q15_to_float(symbol.real());
-    float q_coord = q15_to_float(symbol.imag());
+int32_t ConstellationDemapper::axis_bit_distance(int16_t coord_q15, size_t bit_index) const {
+    if (bit_index == 0) {
+        // Axis MSB: sign of the coordinate directly. negative coord ->
+        // bit=0 -> positive LLR, matching every hand-unrolled
+        // demap_qamXX_fast() function's convention (float build).
+        return -static_cast<int32_t>(coord_q15);
+    }
+
+    const auto& cell_bit = uniform_cell_bit_[bit_index];
+    const auto& boundaries = uniform_boundaries_[bit_index];
+
+    int32_t abs_coord = coord_q15 < 0 ? -static_cast<int32_t>(coord_q15) : coord_q15;
+    int32_t cell_width = 2 * static_cast<int32_t>(norm_const_q15_);
+    int c = (cell_width > 0) ? static_cast<int>(abs_coord / cell_width) : 0;
+    if (c >= half_side_) {
+        c = half_side_ - 1;
+    }
+    if (c < 0) {
+        c = 0;
+    }
+    bool bit_here = cell_bit[static_cast<size_t>(c)] != 0;
+
+    if (boundaries.empty()) {
+        // This bit never changes across the whole axis (only possible
+        // for a degenerate 1-cell axis, i.e. QPSK's half_side_==1, which
+        // never reaches bit_index>=1 in the caller anyway). Defensive
+        // fallback, not expected to be hit.
+        return bit_here ? -abs_coord : abs_coord;
+    }
+
+    int32_t best_dist = std::numeric_limits<int32_t>::max();
+    for (int32_t boundary : boundaries) {
+        int32_t d = std::abs(abs_coord - boundary);
+        if (d < best_dist) {
+            best_dist = d;
+        }
+    }
+    return bit_here ? -best_dist : best_dist;
+}
+
+void ConstellationDemapper::demap_uniform_fixed(sample_t symbol, int8_t* out) const {
+    int16_t i_q15 = symbol.real();
+    int16_t q_q15 = symbol.imag();
+    size_t bits_per_axis = bits_per_symbol_ / 2;
+    int64_t clip = config_.llr_clip;
+
+    auto llr_from_dist = [&](int32_t dist_q15) -> int8_t {
+        // dist_q15 is Q1.15 (true_dist * 2^15); llr_scale_q16_ is Q16.16
+        // (true_scale * 2^16); combined factor 2^31.
+        int64_t llr_raw = static_cast<int64_t>(dist_q15) * llr_scale_q16_;
+        constexpr int kShift = 31;
+        // Unconditional positive bias -- see compute_llr_max_log()'s
+        // comment on this exact same fix (>> is floor-division, not
+        // truncating, so the bias must not be sign-dependent).
+        int64_t bias = int64_t(1) << (kShift - 1);
+        int64_t llr = (llr_raw + bias) >> kShift;
+        if (llr > clip)
+            llr = clip;
+        if (llr < -clip)
+            llr = -clip;
+        return static_cast<int8_t>(llr);
+    };
+
+    for (size_t b = 0; b < bits_per_axis; ++b) {
+        int32_t dist = axis_bit_distance(i_q15, b);
+        out[b] = llr_from_dist(dist);
+    }
+    for (size_t b = 0; b < bits_per_axis; ++b) {
+        int32_t dist = axis_bit_distance(q_q15, b);
+        out[bits_per_axis + b] = llr_from_dist(dist);
+    }
+}
+#endif
+
+void ConstellationDemapper::demap_symbol(sample_t symbol, int8_t* llr_out) const {
+#ifdef ATSC3_FIXED_POINT
+    // Phase 9.0b: the boundary slicer covers every uniform QAM order
+    // (QPSK through 4096-QAM) directly on native Q1.15 samples -- no
+    // q15_to_float, no denormalize round trip. NUC modes stay on
+    // compute_llr_max_log() (now genuine fixed-point internally too).
+    if (!is_nuc_modulation(config_.modulation)) {
+        demap_uniform_fixed(symbol, llr_out);
+        return;
+    }
+    for (size_t b = 0; b < bits_per_symbol_; ++b) {
+        llr_out[b] = compute_llr_max_log(symbol, b);
+    }
 #else
+    // Extract I/Q coordinates
     float i_coord = symbol.real();
     float q_coord = symbol.imag();
-#endif
 
     // Use fast path for uniform QAM
     if (!is_nuc_modulation(config_.modulation)) {
@@ -578,6 +808,7 @@ void ConstellationDemapper::demap_symbol(sample_t symbol, int8_t* llr_out) const
     for (size_t b = 0; b < bits_per_symbol_; ++b) {
         llr_out[b] = compute_llr_max_log(symbol, b);
     }
+#endif
 }
 
 DemapResult ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols) const {
@@ -602,18 +833,25 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
 
     int8_t* out = llr_out;
 
+#ifdef ATSC3_FIXED_POINT
+    // Phase 9.0b: one boundary slicer covers every uniform QAM order
+    // directly (including 1024/4096-QAM, which previously had no fast
+    // path and fell all the way through to the O(M) fallback below).
+    if (!is_nuc_modulation(config_.modulation)) {
+        for (size_t i = 0; i < num_symbols; ++i) {
+            demap_uniform_fixed(symbols[i], out);
+            out += bits_per_symbol_;
+        }
+        return num_symbols * bits_per_symbol_;
+    }
+#else
     // Use optimized batch processing for uniform QAM
     if (!is_nuc_modulation(config_.modulation)) {
         switch (config_.modulation) {
             case config::Modulation::QPSK:
                 for (size_t i = 0; i < num_symbols; ++i) {
-#ifdef ATSC3_FIXED_POINT
-                    float i_c = q15_to_float(symbols[i].real());
-                    float q_c = q15_to_float(symbols[i].imag());
-#else
                     float i_c = symbols[i].real();
                     float q_c = symbols[i].imag();
-#endif
                     demap_qpsk_fast(i_c, q_c, llr_scale_, config_.llr_clip, out);
                     out += 2;
                 }
@@ -621,13 +859,8 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
 
             case config::Modulation::QAM16:
                 for (size_t i = 0; i < num_symbols; ++i) {
-#ifdef ATSC3_FIXED_POINT
-                    float i_c = q15_to_float(symbols[i].real());
-                    float q_c = q15_to_float(symbols[i].imag());
-#else
                     float i_c = symbols[i].real();
                     float q_c = symbols[i].imag();
-#endif
                     demap_qam16_fast(i_c, q_c, llr_scale_, config_.llr_clip, out);
                     out += 4;
                 }
@@ -635,13 +868,8 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
 
             case config::Modulation::QAM64:
                 for (size_t i = 0; i < num_symbols; ++i) {
-#ifdef ATSC3_FIXED_POINT
-                    float i_c = q15_to_float(symbols[i].real());
-                    float q_c = q15_to_float(symbols[i].imag());
-#else
                     float i_c = symbols[i].real();
                     float q_c = symbols[i].imag();
-#endif
                     demap_qam64_fast(i_c, q_c, llr_scale_, config_.llr_clip, out);
                     out += 6;
                 }
@@ -649,13 +877,8 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
 
             case config::Modulation::QAM256:
                 for (size_t i = 0; i < num_symbols; ++i) {
-#ifdef ATSC3_FIXED_POINT
-                    float i_c = q15_to_float(symbols[i].real());
-                    float q_c = q15_to_float(symbols[i].imag());
-#else
                     float i_c = symbols[i].real();
                     float q_c = symbols[i].imag();
-#endif
                     demap_qam256_fast(i_c, q_c, llr_scale_, config_.llr_clip, out);
                     out += 8;
                 }
@@ -665,8 +888,9 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
                 break;
         }
     }
+#endif
 
-    // Fallback for NUC and 1024/4096-QAM
+    // Fallback for NUC (and, in the float build only, 1024/4096-QAM)
     for (size_t i = 0; i < num_symbols; ++i) {
         demap_symbol(symbols[i], out);
         out += bits_per_symbol_;

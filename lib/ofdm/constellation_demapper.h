@@ -140,8 +140,41 @@ private:
     std::vector<std::vector<size_t>> bit_sets_;
     std::vector<std::vector<size_t>> bit_clears_;
 
-    // LLR scaling factor (1.0 / noise_variance)
+    // LLR scaling factor (1.0 / noise_variance). Phase 9.0b: under
+    // ATSC3_FIXED_POINT this is a Q16.16-ish fixed-point value (generous
+    // range -- noise_variance, and so this scale, can span several orders
+    // of magnitude), not a float; float builds are unchanged.
+#ifdef ATSC3_FIXED_POINT
+    int32_t llr_scale_q16_;
+
+    // Precomputed for demap_uniform_fixed() (uniform QAM only): half the
+    // per-axis grid side (e.g. 4 for 64-QAM's 8-level axis) and the
+    // Q1.15-quantized, headroom-adjusted per-axis normalization constant
+    // for the current modulation. Set in init(); 0/unused for NUC
+    // modulations, which stay on compute_llr_max_log().
+    int half_side_;
+    int16_t norm_const_q15_;
+
+    // Per-axis-bit decision tables for bits 1..bits_per_axis-1 (bit 0, the
+    // axis MSB, needs no table -- it's the sign of the coordinate,
+    // unconditionally). Index 0 of each outer vector is unused/empty.
+    // uniform_cell_bit_[b][c] is the Gray-coded bit value of axis-bit b
+    // when the received coordinate's magnitude falls in cell c (c = 0 is
+    // the innermost grid level, c = half_side_-1 the outermost).
+    // uniform_boundaries_[b] lists every cell-boundary position (Q1.15,
+    // magnitude units) where bit b's value actually changes between
+    // adjacent cells -- built directly from to_gray()/from_gray() (see
+    // constellation_demapper.cc) rather than a closed-form zone formula,
+    // because Gray-coded PAM's deeper bits (b >= 1) do not follow the
+    // simple periodic pattern a naive "reduced mod period" zone split
+    // assumes; that was tried first and verified wrong against this exact
+    // codebase's from_gray() (a real, non-obvious bug, not a style
+    // choice -- see the detailed derivation in the .cc).
+    std::vector<std::vector<uint8_t>> uniform_cell_bit_;
+    std::vector<std::vector<int32_t>> uniform_boundaries_;
+#else
     float llr_scale_;
+#endif
 
     // Initialize from config
     void init();
@@ -161,8 +194,33 @@ private:
     // Returns: LLR value (clamped to int8_t range)
     int8_t compute_llr_max_log(sample_t symbol, size_t bit_index) const;
 
-    // Compute squared distance between two samples
+    // Compute squared distance between two samples. Under
+    // ATSC3_FIXED_POINT this is genuine integer arithmetic returning a
+    // raw (unshifted) Q1.15 x Q1.15 squared-distance sum -- used only for
+    // MIN comparisons and one subtraction in compute_llr_max_log() below,
+    // both scale-invariant, so there's no need to rescale per call.
+#ifdef ATSC3_FIXED_POINT
+    int64_t squared_distance(sample_t a, sample_t b) const;
+#else
     float squared_distance(sample_t a, sample_t b) const;
+#endif
+
+#ifdef ATSC3_FIXED_POINT
+    // Genuine fixed-point boundary slicer for uniform (Gray-coded,
+    // separable) QAM -- Phase 9.0b. Replaces both the hand-unrolled
+    // demap_qamXX_fast() functions (QPSK/16/64/256) and, for uniform
+    // 1024/4096-QAM (which previously had no fast path at all), the O(M)
+    // compute_llr_max_log() fallback. Writes bits_per_symbol_ LLRs to out.
+    void demap_uniform_fixed(sample_t symbol, int8_t* out) const;
+
+    // Signed distance (Q1.15) from one received axis coordinate to the
+    // nearest decision boundary for axis-bit bit_index, positive meaning
+    // bit=0 is more likely. bit_index 0 (axis MSB) is just -coord_q15;
+    // bit_index >= 1 uses the uniform_cell_bit_/uniform_boundaries_
+    // tables built in init() (see the header comment on those members
+    // for why a closed-form formula doesn't work here).
+    int32_t axis_bit_distance(int16_t coord_q15, size_t bit_index) const;
+#endif
 };
 
 // Check if modulation is a NUC type
