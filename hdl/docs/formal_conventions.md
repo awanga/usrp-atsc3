@@ -1,6 +1,6 @@
 # Formal Verification Conventions
 
-> Phase 9.0 deliverable. Established and verified against
+> Established and verified against
 > `hdl/rtl/common/axi4s_skid_buffer.v` / `hdl/formal/axi4s_skid_buffer.sby`
 > before any algorithmic block's formal harness was written. Follow this
 > pattern for every subsequent block's formal work.
@@ -26,47 +26,86 @@ register updated every clock, exactly like an RTL designer would build a
 delay line -- which is also easier to audit than a property-language
 temporal operator.
 
-## White-box checks: use `bind`, never a dotted hierarchical reference
+## White-box checks: flatten + `expose`, not `bind`, not a dotted reference
 
-A checker that needs to read a DUT's internal (non-port) signal must be
-attached via SystemVerilog `bind`, in a separate `_checks.sv` file plus a
-one-line `_bind.sv` file:
+A checker that needs to read a DUT's internal (non-port) signal cannot
+reach it directly in this Yosys build. Two approaches were tried and
+**both silently fail to connect**, rather than erroring:
+
+1. **A dotted hierarchical reference** (`wire x = dut.internal_signal;`
+   from the top-level testbench). Yosys's `read_verilog -sv` does not
+   resolve `dut.internal_signal` as a hierarchical reference into an
+   already-elaborated child instance -- it silently declares a new,
+   disconnected, free-valued top-level wire literally named
+   `dut.internal_signal` (visible as an "implicitly declared" warning
+   during `read_verilog`, easy to miss). Any "assertion failure" is the
+   solver exploiting that phantom free signal, not a real DUT bug.
+2. **SystemVerilog `bind`** (a separate `_checks.sv` module attached via
+   `bind foo foo_checks u_checks ();`). This *looks* like the right fix
+   for (1) -- no dotted names, references resolve as if textually placed
+   inside the target module -- but this Yosys build's frontend accepts
+   the `bind` syntax without error and then never actually instantiates
+   the bound module: `hierarchy`'s dependency analysis reports
+   "Removing unused module `foo_checks`", and the bound checker's
+   asserts/covers never make it into the design at all. **This is worse
+   than (1), not better**: there is no implicit-declaration warning or
+   any other visible sign anything is wrong -- a proof built this way
+   reports PASS unconditionally, because it is silently checking nothing.
+   Confirmed by injecting a deliberately-false `assert (1'b0)` into a
+   `bind`-attached checker and finding the `prove` task still passed.
+   (Full `bind` support requires Yosys's commercial Verific frontend,
+   not available here.)
+
+**Use a two-stage `flatten` + `expose` flow instead**, verified to
+actually connect (confirmed the reverse way: a deliberately-false
+assertion on an exposed probe reliably fails the proof at the expected
+step). Stage 1 elaborates a trivial single-instance wrapper around the
+DUT (e.g. `foo_bare.v`, just `foo dut (...);`), flattens it, and uses
+Yosys's `expose` pass to promote the specific internal registers a
+checker needs into ordinary output ports (named `\dut.<signal>` by
+`expose`'s default separator); stage 2 resets the design and
+re-elaborates from the now-exposed generated module plus the actual
+formal harness top, which instantiates it and asserts/covers directly
+against the exposed probes via plain named port connections -- no
+`bind`, no dotted references, just ordinary Verilog instantiation of a
+module that now genuinely has those signals as ports. Both stages live
+in the same `.sby` `[script]` block (see `cordic.sby` or
+`axi4s_skid_buffer.sby` for the full pattern):
+
+```
+read_verilog -formal -I. foo.v
+read_verilog -formal -I. foo_bare.v
+hierarchy -top foo_bare
+proc
+flatten
+expose -dff w:\dut.internal_signal
+write_verilog gen_foo_bare.v
+
+design -reset
+read_verilog -formal -I. gen_foo_bare.v
+read_verilog -formal -I. foo_formal.v
+prep -top foo_formal
+```
+
+`foo_formal.v` then instantiates the generated `foo_bare` (module name
+is unchanged by `expose`, only its port list grows) and connects the new
+port via its escaped Verilog name, with a space before the parenthesis
+(escaped identifiers end at whitespace, not at `(`):
 
 ```systemverilog
-// _checks.sv -- no ports; references clk, rst, and the DUT's internal
-// signals by bare name, resolved by bind's scoping rules.
-module foo_checks;
-    always @(posedge clk) begin
-        if (some_condition) assert (internal_signal == expected);
-    end
-endmodule
-```
-```systemverilog
-// _bind.sv
-bind foo foo_checks u_checks ();
+wire internal_probe;
+foo_bare dut_top (
+    .clk(clk), .rst(rst), /* ...other ports... */
+    .\dut.internal_signal (internal_probe)
+);
+always @(posedge clk) assert (internal_probe == expected);
 ```
 
-**Do not** write `wire x = dut.internal_signal;` from the top-level
-testbench and assert on `x`. This was tried first for the skid buffer and
-produced a real, confusing failure: Yosys's `read_verilog -sv` does not
-resolve `dut.internal_signal` as a hierarchical reference into an
-already-elaborated child instance at parse time -- it silently declares a
-new, disconnected, free-valued top-level wire literally named
-`dut.internal_signal` (visible as an "implicitly declared" warning during
-`read_verilog`, easy to miss). The resulting "assertion failure" was the
-solver exploiting that phantom free signal, not a real DUT bug. `bind`
-avoids this because a bound instance is elaborated as if textually placed
-inside the target module, so its unqualified references resolve as true
-internal signals, not dotted paths.
-
-If a checker's own declarations need the target's parameter value (e.g.
-a data-width-sized register), don't try to reference the target's
-parameter by name in the checker's declarations -- Yosys resolves a bound
-module's own declarations before attaching it to the target scope, so
-parameter values aren't visible yet at that point. Give the checker its
-own local constant instead (see `axi4s_skid_buffer_checks.sv`'s
-`CHK_DATA_WIDTH`). This is fine in practice because of the next
-convention:
+One elaboration wrinkle: if the DUT module being wrapped is
+parameterized (e.g. `DATA_WIDTH`), `flatten` specializes and *removes*
+that parameter from the generated module -- don't pass a
+`#(.DATA_WIDTH(...))` override when instantiating the generated module
+in stage 2, its ports are already fixed at whatever width stage 1 used.
 
 ## Small-parameterization convention
 

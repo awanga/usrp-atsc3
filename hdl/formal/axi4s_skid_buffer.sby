@@ -11,14 +11,37 @@ depth 20
 smtbmc z3
 
 [script]
+# Stage 1: elaborate axi4s_skid_buffer_bare (a plain single-instance
+# wrapper around axi4s_skid_buffer), flatten it, and expose the internal
+# skid registers the white-box checks in axi4s_skid_buffer_formal.v need
+# (skid_tdata/skid_tlast/skid_valid) as ordinary output ports. This
+# replaces a `bind`-based white-box checker: this Yosys build's frontend
+# accepts `bind` syntactically but never actually connects the bound
+# instance, and a plain hierarchical dotted reference silently resolves to
+# a fresh, disconnected free variable instead of erroring -- both confirmed
+# by injecting a deliberately-false assertion and finding it still proved.
+# `expose` is a first-class Yosys pass (not a Verilog-source construct) and
+# is the one verified-working mechanism for this -- see
+# axi4s_skid_buffer_bare.v's and axi4s_skid_buffer_formal.v's header
+# comments, and hdl/docs/toolchain.md.
 read_verilog -formal -I. axi4s_skid_buffer.v
-read_verilog -formal -sv -I. axi4s_skid_buffer_checks.sv axi4s_skid_buffer_bind.sv
+read_verilog -formal -I. axi4s_skid_buffer_bare.v
+hierarchy -top axi4s_skid_buffer_bare
+proc
+flatten
+expose -dff w:\dut.skid_tdata w:\dut.skid_tlast w:\dut.skid_valid
+write_verilog gen_axi4s_skid_buffer_bare.v
+
+# Stage 2: reset the design and re-elaborate from the generated,
+# now-exposed axi4s_skid_buffer_bare plus the actual formal harness top,
+# which instantiates it and asserts/covers against the exposed probes.
+design -reset
+read_verilog -formal -I. gen_axi4s_skid_buffer_bare.v
 read_verilog -formal -I. axi4s_skid_buffer_formal.v
 prep -top axi4s_skid_buffer_formal
 
 [files]
 axi4s_types.vh ../rtl/include/axi4s_types.vh
 axi4s_skid_buffer.v ../rtl/common/axi4s_skid_buffer.v
-axi4s_skid_buffer_checks.sv
-axi4s_skid_buffer_bind.sv
+axi4s_skid_buffer_bare.v
 axi4s_skid_buffer_formal.v
