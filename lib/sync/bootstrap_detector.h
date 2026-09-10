@@ -107,8 +107,8 @@ public:
     // updated every process()/process_sample() call regardless of
     // detection FSM state (unlike BootstrapDetection::metric/cfo_hz,
     // which are only meaningful when detected == true). Useful for
-    // link-quality monitoring, and for the Phase 9.0b fixed-point-vs-
-    // reference equivalence test (test_bootstrap_detector.cc), which
+    // link-quality monitoring, and for the fixed-point-vs-reference
+    // equivalence test (test_bootstrap_detector.cc), which
     // needs same-instant comparisons rather than only the FSM-gated
     // "detected" event -- two independently-evolving EWMAs (different
     // alpha) can trigger their peak/falling-edge detection on slightly
@@ -123,7 +123,7 @@ private:
     // P = sum of x[n] * conj(x[n - L]) for n in window
     // R = sum of |x[n - L]|^2 for n in window
 #ifdef ATSC3_FIXED_POINT
-    // Genuine fixed-point state (Phase 9.0b rewrite), not double with
+    // Genuine fixed-point state, not double with
     // quantized I/O. p_sum_re_/p_sum_im_ hold the EWMA of
     // x[n]*conj(x[n-L]) as raw (unshifted) Q1.15 x Q1.15 products; the
     // shift-based alpha approximation (1/1024) and the rest of the fixed-

@@ -1,6 +1,6 @@
 # Q-Format and Input Backoff Contract
 
-> Phase 9.0 deliverable (see the HDL port plan, Decision 6). This is the
+> See the HDL port plan, Decision 6. This is the
 > explicit statement of what "full scale" means at the RTL IQ input, since
 > AGC (`hal/src/agc.cc`) is excluded from RTL scope and its output is
 > nowhere else specified for hardware consumers.
@@ -66,7 +66,7 @@ blocks instead of re-litigating it per phase.
   full-scale or overrange input, so a failure there is diagnosed as "the
   saturation logic itself is wrong," not conflated with a steady-state
   regression.
-- The three deferred SNR equivalence tests and the Phase 9.0b ≥40 dB
+- The three deferred SNR equivalence tests and the fixed-point rewrites' ≥40 dB
   SNR-vs-float checkpoints should all be generated at the -20 dBFS
   operating point per this contract, not at full scale.
 

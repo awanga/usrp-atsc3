@@ -249,10 +249,10 @@ TEST(FrameEventTest, DefaultInitialization) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Phase 9.0b equivalence: fixed-point correlator rewrite vs. the
+// Fixed-point equivalence: fixed-point correlator rewrite vs. the
 // pre-rewrite double std::sqrt-based algorithm. Per the HDL port plan,
-// each Phase 9.0b block needs its own >=40 dB SNR-vs-pre-rewrite
-// checkpoint before its RTL phase starts.
+// each fixed-point rewrite needs its own >=40 dB SNR-vs-pre-rewrite
+// checkpoint before its RTL work starts.
 //
 // correlate_preamble() is memoryless (no dependence on prior calls or FSM
 // state), so -- unlike TimingRecovery's closed loop -- a per-call SNR

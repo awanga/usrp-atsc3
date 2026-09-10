@@ -396,10 +396,10 @@ TEST(FreqCorrectionTest, CorrectionOfNegative500HzCfo) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Phase 9.0b equivalence: fixed-point NCO rewrite vs. the pre-rewrite
-// double std::cos/sin algorithm. Per the HDL port plan, each Phase 9.0b
-// block needs its own >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL
-// phase starts.
+// Fixed-point equivalence: fixed-point NCO rewrite vs. the pre-rewrite
+// double std::cos/sin algorithm. Per the HDL port plan, each fixed-point
+// rewrite needs its own >=40 dB SNR-vs-pre-rewrite checkpoint before its
+// RTL work starts.
 //
 // Unlike TimingRecovery's closed loop, FreqCorrection's phase accumulator
 // has no feedback: it advances by a fixed increment every sample,

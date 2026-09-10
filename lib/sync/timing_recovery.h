@@ -99,9 +99,8 @@ private:
     // CORDIC atan table or the FFT twiddle ROM). Under ATSC3_FIXED_POINT,
     // the final coefficients are quantized to Q1.15 for storage; the
     // per-sample dot product in interpolate() is genuine integer
-    // arithmetic either way (Phase 9.0b rewrite -- previously taps stayed
-    // float and the whole accumulation ran in double even in the
-    // fixed-point build).
+    // arithmetic either way (previously taps stayed float and the whole
+    // accumulation ran in double even in the fixed-point build).
 #ifdef ATSC3_FIXED_POINT
     std::vector<std::vector<int16_t>> coeffs_;
 #else
@@ -233,9 +232,9 @@ private:
     size_t buf_read_idx_;
     size_t buf_count_;
 
-    // Timing loop state (Phase 9.0b rewrite: genuine fixed-point under
-    // ATSC3_FIXED_POINT, not double with quantized I/O -- previously this
-    // entire loop filter ran in double regardless of build mode).
+    // Timing loop state: genuine fixed-point under ATSC3_FIXED_POINT, not
+    // double with quantized I/O -- previously this entire loop filter ran
+    // in double regardless of build mode.
 #ifdef ATSC3_FIXED_POINT
     // Q0.16 unsigned fraction of a sample, value/65536 in [0, 1). Chosen
     // (rather than signed Q1.15) specifically so it wraps to [0, 1) for

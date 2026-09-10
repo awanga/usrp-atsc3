@@ -106,7 +106,7 @@ private:
     double fine_cfo_hz_;
 
     // Phase increment per sample (radians) and the running phase
-    // accumulator. Phase 9.0b rewrite: under ATSC3_FIXED_POINT, the
+    // accumulator. Under ATSC3_FIXED_POINT, the
     // per-sample NCO (process()) is genuine fixed-point -- a CORDIC
     // rotation driven by a phase accumulator, replacing the manual
     // if(phase_>pi)/else-if(phase_<-pi) wrap below with free wraparound

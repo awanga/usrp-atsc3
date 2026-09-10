@@ -170,7 +170,7 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
     size_t corr_len = std::min(preamble_ref_.size(), n - offset);
 
 #ifdef ATSC3_FIXED_POINT
-    // Genuine fixed-point cross-correlation (Phase 9.0b rewrite) -- no
+    // Genuine fixed-point cross-correlation -- no
     // per-sample double, no q15_to_float. Accumulated as raw (unshifted)
     // Q1.15 x Q1.15 products, up to corr_len (<= fft_size, up to 32768)
     // terms, in wide int64 accumulators.

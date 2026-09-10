@@ -1,6 +1,6 @@
 // test_cordic.cc — Unit tests for lib/dsp/cordic.h
 //
-// Acceptance bar (per the HDL port plan, Phase 9.0b): >=40 dB SNR against
+// Acceptance bar (per the HDL port plan's fixed-point rewrite work): >=40 dB SNR against
 // std::cos/sin/atan2/hypot across the full input range. This is the
 // equivalence test that has to pass before any block is rewritten to use
 // this CORDIC core.

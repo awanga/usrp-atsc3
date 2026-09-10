@@ -63,7 +63,7 @@ constexpr float kQamDenorm1024 = 26.115126958080672f;
 constexpr float kQamDenorm4096 = 52.24940191045253f;
 
 #ifdef ATSC3_FIXED_POINT
-// Q1.15 headroom, fixed-point build only (Phase 9.0b): unit-average-power
+// Q1.15 headroom, fixed-point build only: unit-average-power
 // normalization (the constants above) puts a constellation's *peak*
 // component magnitude above 1.0 for every uniform order above QPSK -- up
 // to 1.206 for 4096-QAM -- and as high as 1.727 for the NUC tables
@@ -768,8 +768,8 @@ void ConstellationDemapper::demap_uniform_fixed(sample_t symbol, int8_t* out) co
 
 void ConstellationDemapper::demap_symbol(sample_t symbol, int8_t* llr_out) const {
 #ifdef ATSC3_FIXED_POINT
-    // Phase 9.0b: the boundary slicer covers every uniform QAM order
-    // (QPSK through 4096-QAM) directly on native Q1.15 samples -- no
+    // The boundary slicer covers every uniform QAM order (QPSK through
+    // 4096-QAM) directly on native Q1.15 samples -- no
     // q15_to_float, no denormalize round trip. NUC modes stay on
     // compute_llr_max_log() (now genuine fixed-point internally too).
     if (!is_nuc_modulation(config_.modulation)) {
@@ -834,8 +834,8 @@ size_t ConstellationDemapper::demap(const sample_t* symbols, size_t num_symbols,
     int8_t* out = llr_out;
 
 #ifdef ATSC3_FIXED_POINT
-    // Phase 9.0b: one boundary slicer covers every uniform QAM order
-    // directly (including 1024/4096-QAM, which previously had no fast
+    // One boundary slicer covers every uniform QAM order directly
+    // (including 1024/4096-QAM, which previously had no fast
     // path and fell all the way through to the O(M) fallback below).
     if (!is_nuc_modulation(config_.modulation)) {
         for (size_t i = 0; i < num_symbols; ++i) {

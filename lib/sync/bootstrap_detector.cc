@@ -132,7 +132,7 @@ void BootstrapDetector::set_config(const BootstrapConfig& config) {
 
 void BootstrapDetector::process_sample(sample_t sample) {
 #ifdef ATSC3_FIXED_POINT
-    // Genuine integer arithmetic throughout (Phase 9.0b rewrite) -- no
+    // Genuine integer arithmetic throughout -- no
     // double, no per-sample float conversion. p_sum_/r_sum_ previously
     // only quantized I/O and computed internally in double; see the HDL
     // port plan's Decision 7.

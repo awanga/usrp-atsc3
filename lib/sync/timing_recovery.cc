@@ -173,7 +173,7 @@ sample_t PolyphaseInterpolator::interpolate(const sample_t* buf, size_t buf_idx,
     size_t wrap = (buf_size == 0) ? n_taps : buf_size;
 
 #ifdef ATSC3_FIXED_POINT
-    // Genuine fixed-point FIR dot product (Phase 9.0b rewrite): Q1.15
+    // Genuine fixed-point FIR dot product: Q1.15
     // taps times Q1.15 samples, summed as raw (unshifted) products in a
     // wide accumulator, rescaled once at the end -- not per-sample
     // double, which is what this used to do even under
@@ -227,7 +227,7 @@ void GardnerTed::reset() {
 double GardnerTed::compute_error(sample_t x_curr, sample_t x_mid, sample_t x_prev) const {
     // Gardner TED: e = Re{ (x_curr - x_prev) * conj(x_mid) }
 #ifdef ATSC3_FIXED_POINT
-    // Genuine integer arithmetic (Phase 9.0b rewrite). diff needs a wider
+    // Genuine integer arithmetic. diff needs a wider
     // type than int16_t: two Q1.15 values up to +-32767 can differ by up
     // to 65534. The dot product is kept in its raw (unshifted) Q1.15 x
     // Q1.15 scale and only rescaled once at the return boundary --

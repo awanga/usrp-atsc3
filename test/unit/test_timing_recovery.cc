@@ -316,9 +316,9 @@ TEST(TimingRecoveryTest, TimingErrorStaysSmallWhenLocked) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Phase 9.0b equivalence: fixed-point rewrite vs. the pre-rewrite double
-// algorithm. Per the HDL port plan, each Phase 9.0b block needs its own
-// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL phase starts.
+// Fixed-point equivalence: fixed-point rewrite vs. the pre-rewrite double
+// algorithm. Per the HDL port plan, each fixed-point rewrite needs its own
+// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL work starts.
 //
 // Deliberately NOT tested this way: TimingRecovery's full closed loop
 // (mu_/timing_error_ trajectory over many samples). A diagnostic during
@@ -338,7 +338,7 @@ TEST(TimingRecoveryTest, TimingErrorStaysSmallWhenLocked) {
 // an SNR bar over a long trajectory would fail for *any* correct
 // finite-precision implementation of this loop, not just a buggy one.
 //
-// What Phase 9.0b's rewrite actually needs validated is the two
+// What this rewrite actually needs validated is the two
 // memoryless pieces it changed: the FIR dot product (Q1.15 taps now,
 // were float) and the Gardner error computation (genuine integer diff/
 // dot-product now, was double). Both are tested directly below, many

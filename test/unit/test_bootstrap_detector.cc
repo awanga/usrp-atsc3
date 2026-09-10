@@ -279,9 +279,9 @@ TEST(BootstrapDetectorTest, BootstrapLengthConstant) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Phase 9.0b equivalence: fixed-point rewrite vs. the pre-rewrite double
-// algorithm. Per the HDL port plan, each Phase 9.0b block needs its own
-// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL phase starts.
+// Fixed-point equivalence: fixed-point rewrite vs. the pre-rewrite double
+// algorithm. Per the HDL port plan, each fixed-point rewrite needs its own
+// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL work starts.
 //
 // This is deliberately NOT a comparison against BootstrapDetector's own
 // float build: the two builds already differ by ordinary Q1.15 sample

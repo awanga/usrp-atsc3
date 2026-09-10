@@ -140,8 +140,8 @@ private:
     std::vector<std::vector<size_t>> bit_sets_;
     std::vector<std::vector<size_t>> bit_clears_;
 
-    // LLR scaling factor (1.0 / noise_variance). Phase 9.0b: under
-    // ATSC3_FIXED_POINT this is a Q16.16-ish fixed-point value (generous
+    // LLR scaling factor (1.0 / noise_variance). Under ATSC3_FIXED_POINT
+    // this is a Q16.16-ish fixed-point value (generous
     // range -- noise_variance, and so this scale, can span several orders
     // of magnitude), not a float; float builds are unchanged.
 #ifdef ATSC3_FIXED_POINT
@@ -207,7 +207,7 @@ private:
 
 #ifdef ATSC3_FIXED_POINT
     // Genuine fixed-point boundary slicer for uniform (Gray-coded,
-    // separable) QAM -- Phase 9.0b. Replaces both the hand-unrolled
+    // separable) QAM. Replaces both the hand-unrolled
     // demap_qamXX_fast() functions (QPSK/16/64/256) and, for uniform
     // 1024/4096-QAM (which previously had no fast path at all), the O(M)
     // compute_llr_max_log() fallback. Writes bits_per_symbol_ LLRs to out.

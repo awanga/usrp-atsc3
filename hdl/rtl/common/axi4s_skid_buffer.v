@@ -9,7 +9,7 @@
 // register so upstream doesn't have to combinationally see the stall.
 //
 // This is the shared pipeline-register primitive instantiated between RTL
-// blocks per hdl/docs/ (Phase 9.0 common infra). IEEE 1364-2001 Verilog.
+// blocks per hdl/docs/ (shared common infra). IEEE 1364-2001 Verilog.
 
 `include "axi4s_types.vh"
 

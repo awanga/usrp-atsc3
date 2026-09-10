@@ -117,7 +117,7 @@ int16_t saturate_i16(int64_t v) {
 void FreqCorrection::process(const sample_t* in, sample_t* out, size_t n) {
     for (size_t i = 0; i < n; ++i) {
 #ifdef ATSC3_FIXED_POINT
-        // Genuine fixed-point NCO (Phase 9.0b rewrite): CORDIC rotation
+        // Genuine fixed-point NCO: CORDIC rotation
         // mode on native Q1.15 samples, no std::cos/sin and no
         // q15_to_float/float_to_q15 round trip at all. CORDIC's output is
         // bounded by construction (see lib/dsp/cordic.h), removing the

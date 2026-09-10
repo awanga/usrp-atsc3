@@ -178,8 +178,8 @@ public:
 
     // Normalized correlation of symbols[offset .. offset+preamble_len)
     // against the preamble reference, in [0, 1]. Exposed (forwards to the
-    // private implementation) for monitoring and for the Phase 9.0b
-    // fixed-point-vs-reference equivalence test (test_frame_sync.cc) --
+    // private implementation) for monitoring and for the fixed-point-
+    // vs-reference equivalence test (test_frame_sync.cc) --
     // this computation is memoryless (no dependence on prior calls or
     // FSM state), so it can be compared call-by-call against a double
     // reference without the closed-loop trajectory concerns

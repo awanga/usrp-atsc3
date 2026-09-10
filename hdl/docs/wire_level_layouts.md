@@ -1,6 +1,6 @@
 # Wire-Level Layouts for Fixed-Size Status/Sideband Structs
 
-> Phase 9.0 deliverable (see the HDL port plan's Phase 9.0 bullet on
+> See the HDL port plan's bullet on
 > `PilotSymbol`, `BootstrapDetection`, `FrameEvent`, `DemapResult`, and
 > L1Pre/L1Post field packing). Bit-range constants live in
 > `hdl/rtl/include/status_words.vh`; this doc is the rationale.
@@ -12,7 +12,7 @@ per-event structs -- real sideband/status words that need a bit-packed RTL
 representation: `PilotSymbol`, `BootstrapDetection`, `FrameEvent`, and (see
 below) L1Pre/L1Post. **`DemapResult` does not get one.** Its dominant field,
 `llr` (`std::vector<int8_t>`), *is* the `int8_t`(LLR) AXI4-S stream already
-specified in `hdl/stubs/README.md` and the HDL port plan's Phase 9.9 --
+specified in `hdl/stubs/README.md` and the HDL port plan's constellation-demapper section --
 one LLR per beat, `TLAST` per symbol/codeword boundary. Packing `DemapResult`
 into its own status word would create a second, redundant representation of
 data that's already flowing on the primary stream. Its other three fields
@@ -36,10 +36,10 @@ don't need wire representation either:
 L1Pre/L1Post similarly don't need a *new* packed format: every one of their
 fields already has an explicit offset/width in the `l1_status` bank of
 `config/hdl_register_map.json` (AXI4-Lite registers, written once per
-acquisition by the Phase 9.13b sequencer -- these fields don't stream on
+acquisition by the (not-yet-built) config sequencer -- these fields don't stream on
 `TDATA` the way samples do, so a register file, not a bit-packed word, is
 the right wire representation). That JSON is the answer to this part of the
-Phase 9.0 bullet; nothing new was needed here.
+wire-level-layouts bullet; nothing new was needed here.
 
 ## Packing convention (applies to all four `.vh` layouts)
 
@@ -57,16 +57,16 @@ Phase 9.0 bullet; nothing new was needed here.
 ## Fields deliberately left out: the log10 line
 
 `BootstrapDetection.snr_db` is **not** in `status_words.vh`.
-`lib/sync/bootstrap_detector.cc` computes it with `std::log10`. Phase
-9.0b's planned CORDIC core covers rotation mode (cos/sin) and vectoring
-mode (atan2/magnitude) -- log10 needs CORDIC's hyperbolic mode, a separate
+`lib/sync/bootstrap_detector.cc` computes it with `std::log10`. The shared
+CORDIC core covers rotation mode (cos/sin) and vectoring mode
+(atan2/magnitude) -- log10 needs CORDIC's hyperbolic mode, a separate
 design the plan explicitly scopes out this milestone (same reasoning as
 `config/hdl_register_map.json`'s excluded `lib/metrics/*` registers). This
 is the same exclusion class, just discovered in a non-metrics file: the
 line isn't "which directory is it in," it's "does producing this value
 need log/exp." `FrameEvent.confidence`, by contrast, comes from
 `frame_sync.cc`'s `sqrt`-based normalization (per the HDL port plan's
-Phase 9.6 section) -- vectoring-mode CORDIC covers `sqrt`, so it's included
+frame-sync section) -- vectoring-mode CORDIC covers `sqrt`, so it's included
 as a normal `q1_15` field with no asterisk.
 
 If a future block's status word has a field computed via `log10`/`exp`,
@@ -113,16 +113,17 @@ relative_index        = absolute_index - first_active_carrier
 |---|---|---|---|
 | `PilotSymbol` | `PILOT_SYMBOL_WIDTH` | 96 bits (12 B) | index + 2×complex + type + 1 reserved byte |
 | `BootstrapDetection` | `BOOTSTRAP_DETECTION_WIDTH` | 104 bits (13 B) | `snr_db` excluded (log10, see above) |
-| `FrameEvent` | `FRAME_EVENT_WIDTH` | 136 bits (17 B) | belongs to frame_sync (Phase 9.6), not timing_recovery -- corrected in the HDL port plan from an earlier draft |
+| `FrameEvent` | `FRAME_EVENT_WIDTH` | 136 bits (17 B) | belongs to frame_sync, not timing_recovery -- corrected in the HDL port plan from an earlier draft |
 | `DemapResult` | *(none)* | -- | already the existing `int8_t`(LLR) AXI4-S stream; see above |
 | L1Pre / L1Post | *(none)* | -- | already `config/hdl_register_map.json`'s `l1_status` bank |
 
 Actual AXI4-S `TDATA` bus width for `PilotSymbol`/`BootstrapDetection`/
-`FrameEvent` may pad these up to a rounder bus width (e.g. 128/144 bits) at
-block-integration time in their respective phases (9.5/9.1/9.6) -- that's
-an integration-time decision for those phases, not fixed here. The byte-
-aligned minimal widths above are what matters for this deliverable: every
-field has an unambiguous offset and width today.
+`FrameEvent` may pad these up to a rounder bus width (e.g. 128/144 bits)
+when each producing block (pilot extractor, bootstrap detector, frame
+sync) is actually integrated -- that's an integration-time decision for
+those blocks, not fixed here. The byte-aligned minimal widths above are
+what matters for this deliverable: every field has an unambiguous offset
+and width today.
 
 ## 48-bit sample counters: a wraparound check worth keeping
 
