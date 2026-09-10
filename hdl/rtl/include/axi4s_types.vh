@@ -25,7 +25,12 @@
 //------------------------------------------------------------------------------
 
 `define ATSC3_REAL_WIDTH   16                                  // Q1.15, one rail
-`define ATSC3_SAMPLE_WIDTH (2 * `ATSC3_REAL_WIDTH)              // {im[15:0], re[15:0]}
+// {re[15:0], im[15:0]} (re = upper half, im = lower half) -- matches
+// hdl/stubs/README.md's data-type table and hdl/rtl/include/status_words.vh;
+// this comment previously said the reverse ({im, re}), a stale typo never
+// matched by any of the other three sources, corrected during the HDL
+// port's RTL work.
+`define ATSC3_SAMPLE_WIDTH (2 * `ATSC3_REAL_WIDTH)
 
 // LLR width (soft bits from demapper into LDPC)
 `define ATSC3_LLR_WIDTH 8
