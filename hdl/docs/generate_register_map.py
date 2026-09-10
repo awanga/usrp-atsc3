@@ -2,9 +2,9 @@
 """generate_register_map.py — renders config/hdl_register_map.json into
 hdl/docs/axi4lite_register_map.md.
 
-config/hdl_register_map.json is the source of truth (Phase 9.0 deliverable,
-see the HDL port plan); this script only formats it. Re-run after any edit
-to the JSON so the two never drift:
+config/hdl_register_map.json is the source of truth (see the HDL port plan);
+this script only formats it. Re-run after any edit to the JSON so the two
+never drift:
 
     python3 hdl/docs/generate_register_map.py
 """
@@ -122,7 +122,7 @@ def main():
     out.append("## Per-block registers")
     out.append("")
     for block_name, block in data["blocks"].items():
-        out.append(f"### `{block_name}` (Phase {block['phase']})")
+        out.append(f"### `{block_name}`")
         out.append("")
         out.append(f"Base address: `{block['base_address']}`")
         out.append("")

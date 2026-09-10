@@ -75,6 +75,7 @@ cppcheck --enable=all --error-exitcode=1 lib/ blocks/ hal/
 - **Parameters:** No magic numbers; all ATSC 3.0 mode tables loaded from `config/` JSON at runtime
 - **Error handling:** Use `std::expected` (backported via Boost.Outcome) not exceptions in `lib/`; GR blocks may throw
 - **Formatting:** Always run `clang-format` on changed files before committing: `find lib blocks hal -name '*.cc' -o -name '*.h' | xargs clang-format -i`
+- **No plan/phase numbering in code, comments, or commit messages:** don't write "Phase 9.1", "Phase 9.0b", etc. in source comments or commit subjects/bodies — describe what the code does and why in plain language instead. Numbered phases are a `TASKS.md`/planning-doc concept for tracking work across sessions; they rot as soon as a plan is renumbered or a block ships out of order, while a plain description stays correct. `TASKS.md` itself and planning documents are the exception — phase numbers belong there, not in the artifacts they describe.
 
 ### Q1.15 Fixed-Point Format (Persistent Requirement)
 

@@ -19,7 +19,7 @@
 `include "axi4s_types.vh"
 
 //------------------------------------------------------------------------------
-// PilotSymbol (lib/ofdm/pilot_extractor.h:46-57) -- Phase 9.5 sideband
+// PilotSymbol (lib/ofdm/pilot_extractor.h:46-57) -- pilot-extractor sideband
 //------------------------------------------------------------------------------
 
 `define PILOT_SYMBOL_WIDTH 96
@@ -45,11 +45,11 @@
 // bits [95:88] reserved, drive 0
 
 //------------------------------------------------------------------------------
-// BootstrapDetection (lib/sync/bootstrap_detector.h:23-40) -- Phase 9.1 status
+// BootstrapDetection (lib/sync/bootstrap_detector.h:23-40) -- bootstrap-detector status
 //
 // snr_db is NOT included: lib/sync/bootstrap_detector.cc computes it via
-// std::log10, which Phase 9.0b's CORDIC work does not cover this milestone
-// (rotation/vectoring modes only -- log10 needs hyperbolic mode, a separate
+// std::log10, which the shared CORDIC core does not cover (rotation/
+// vectoring modes only -- log10 needs hyperbolic mode, a separate
 // design). Same exclusion class as the metrics registers in
 // config/hdl_register_map.json.
 //------------------------------------------------------------------------------
@@ -71,14 +71,14 @@
 // Signed Hz, matches config/hdl_register_map.json's freq_correction
 // INITIAL_CFO_HZ register format (int32) -- this is already the final Hz
 // conversion done in C++ (phase * sample_rate_hz / (2*pi*L)), not a raw
-// CORDIC angle, so it does not depend on Phase 9.0b's angle convention.
+// CORDIC angle, so it does not depend on the CORDIC angle convention.
 
 `define BOOTSTRAP_DETECTION_METRIC_HI 103
 `define BOOTSTRAP_DETECTION_METRIC_LO 88
 // q1_15, same format/truncation convention as config/hdl_register_map.json.
 
 //------------------------------------------------------------------------------
-// FrameEvent (lib/sync/frame_sync.h:90-103) -- Phase 9.6 status.
+// FrameEvent (lib/sync/frame_sync.h:90-103) -- frame-sync status.
 // Belongs to frame_sync, not timing_recovery (corrected in the HDL port
 // plan from an earlier draft).
 //------------------------------------------------------------------------------
@@ -106,8 +106,8 @@
 
 `define FRAME_EVENT_CONFIDENCE_HI 135
 `define FRAME_EVENT_CONFIDENCE_LO 120
-// q1_15. lib/sync/frame_sync.cc's normalization is sqrt-based (Phase 9.0b's
-// CORDIC vectoring mode covers this -- unlike BootstrapDetection's snr_db,
+// q1_15. lib/sync/frame_sync.cc's normalization is sqrt-based (the shared
+// CORDIC core's vectoring mode covers this -- unlike BootstrapDetection's snr_db,
 // nothing here depends on the not-yet-covered log10/hyperbolic case.
 
 //------------------------------------------------------------------------------

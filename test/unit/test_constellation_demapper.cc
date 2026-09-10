@@ -148,7 +148,7 @@ TEST(ConstellationDemapperTest, QAM64ConstellationPoints) {
     avg_power /= 64.0f;
 
 #ifdef ATSC3_FIXED_POINT
-    // Phase 9.0b: unit-average-power normalization puts 64-QAM's peak
+    // Unit-average-power normalization puts 64-QAM's peak
     // component at ~1.08, which overflows Q1.15's [-1, 1) -- the
     // constellation is deliberately scaled down (see
     // qam_headroom_for_peak() in constellation_demapper.cc) so every
@@ -269,7 +269,7 @@ TEST(ConstellationDemapperTest, QAM64LLRSignMatchesBitAtHighSNR) {
 
     double accuracy = static_cast<double>(correct_bits) / total_bits;
 #ifdef ATSC3_FIXED_POINT
-    // Phase 9.0b: 64-QAM's peak constellation component (~1.08 at unit
+    // 64-QAM's peak constellation component (~1.08 at unit
     // average power) overflows Q1.15's [-1, 1) range, so the
     // constellation is scaled down with a small headroom margin (see
     // qam_headroom_for_peak() in constellation_demapper.cc) -- a real
@@ -535,7 +535,7 @@ TEST(ConstellationDemapperTest, FullDemapPipeline) {
 
     double ber = static_cast<double>(bit_errors) / (num_symbols * 6);
 #ifdef ATSC3_FIXED_POINT
-    // Phase 9.0b: same Q1.15 headroom-vs-precision tradeoff as
+    // Same Q1.15 headroom-vs-precision tradeoff as
     // QAM64LLRSignMatchesBitAtHighSNR above (see that test's comment) --
     // 7% reflects what's actually achievable in fixed point at this SNR,
     // not the float build's bar.
@@ -577,11 +577,11 @@ TEST(ConstellationDemapperTest, LargeConstellationStress) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Phase 9.0b equivalence: fixed-point boundary slicer vs. a double-
+// Fixed-point equivalence: fixed-point boundary slicer vs. a double-
 // precision port of the *same* (headroom-adjusted, table-based Gray-
-// decode) algorithm. Per the HDL port plan, each Phase 9.0b block needs
-// its own >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL phase
-// starts.
+// decode) algorithm. Per the HDL port plan, each fixed-point rewrite
+// needs its own >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL
+// work starts.
 //
 // Deliberately not compared against a naive unit-average-power float
 // reference: the headroom scaling (see qam_headroom_for_peak() in

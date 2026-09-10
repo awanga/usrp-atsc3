@@ -3,7 +3,7 @@
 // CORDIC — shared fixed-point rotation/vectoring core
 //
 // Q1.15-only utility (no ATSC3_FIXED_POINT branch): provides the integer
-// shift-add primitives that back the Phase 9.0b fixed-point rewrites of
+// shift-add primitives that back the fixed-point rewrites of
 // bootstrap_detector, freq_correction, and frame_sync (rotation mode for
 // the NCO's cos/sin, vectoring mode for magnitude/phase). No multiplier,
 // no trig/sqrt library call -- shift, add, and table lookup only, so this
@@ -62,7 +62,7 @@ struct CordicRotationResult {
 };
 
 // Rotation mode: (cos(theta), sin(theta)) for theta in the Q1.15 angle
-// format, full range. Backs freq_correction's NCO (Phase 9.0b).
+// format, full range. Backs freq_correction's NCO.
 CordicRotationResult cordic_rotate(int16_t theta_q15_angle);
 
 struct CordicVectorResult {
@@ -78,7 +78,7 @@ struct CordicVectorResult {
 // Vectoring mode: (magnitude, atan2(y, x)) for a Q1.15 complex input,
 // full range (all four quadrants, including x == 0). Backs
 // bootstrap_detector's CFO/metric and frame_sync's correlation
-// normalization (Phase 9.0b).
+// normalization.
 CordicVectorResult cordic_vector(int16_t x_q15, int16_t y_q15);
 
 }  // namespace dsp
