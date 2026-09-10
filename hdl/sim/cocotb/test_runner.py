@@ -36,3 +36,20 @@ def test_axi4s_skid_buffer():
         test_module="test_axi4s_skid_buffer",
         build_dir=SIM_BUILD / "axi4s_skid_buffer",
     )
+
+
+def test_cordic():
+    runner = get_runner("verilator")
+    runner.build(
+        verilog_sources=[RTL_COMMON / "cordic.v"],
+        includes=[RTL_INCLUDE],
+        hdl_toplevel="cordic",
+        build_dir=SIM_BUILD / "cordic",
+        always=True,
+        build_args=["-Wall"],
+    )
+    runner.test(
+        hdl_toplevel="cordic",
+        test_module="test_cordic",
+        build_dir=SIM_BUILD / "cordic",
+    )

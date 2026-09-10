@@ -34,3 +34,7 @@ endif()
 # hdl/sim/cocotb/test_runner.py, and neither cocotb nor SymbiYosys benefit
 # from CMake's C/C++-oriented build-graph model. Invoke directly:
 #   hdl/sim/cocotb/.venv/bin/python -m pytest hdl/sim/cocotb/test_runner.py
+
+# Golden-vector CLIs (link the real atsc3_lib; cocotb shells out to these
+# rather than reimplementing the golden model in Python).
+add_subdirectory(sim/golden)

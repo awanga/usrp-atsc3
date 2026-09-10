@@ -1,0 +1,47 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 40
+
+[engines]
+smtbmc z3
+
+[script]
+# Stage 1: elaborate cordic_bare (a plain single-instance wrapper around
+# cordic), flatten it, and expose the internal registers the white-box
+# checks in cordic_formal.v need (state/iter/mode_r/special_zero_r) as
+# ordinary output ports. This replaces a `bind`-based white-box checker
+# (used elsewhere in this repo's earlier formal work): this Yosys build's
+# frontend accepts `bind` syntactically but never actually connects the
+# bound instance, and a plain hierarchical dotted reference (`dut.state`
+# written directly in a formal top module) silently resolves to a fresh,
+# disconnected free variable instead of erroring -- both confirmed by
+# injecting a deliberately-false assertion and finding it still proved.
+# `expose` is a first-class Yosys pass (not a Verilog-source construct) and
+# is the one verified-working mechanism for this -- see cordic_bare.v's and
+# cordic_formal.v's header comments, and hdl/docs/toolchain.md.
+read_verilog -formal -I. cordic.v
+read_verilog -formal -I. cordic_bare.v
+hierarchy -top cordic_bare
+proc
+flatten
+expose -dff w:\dut.state w:\dut.iter w:\dut.mode_r w:\dut.special_zero_r
+write_verilog gen_cordic_bare.v
+
+# Stage 2: reset the design and re-elaborate from the generated,
+# now-exposed cordic_bare plus the actual formal harness top, which
+# instantiates it and asserts/covers against the exposed probes.
+design -reset
+read_verilog -formal -I. gen_cordic_bare.v
+read_verilog -formal -I. cordic_formal.v
+prep -top cordic_formal
+
+[files]
+cordic_types.vh ../rtl/include/cordic_types.vh
+cordic.v ../rtl/common/cordic.v
+cordic_bare.v
+cordic_formal.v
