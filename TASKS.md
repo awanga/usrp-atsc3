@@ -486,6 +486,246 @@ Goal: End-to-end live reception with audiovisual playback and service selection.
 
 ---
 
+## Phase 9 — HDL Port: Synthesizable RTL Receiver  *(post-MVP, ongoing)*
+
+Goal: a full synthesizable RTL receiver, IQ samples in to ALP-demuxed
+output, matching real ATSC 3.0 demod silicon's host handoff boundary.
+IEEE 1364-2001 Verilog only, cocotb-based bit-exact equivalence testing
+required, formal verification where feasible (SVA-lite via SymbiYosys).
+Everything downstream of ALP demux (ROUTE/DASH, service catalog, A/V
+decode/playback) stays host software, out of scope. Supersedes the old
+"Post-MVP: HDL Port" stub below — see that section for the note.
+
+Two design-review passes preceded RTL work and found several golden-model
+defects (fixed on `bugfix/hdl-golden-model-fixes`, now on `develop`) and
+five blocks whose `ATSC3_FIXED_POINT` path quantized I/O only while
+computing internally in `double`/`float` — those five were rewritten to
+genuine fixed-point (9.0b) before any RTL work started, so every phase
+below holds the same bit-exact bar against its C++ reference.
+
+### 9.0 Foundations, Golden-Model Fixes & Standalone-Testability [x]
+- [x] Golden-model bugfixes merged to `develop` (Q1.15 saturation UB, FFT
+      accumulator width, divide-by-zero guards, an addressing bug in the
+      timing-recovery interpolator)
+- [x] `hdl/rtl/`, `hdl/formal/`, `hdl/sim/{cocotb,golden}/`, `hdl/synth/`,
+      `hdl/docs/` directory layout; `hdl/rtl/include/axi4s_types.vh`
+      (supersedes `hdl/stubs/axi4s_interface.vh`); `axi4s_skid_buffer.v`
+      common pipeline register
+- [x] Toolchain proven end-to-end (Verilator 5.020 lint + sim, cocotb
+      1.9.2 pinned for VPI compatibility, SymbiYosys/z3) and documented in
+      `hdl/docs/toolchain.md`
+- [x] `config/hdl_register_map.json` + generated
+      `hdl/docs/axi4lite_register_map.md` — default-reset register values
+      for every block, host/L1-writable split, so blocks are testable
+      standalone before the config sequencer (9.13b) exists
+- [x] `hdl/docs/q_format_notes.md` (input Q-format/backoff contract),
+      `hdl/docs/placeholder_status.md` (non-spec placeholder inventory:
+      LDPC matrices, bit-reversal deinterleavers, frame-sync preamble
+      reference, hard-decision L1 FEC, ALP ROHC passthrough, etc.),
+      `hdl/docs/wire_level_layouts.md` and `hdl/rtl/include/status_words.vh`
+      (bit-packed `PilotSymbol`/`BootstrapDetection`/`FrameEvent` layouts)
+- [x] `hdl/docs/formal_conventions.md` — SVA-lite via immediate
+      assert/assume/cover only, small-parameterization convention,
+      white-box internal-signal checks via a flatten+`expose` two-stage
+      Yosys flow (not SystemVerilog `bind`, which this Yosys build accepts
+      syntactically but never actually connects — confirmed by injecting
+      a deliberately-false assertion into a `bind`-attached checker and
+      finding it still proved; a plain hierarchical dotted reference has
+      the same silent-no-connection failure mode)
+
+### 9.0b Fixed-point rewrite of five golden-model blocks [x]
+- [x] `lib/dsp/cordic.h/.cc` — new shared fixed-point CORDIC core
+      (rotation mode for cos/sin, vectoring mode for atan2/magnitude),
+      14 iterations, Q1.15 "turns-over-pi" angle format, ≥40 dB SNR vs.
+      `std::cos/sin/atan2/hypot`
+- [x] `bootstrap_detector.cc` — integer EWMA correlator + CORDIC-based
+      metric/CFO (replacing `double`/`std::arg`/`sqrt`/`log10`)
+- [x] `timing_recovery.cc` — fixed-point polyphase FIR + Gardner TED +
+      loop filter (no CORDIC needed)
+- [x] `freq_correction.cc` — CORDIC-based NCO replacing per-sample
+      `std::cos`/`sin`
+- [x] `frame_sync.cc` — fixed-point cross-correlation + CORDIC
+      vectoring-mode magnitude, plus an integer square-root fallback for
+      the one piece (`sqrt(sig_power * ref_power)`) that isn't a true 2D
+      vector magnitude
+- [x] `constellation_demapper.cc` — generalized the boundary-slicer into
+      one fixed-point LLR path for every modulation order (replacing both
+      the hand-unrolled fast paths and the O(M) brute-force fallback),
+      fixed the constellation-table Q1.15 overflow as a side effect
+- [x] Each rewrite verified ≥40 dB SNR against its own pre-rewrite
+      behavior before being held to a bit-exact RTL bar
+
+### 9.1 Bootstrap Detector RTL [~]
+- [x] `hdl/rtl/common/cordic.v` + `hdl/rtl/include/cordic_types.vh` —
+      shared iterative dual-mode CORDIC core, bit-exact port of
+      `lib/dsp/cordic.cc`; lint-clean (Verilator `--lint-only
+      --language 1364-2001 -Wall`)
+- [x] `hdl/formal/cordic.sby` — FSM-legality, iteration-count-bound,
+      start/busy/done-handshake properties proven (k-induction); cover
+      tasks confirm both modes and the degenerate vector(0,0) bypass are
+      reachable
+- [x] cocotb bit-exact test for `cordic.v` vs. `lib/dsp/cordic.cc`, via a
+      golden-vector CLI (`hdl/sim/golden/cordic_gen`) linking the real
+      `atsc3_lib` — 136 cases (boundary + randomized), both modes
+- [ ] `hdl/rtl/sync/bootstrap_detector.v` — EWMA correlation term (a
+      single-pole IIR accumulator, matching the golden model's actual
+      architecture, not a 2048-tap delay line) + a real 2048-sample
+      sliding window for the power term only; window bound is 2048
+      (`kHalfSymbol`)
+- [ ] AXI4-S: `TDATA=ci16` in, `BootstrapDetection`-equivalent status
+      word out (per `status_words.vh`)
+- [ ] cocotb: synthetic bootstrap symbols at known CFO offsets, bit-exact
+      vs. golden vectors generated from the real `atsc3_lib`
+      (`ATSC3_FIXED_POINT=ON`)
+- [ ] Formal: correlator index bound (2047), zero-averaging-window config
+      rejected
+
+### 9.2 Timing Recovery RTL [ ]
+- [ ] 16-bank×32-tap polyphase FIR (ROM taps, MAC array) + Gardner TED
+      feedback loop, bit-exact vs. the 9.0b rewrite
+- [ ] AXI4-S `ci16` in/out; cocotb timing-offset sweep; formal: phase
+      accumulator wrap behavior, AXI4-S protocol properties
+
+### 9.3 CP Removal RTL [ ]
+- [ ] Counter vs. CP-length register, gates `TVALID`; no numerical
+      content to diverge on — cocotb covers all 11 CP fractions
+      bit-exact; formal: counter never exceeds the max defined length
+
+### 9.4 FFT Engine RTL [ ]
+- [ ] Memory-based in-place radix-2 DIT, shared 16384-entry twiddle ROM,
+      bit-exact by construction; streaming R2SDF explicitly deferred
+      future work
+- [ ] AXI4-S wrapper, cocotb, formal (bit-reversal address generator
+      bounds, butterfly arithmetic)
+
+### 9.5 Pilot Extraction + Frequency Correction RTL [ ]
+- [ ] `pilot_extractor.cc`'s `estimate_channel()` core is already clean
+      fixed-point — no rewrite needed, bit-exact-ready as-is
+- [ ] Pilot pattern ROM (PP1–PP8 from `pilot_extractor.h`, not
+      `atsc3_modes.json`'s unused separate table); explicit
+      SCATTERED > CONTINUAL > EDGE dedup precedence needed in the golden
+      model first (unspecified `std::sort`/`std::unique` behavior today)
+- [ ] `freq_correction.cc` RTL: CORDIC-based NCO per 9.0b, bounded output
+      by construction
+- [ ] cocotb: all 8 pilot patterns incl. dedup-collision cases, bit-exact
+      CFO-injection sweep; formal: ROM bound, freq-correction output
+      bound, AXI4-S protocol properties
+
+### 9.6 Frame Sync RTL [ ]
+- [ ] Runs after FFT + frequency correction (per `frame_sync.h`'s own
+      documented contract, not the receiver's coarse block-diagram order)
+- [ ] Acquisition correlator is `fft_size`-long, evaluated at every
+      offset in the search window — budget as the single largest
+      correlator in the design (~2M complex MACs/call at default width)
+- [ ] Preamble reference stays the existing non-spec placeholder pattern;
+      pin a fixed sample-chunking convention so the golden CLI and the
+      RTL streaming interface don't diverge on buffering alone
+- [ ] AXI4-S `ci16` in, `FrameEvent`-equivalent status word out; cocotb
+      frame-boundary sweep at the pinned chunk size; formal: FSM only
+      reaches defined states, AXI4-S protocol properties
+
+### 9.7 Channel Estimator RTL [ ]
+- [ ] LS + Wiener, sequential `complex_divider.v` (truncate-toward-zero),
+      `wiener_fir.v`, `linear_interp.v`; SNR/phase-error outputs
+      explicitly out of scope (not bit-exact-portable, `log10`-based)
+
+### 9.8 Equalizer (FDE) RTL [ ]
+- [ ] Already-genuine fixed-point core (no algorithm rewrite needed) —
+      needs its own `eq_complex_divider.v` (different rounding than 9.7's
+      divider, not shared)
+- [ ] cocotb: ZF/MMSE, deep-fade injection, phase-tracking sweep near
+      full scale; formal: the fallback (divide-by-a-floor) divisor path
+      is never taken; int64 numerator never truncated on store
+
+### 9.9 Constellation Demapper RTL [ ]
+- [ ] One parameterized boundary-slicer for every mode per the 9.0b
+      rewrite (not two algorithms with a scope split between them); real
+      code-rate-indexed NUC tables exist and are used (license
+      compatibility of `nuc_tables.h` needs checking before porting)
+- [ ] AXI4-S: equalized `ci16` in, `int8_t` LLR out; cocotb: all 6
+      uniform modes + NUC at multiple SNRs, explicit constellation-table
+      saturation check; formal: LLR clamp bound, constellation ROM bound
+
+### 9.10 De-interleavers RTL (Cell / Time / Frequency) [ ]
+- [ ] Frequency deinterleaver: ROM-able as-is (exactly 3 enumerated
+      `n` values)
+- [ ] Cell deinterleaver: NOT simply ROM-able — its permutation depends
+      continuously on `num_cells` (modulation × code rate × FEC block
+      count); needs an on-chip permutation-builder FSM, or an enumerated
+      `num_cells` restriction as a scope-reduction fallback
+- [ ] Both cell and frequency deinterleavers use bit-reversal permutation
+      (non-spec placeholder, not real ATSC A/322 interleaving)
+- [ ] Time deinterleaver delay-line RAM budget: up to ~31 Mbit at
+      `ti_depth=15`/QPSK — budget alongside LDPC's memory in 9.17; must
+      match the golden model's `settling_blocks_` latency/valid gating
+- [ ] cocotb round-trips against the existing `test/unit/test_*_deinterleaver.cc`
+      vectors; formal: permutation/address-generator bounds
+
+### 9.11 LDPC Decoder RTL [ ]
+- [ ] Min-sum, parameterized by code rate, per-rate ROM; non-spec
+      placeholder H-matrices (see `hdl/docs/placeholder_status.md`)
+
+### 9.12 BCH Decoder RTL [ ]
+- [ ] Binary BCH — bit-flip directly at Chien roots, no Forney algorithm
+      needed; LFSR syndrome engine restructured (not a literal port) but
+      still needs the `gf_exp_`/`gf_log_` log-table ROMs downstream of it
+- [ ] Cycle budget must include the failure detector's full second
+      syndrome-recomputation pass (roughly doubles worst-case latency)
+- [ ] cocotb: 0–13 injected bit errors (the existing 6-corrected/13-fails
+      boundary); formal: Chien-search root count never exceeds `t=12`
+
+### 9.13 L1 Decoder + Config Sequencer RTL [ ]
+- [ ] 9.13a — L1 bitfield decode: `l1_decoder.cc`'s `fec_decode()` is a
+      bare LLR sign-slicer with no LDPC/BCH dependency (a documented
+      placeholder — hard-decision only, no FEC protection on L1 today);
+      bitfield-extract + CRC-32 can be bit-exact even though the overall
+      acquisition reliability inherits that fragility
+- [ ] 9.13b — config sequencer FSM: new design, no working C++ reference
+      exists (`ConfigBus` observer wiring is never invoked outside
+      tests today) — specified against `Atsc3Config`'s field shapes,
+      verified against a specified transition sequence, not a golden model
+- [ ] Register split: L1-decoded fields are read-only status mirrors,
+      written internally by 9.13b, not host-writable in normal operation
+
+### 9.14 ALP Demux RTL [ ]
+- [ ] `ReassemblyContext` is already bounded (fixed array, reserved
+      buffers) — the real rule-5 gap is `input_buffer_`'s unbounded
+      `resize()`, which needs an explicit RTL depth bound + overflow
+      policy
+- [ ] Three typed output streams (IP, signaling, TS), not one muxed
+      per-PLP stream; no timeout mechanism (the golden model's own
+      `check_reassembly_timeouts()` is an unimplemented no-op — don't
+      build one against no reference)
+- [ ] cocotb against the existing `test/unit/test_alp_demux.cc` vectors;
+      formal: `input_buffer_`'s RTL depth bound is never exceeded
+
+### 9.15 AXI4-Lite Control Plane [ ]
+- [ ] Full register map across all blocks from `config/hdl_register_map.json`,
+      host/L1-writable split, Q-format contract constant, default-config
+      reset values; formal: standard AXI4-Lite safety properties
+
+### 9.16 End-to-End HDL Pipeline Test (required) [ ]
+- [ ] Tier 1 (required): steady-state pipeline — fixed known config
+      pre-loaded into the register file (bypassing 9.13's acquisition),
+      real IQ samples through 9.1–9.12 + 9.14, bit-exact vs. an all-C++
+      golden run
+- [ ] Tier 2: cold-start acquisition through 9.13's sequencer against a
+      *specified* transition sequence — not claimed bit-exact (no golden
+      acquisition path exists) and explicitly inheriting 9.13a's
+      hard-decision L1 fragility
+- [ ] Needs `git lfs pull` on the real SigMF captures
+      (`test/captures/ch35_*.sigmf-*`) and a SigMF-aware golden CLI
+
+### 9.17 Timing Closure [ ]
+- [ ] Technology-independent metrics only (Yosys `synth`/`abc`): logic
+      depth, LUT-equivalent count, inferred RAM bits, cycles per
+      symbol/codeword/datagram vs. the ≤25 MS/s N210 ceiling — including
+      frame sync's correlator, the time deinterleaver's RAM, and BCH's
+      doubled worst-case latency
+- [ ] Post-synthesis functional equivalence via Yosys `equiv_opt`/`sat`
+
+---
+
 ## Post-MVP: ML Multipath Mitigation  *(separate milestone)*
 
 - [ ] `ml/data/channel_sim.py` — ray-tracing multipath channel simulator (parametric)
