@@ -1,6 +1,6 @@
 # HDL Toolchain
 
-> Phase 9.0 deliverable: toolchain pinning + setup, verified end-to-end
+> Toolchain pinning + setup, verified end-to-end
 > against `hdl/rtl/common/axi4s_skid_buffer.v` (lint → formal → cocotb
 > simulation, all passing) before any algorithmic RTL was written.
 
@@ -65,12 +65,12 @@ cd hdl/sim/cocotb && ../.venv/bin/python -m pytest test_runner.py -v
 ```
 
 See `hdl/docs/formal_conventions.md` for the formal harness pattern
-(SVA-lite, `bind`-based white-box checks, small-parameterization) used
-above and expected for every subsequent block.
+(SVA-lite, flatten+`expose`-based white-box checks, small-parameterization)
+used above and expected for every subsequent block.
 
 ## CI wiring
 
-Tracked as a Phase 9.0 follow-up once more than one block exists (a
+Tracked as a follow-up once more than one block exists (a
 single-block CMake target would be premature abstraction); the commands
 above are the ones CI will wrap. `ATSC3_ENABLE_HDL_STUBS=ON` gates the
 existing `hdl/CMakeLists.txt` Verilator discovery; formal and cocotb
