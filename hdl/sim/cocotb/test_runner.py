@@ -13,6 +13,7 @@ from cocotb.runner import get_runner
 HDL_ROOT = pathlib.Path(__file__).resolve().parents[2]
 RTL_INCLUDE = HDL_ROOT / "rtl" / "include"
 RTL_COMMON = HDL_ROOT / "rtl" / "common"
+RTL_SYNC = HDL_ROOT / "rtl" / "sync"
 SIM_BUILD = HDL_ROOT / "sim" / "cocotb" / "sim_build"
 
 
@@ -52,4 +53,25 @@ def test_cordic():
         hdl_toplevel="cordic",
         test_module="test_cordic",
         build_dir=SIM_BUILD / "cordic",
+    )
+
+
+def test_bootstrap_detector():
+    runner = get_runner("verilator")
+    runner.build(
+        verilog_sources=[
+            RTL_SYNC / "bootstrap_detector.v",
+            RTL_COMMON / "cordic.v",
+            RTL_COMMON / "udiv_seq.v",
+        ],
+        includes=[RTL_INCLUDE],
+        hdl_toplevel="bootstrap_detector",
+        build_dir=SIM_BUILD / "bootstrap_detector",
+        always=True,
+        build_args=["-Wall"],
+    )
+    runner.test(
+        hdl_toplevel="bootstrap_detector",
+        test_module="test_bootstrap_detector",
+        build_dir=SIM_BUILD / "bootstrap_detector",
     )

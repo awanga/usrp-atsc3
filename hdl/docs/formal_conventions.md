@@ -132,10 +132,40 @@ nothing.
 
 ## Solver
 
-`z3` (also available: `boolector`). `yices-smt2` is **not** installed in
-this environment -- don't default `.sby` engine lines to bare `smtbmc`
-(which tries yices first and fails with "not found in path"); always
-name a solver explicitly: `smtbmc z3`.
+`z3` (also available: `boolector`, but it dies with a broken pipe on
+larger models here). `yices-smt2` is **not** installed in this
+environment -- don't default `.sby` engine lines to bare `smtbmc` (which
+tries yices first and fails with "not found in path"); always name a
+solver explicitly: `smtbmc z3`.
+
+## Datapath-heavy blocks: cut multipliers, prove with PDR
+
+Blocks with wide arithmetic (`bootstrap_detector`: 64-bit dividers and
+accumulators, several multipliers) stall `smtbmc z3` outright -- it could
+not finish a depth-2 BMC there. Two measures, both used by
+`bootstrap_detector.sby`:
+
+- **`cutpoint t:$mul`** after `prep`: every multiplier output becomes a
+  fresh free value each cycle. Sound for control/protocol properties (if a
+  property holds for arbitrary products it holds for the real ones);
+  don't use it for a property that depends on a product's value.
+- **ABC PDR** (`abc pdr`, bit-level, unbounded) instead of k-induction.
+  With the multipliers cut, it proved the bootstrap detector's properties
+  in under a second. Run it through `hdl/formal/prove_pdr.sh <job>`, not
+  `sby` directly: SBY 0.68's ABC result parser expects an `asserts` key in
+  the witness map that Yosys 0.33's `write_aiger` doesn't emit, so `sby`
+  crashes (`KeyError: 'asserts'`) after PDR finishes. The script still
+  uses the `.sby` file to build the model, and checks that stage
+  succeeded before running PDR itself.
+
+Neither ABC PDR nor `smtbmc` gives a practical `cover` task on these
+models, so non-vacuity has to come from **RTL mutants** instead: inject a
+bug each key assertion should catch, confirm the proof fails at a
+plausible depth, restore, and record the result in the harness header
+(see `bootstrap_detector_formal.v`). Also keep in mind that `prev_*` shadow
+registers sample the DUT's uninitialized outputs on the reset cycle: gate
+any `prev_*`-based assertion on `!prev_rst`. PDR found exactly that bug
+in the first version of this harness.
 
 ## `.sby` file mechanics
 

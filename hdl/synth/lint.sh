@@ -17,8 +17,10 @@ status=0
 shopt -s globstar nullglob
 for f in "$RTL_DIR"/**/*.v; do
     echo "linting: ${f#"$HDL_ROOT"/}"
+    # -y lets blocks that instantiate shared cores (cordic.v, udiv_seq.v)
+    # resolve them from rtl/common/ while still linting one file at a time.
     if ! verilator --lint-only --language 1364-2001 -Wall \
-            "+incdir+$INCLUDE_DIR" "$f"; then
+            "+incdir+$INCLUDE_DIR" -y "$RTL_DIR/common" "$f"; then
         status=1
     fi
 done
