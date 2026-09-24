@@ -8,11 +8,13 @@
 // test_bootstrap_detector.py's job.
 //
 // Non-vacuity: there is no cover task (see bootstrap_detector.sby), so the
-// proof was checked against RTL mutants instead. A history-index wrap
-// off-by-one fails `hidx < win_n` at frame 84 (after a full sample has gone
-// through both dividers and the CORDIC), and removing R's floor of 1 fails
-// the divide-by-zero guard at frame 8; the unmodified RTL proves. Repeat
-// that check when changing this harness.
+// proof was checked against RTL mutants instead, with
+// `prove_pdr.sh --mutant` (bounded BMC; PDR stalls on deep
+// counterexamples): a history-index wrap off-by-one fails `hidx < win_n`
+// (frame 16), dividing regardless of the energy floor fails the divisor
+// guard (frame 9), and leaving in_det set on detection fails the
+// detect/re-arm exclusivity (frame 162, two full samples in); the
+// unmodified RTL proves. Repeat that check when changing this harness.
 //
 // Run: hdl/formal/prove_pdr.sh bootstrap_detector
 
@@ -26,10 +28,11 @@ module bootstrap_detector_formal (
     localparam HALF_SYMBOL = 4;
     localparam MAX_WIN     = 4;
 
-    localparam [3:0] ST_CLEAR        = 4'd0,
-                     ST_IDLE         = 4'd1,
+    localparam [3:0] ST_IDLE         = 4'd1,
                      ST_DIV_START    = 4'd3,
-                     ST_EMIT         = 4'd12;
+                     ST_EMIT         = 4'd11;
+
+    localparam signed [63:0] MIN_ENERGY = 64'sd65536;
 
     // Free stimulus (no driver: the solver picks a new value every cycle).
     reg [31:0]        cfg_sample_rate_hz;
@@ -54,9 +57,11 @@ module bootstrap_detector_formal (
     wire [1:0]         idx_probe;
     wire [1:0]         hidx_probe;
     wire [2:0]         win_n_probe;
-    wire [5:0]         shift_probe;
     wire signed [63:0] r_sum_probe;
+    wire               in_det_probe;
+    wire               rearm_blocked_probe;
     wire               div_start_probe;
+    wire               div_avg_probe;
     wire [63:0]        div_a_divisor_probe;
 
     bootstrap_detector_bare dut_top (
@@ -81,9 +86,11 @@ module bootstrap_detector_formal (
         .\dut.idx             (idx_probe),
         .\dut.hidx            (hidx_probe),
         .\dut.win_n           (win_n_probe),
-        .\dut.shift           (shift_probe),
         .\dut.r_sum           (r_sum_probe),
+        .\dut.in_det          (in_det_probe),
+        .\dut.rearm_blocked   (rearm_blocked_probe),
         .\dut.div_start       (div_start_probe),
+        .\dut.div_avg         (div_avg_probe),
         .\dut.div_a_divisor   (div_a_divisor_probe)
     );
 
@@ -131,18 +138,22 @@ module bootstrap_detector_formal (
                 assert (win_n_probe == prev_win_n);
             end
 
-            // Normalization shift loop is bounded at 32, as in the C++.
-            assert (shift_probe <= 6'd32);
+            // (R >= 0 is true but not assertable here: the energies are
+            // products, which bootstrap_detector.sby cuts to free values.)
 
-            // Neither divider ever divides by zero: R's floor of 1 holds
-            // whenever the P/R divide starts, and divider A's divisor
-            // (R, or the window length) is nonzero on every start.
-            if (state_probe == ST_DIV_START) begin
-                assert (r_sum_probe >= 64'sd1);
-            end
+            // Neither divider ever divides by zero: the P/R divide only
+            // starts above the near-silence energy floor (below it the
+            // datapath skips straight to the CORDIC), and divider A's
+            // divisor (R, or the window length) is nonzero on every start.
             if (div_start_probe) begin
                 assert (div_a_divisor_probe != 64'd0);
             end
+            if (div_start_probe && !div_avg_probe) begin
+                assert (div_a_divisor_probe >= MIN_ENERGY);
+            end
+
+            // Detection FSM: never tracking a peak while re-arm is blocked.
+            assert (!(in_det_probe && rearm_blocked_probe));
 
             // Input is accepted only when idle; a detection is presented
             // only from ST_EMIT; never both at once (a pending detection

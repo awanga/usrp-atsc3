@@ -75,12 +75,11 @@
 
 `define BOOTSTRAP_DETECTION_METRIC_HI 119
 `define BOOTSTRAP_DETECTION_METRIC_LO 88
-// Unsigned 32-bit, scaled by 2^15 (Q16.15 in a 32-bit container), the raw
-// value of bootstrap_detector.cc's int32_t peak_metric_ (C++ reports it as
-// peak_metric_ / 32768.0). Not q1_15: (|P|/R)^2 routinely exceeds 1.0 while
-// the EWMA correlation term settles (peaks of ~3.9 are typical right after
-// a bootstrap starts), and the C++ saturates it at INT32_MAX, not 1.0. A
-// 16-bit q1_15 field would silently truncate those values.
+// Unsigned 32-bit, scaled by 2^15, the raw value of bootstrap_detector.cc's
+// int32_t peak_metric_ (C++ reports it as peak_metric_ / 32768.0). The
+// metric is bounded by 1.0 in principle (|P| <= R), but Q1.15 rounding and
+// per-rail saturation let the stored value reach 65536 (2.0), one past a
+// 16-bit field; 32 bits carries the C++ int32_t unchanged.
 
 //------------------------------------------------------------------------------
 // FrameEvent (lib/sync/frame_sync.h:90-103) -- frame-sync status.
