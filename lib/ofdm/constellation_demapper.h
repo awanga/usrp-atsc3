@@ -116,6 +116,15 @@ public:
         return constellation_points_;
     }
 
+    // Scale of constellation_points() relative to unit average power.
+    // Always 1.0 in the float build. Under ATSC3_FIXED_POINT, each table is
+    // divided by a per-constellation headroom factor so its peak component
+    // fits Q1.15 (see qam_headroom_for_peak() in the .cc), so the points
+    // are table_scale() * (unit-power point) * 32768.
+    float table_scale() const {
+        return table_scale_;
+    }
+
     // Update configuration
     void set_config(const DemapperConfig& config);
     const DemapperConfig& get_config() const {
@@ -133,6 +142,7 @@ private:
 
     // Pre-computed constellation points (ordered by Gray-mapped bit pattern)
     std::vector<sample_t> constellation_points_;
+    float table_scale_ = 1.0f;  // see table_scale()
 
     // Bit mappings for constellation points
     // bit_sets_[bit_index] contains indices of points where that bit is 1

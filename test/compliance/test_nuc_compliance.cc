@@ -79,20 +79,54 @@ const std::vector<Modulation> kUniformModulations = {
 // Helper Functions
 //==============================================================================
 
+using unit_point_t = std::complex<double>;
+
+// Constellation points in unit-average-power units, the same in both
+// builds: undoes Q1.15 scaling and the fixed-point build's per-table
+// headroom factor (ConstellationDemapper::table_scale()). The property
+// helpers below work on these, never on raw sample_t -- std::norm/abs on
+// std::complex<int16_t> computes in 16 bits and overflows.
+std::vector<unit_point_t> unit_points(const ConstellationDemapper& demapper) {
+#ifdef ATSC3_FIXED_POINT
+    const double scale = 32768.0 * demapper.table_scale();
+#else
+    const double scale = demapper.table_scale();
+#endif
+    std::vector<unit_point_t> out;
+    for (const auto& p : demapper.constellation_points()) {
+        out.emplace_back(p.real() / scale, p.imag() / scale);
+    }
+    return out;
+}
+
+// A constellation point plus noise given in unit-average-power units,
+// returned in the demapper's own sample format.
+sample_t add_unit_noise(const ConstellationDemapper& demapper, const sample_t& p, float n_re,
+                        float n_im) {
+#ifdef ATSC3_FIXED_POINT
+    const float s = demapper.table_scale();
+    return sample_t(float_to_q15(q15_to_float(p.real()) + n_re * s),
+                    float_to_q15(q15_to_float(p.imag()) + n_im * s));
+#else
+    (void)demapper;
+    return p + sample_t(n_re, n_im);
+#endif
+}
+
 // Compute average power of constellation
-double compute_average_power(const std::vector<sample_t>& points) {
+double compute_average_power(const std::vector<unit_point_t>& points) {
     if (points.empty())
         return 0.0;
 
     double total_power = 0.0;
     for (const auto& p : points) {
-        total_power += static_cast<double>(std::norm(p));
+        total_power += std::norm(p);
     }
     return total_power / static_cast<double>(points.size());
 }
 
 // Compute minimum distance between constellation points
-double compute_min_distance(const std::vector<sample_t>& points) {
+double compute_min_distance(const std::vector<unit_point_t>& points) {
     if (points.size() < 2)
         return 0.0;
 
@@ -107,15 +141,15 @@ double compute_min_distance(const std::vector<sample_t>& points) {
 }
 
 // Check if constellation has proper symmetry (I/Q quadrant symmetry)
-bool has_quadrant_symmetry(const std::vector<sample_t>& points) {
+bool has_quadrant_symmetry(const std::vector<unit_point_t>& points) {
     // For each point (a, b), there should be points (-a, b), (a, -b), (-a, -b)
     constexpr float tol = 1e-4f;
 
     for (const auto& p : points) {
         // Find conjugates
-        std::array<sample_t, 4> required = {p, sample_t(-p.real(), p.imag()),
-                                            sample_t(p.real(), -p.imag()),
-                                            sample_t(-p.real(), -p.imag())};
+        std::array<unit_point_t, 4> required = {p, unit_point_t(-p.real(), p.imag()),
+                                                unit_point_t(p.real(), -p.imag()),
+                                                unit_point_t(-p.real(), -p.imag())};
 
         for (const auto& req : required) {
             bool found = false;
@@ -137,7 +171,7 @@ bool has_quadrant_symmetry(const std::vector<sample_t>& points) {
 // Note: ATSC A/322 NUC tables have some near-duplicate points that differ
 // only in the 3rd-4th decimal place. These are intentional per the spec.
 // Use a tight tolerance to only catch exact duplicates.
-bool has_unique_points(const std::vector<sample_t>& points) {
+bool has_unique_points(const std::vector<unit_point_t>& points) {
     constexpr float tol = 1e-5f;  // Relaxed to allow near-duplicates per spec
 
     for (size_t i = 0; i < points.size(); i++) {
@@ -195,7 +229,7 @@ TEST_F(NucComplianceTest, UnitAveragePower) {
         config.code_rate = CodeRate::RATE_7_15;
 
         ConstellationDemapper demapper(config);
-        const auto& points = demapper.constellation_points();
+        const auto points = unit_points(demapper);
 
         double avg_power = compute_average_power(points);
 
@@ -224,7 +258,7 @@ TEST_F(NucComplianceTest, UniquePoints) {
         config.code_rate = CodeRate::RATE_7_15;
 
         ConstellationDemapper demapper(config);
-        const auto& points = demapper.constellation_points();
+        const auto points = unit_points(demapper);
 
         EXPECT_TRUE(has_unique_points(points))
             << "Duplicate points in constellation for modulation " << static_cast<int>(mod);
@@ -242,7 +276,7 @@ TEST_F(NucComplianceTest, QuadrantSymmetry) {
         config.code_rate = CodeRate::RATE_7_15;
 
         ConstellationDemapper demapper(config);
-        const auto& points = demapper.constellation_points();
+        const auto points = unit_points(demapper);
 
         EXPECT_TRUE(has_quadrant_symmetry(points))
             << "Missing quadrant symmetry for modulation " << static_cast<int>(mod);
@@ -265,7 +299,7 @@ TEST_F(NucComplianceTest, MinimumDistance) {
         config.code_rate = CodeRate::RATE_7_15;
 
         ConstellationDemapper demapper(config);
-        const auto& points = demapper.constellation_points();
+        const auto points = unit_points(demapper);
 
         double min_dist = compute_min_distance(points);
 
@@ -291,8 +325,8 @@ TEST_F(NucComplianceTest, NucDiffersFromUniform) {
     ConstellationDemapper nuc_demapper(nuc_config);
     ConstellationDemapper uniform_demapper(uniform_config);
 
-    const auto& nuc_points = nuc_demapper.constellation_points();
-    const auto& uniform_points = uniform_demapper.constellation_points();
+    const auto nuc_points = unit_points(nuc_demapper);
+    const auto uniform_points = unit_points(uniform_demapper);
 
     EXPECT_EQ(nuc_points.size(), uniform_points.size());
 
@@ -333,8 +367,8 @@ TEST_F(NucComplianceTest, CodeRateDependency) {
     EXPECT_EQ(demapper2.constellation_size(), 64u);
 
     // Both should have valid constellations
-    EXPECT_TRUE(has_unique_points(demapper1.constellation_points()));
-    EXPECT_TRUE(has_unique_points(demapper2.constellation_points()));
+    EXPECT_TRUE(has_unique_points(unit_points(demapper1)));
+    EXPECT_TRUE(has_unique_points(unit_points(demapper2)));
 }
 
 //==============================================================================
@@ -393,7 +427,7 @@ TEST_F(NucComplianceTest, DemapperWithNoise) {
     size_t total_bits = 0;
 
     for (size_t sym_idx = 0; sym_idx < points.size(); sym_idx++) {
-        sample_t noisy_symbol = points[sym_idx] + sample_t(noise(rng), noise(rng));
+        sample_t noisy_symbol = add_unit_noise(demapper, points[sym_idx], noise(rng), noise(rng));
 
         std::vector<int8_t> llr(6);  // 6 bits for 64-QAM
         demapper.demap_symbol(noisy_symbol, llr.data());
@@ -431,7 +465,7 @@ TEST_F(NucComplianceTest, Nuc16AllCodeRates) {
         EXPECT_EQ(demapper.constellation_size(), 16u)
             << "Wrong size for code rate " << static_cast<int>(rate);
 
-        double avg_power = compute_average_power(demapper.constellation_points());
+        double avg_power = compute_average_power(unit_points(demapper));
         EXPECT_NEAR(avg_power, 1.0, 0.15)
             << "Wrong average power for code rate " << static_cast<int>(rate);
     }
@@ -452,7 +486,7 @@ TEST_F(NucComplianceTest, Nuc64AllCodeRates) {
         EXPECT_EQ(demapper.constellation_size(), 64u)
             << "Wrong size for code rate " << static_cast<int>(rate);
 
-        double avg_power = compute_average_power(demapper.constellation_points());
+        double avg_power = compute_average_power(unit_points(demapper));
         EXPECT_NEAR(avg_power, 1.0, 0.15)
             << "Wrong average power for code rate " << static_cast<int>(rate);
     }
@@ -498,7 +532,7 @@ TEST_F(NucComplianceTest, ComplianceSummary) {
         config.code_rate = CodeRate::RATE_7_15;
 
         ConstellationDemapper demapper(config);
-        const auto& points = demapper.constellation_points();
+        const auto points = unit_points(demapper);
 
         double avg_power = compute_average_power(points);
         bool unique = has_unique_points(points);

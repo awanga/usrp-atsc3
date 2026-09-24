@@ -80,21 +80,10 @@ constexpr float kQamDenorm4096 = 52.24940191045253f;
 // constellation's own actual peak (targeting peak/headroom = 0.95, a
 // small margin below the hard 0.99997 boundary), not one blanket factor
 // for every mode: QPSK's peak (0.707) already fits with no headroom
-// needed, and applying a large fixed headroom anyway would needlessly
-// shrink its constellation relative to a fixed noise_variance, silently
-// changing the effective SNR noise_variance represents for modes that
-// never had a representation problem to begin with (confirmed while
-// developing this: a single blanket headroom=2.0 factor measurably
-// degraded QPSK's LLR-sign accuracy in testing even though QPSK's peak
-// was never close to overflowing). The target itself was swept (0.8
-// through 0.99) against QAM64LLRSignMatchesBitAtHighSNR: accuracy rises
-// monotonically as the target approaches 1.0 (less headroom, better
-// SNR) and plateaus around 98.4-98.7%, short of that test's >99% bar
-// even with essentially no headroom left -- the remaining gap is Q1.15's
-// inherent quantization noise floor for 64-QAM's tightest decision
-// boundaries at this noise_variance, not a headroom tuning problem. 0.95
-// keeps a bit of margin below the hard boundary rather than chasing the
-// last ~0.3% by sitting right at it.
+// needed. Shrinking the table costs no SNR as long as the LLR scale folds
+// the shrink back out, which init() does via table_scale_ (noise_variance
+// is per unit average power); with that, the fixed-point demapper's
+// hard-decision accuracy matches the float build's.
 constexpr float kQamHeadroomTarget = 0.95f;
 
 // Headroom divisor for a constellation whose largest single-axis
@@ -129,8 +118,9 @@ inline int8_t clamp_round(float val, float clip) {
 // Base points cover first quadrant; other quadrants derived via symmetry:
 //   Q1: original, Q2: -conj, Q3: conj, Q4: -point
 template <size_t N>
-std::vector<sample_t> build_2d_nuc(const float table[N][2]) {
+std::vector<sample_t> build_2d_nuc(const float table[N][2], float& scale_out) {
     std::vector<sample_t> points(N * 4);
+    scale_out = 1.0f;
 #ifdef ATSC3_FIXED_POINT
     // Base table covers only the first quadrant (per the comment above),
     // so its own max |component| is this constellation's true peak --
@@ -140,6 +130,7 @@ std::vector<sample_t> build_2d_nuc(const float table[N][2]) {
         peak = std::max({peak, std::fabs(table[i][0]), std::fabs(table[i][1])});
     }
     float headroom = qam_headroom_for_peak(peak);
+    scale_out = 1.0f / headroom;
 #endif
     for (size_t i = 0; i < N; ++i) {
         float re = table[i][0];
@@ -172,10 +163,12 @@ std::vector<sample_t> build_2d_nuc(const float table[N][2]) {
 // Build 1D NUC constellation from amplitude table
 // 1D NUC uses separable I/Q with amplitude tables and index remapping
 template <size_t N>
-std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t map_size) {
+std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t map_size,
+                                   float& scale_out) {
     size_t side = map_size;
     size_t total = side * side;
     std::vector<sample_t> points(total);
+    scale_out = 1.0f;
 
 #ifdef ATSC3_FIXED_POINT
     // amps[] is the full set of possible per-axis amplitude magnitudes for
@@ -186,6 +179,7 @@ std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t 
         peak = std::max(peak, std::fabs(amps[i]));
     }
     float headroom = qam_headroom_for_peak(peak);
+    scale_out = 1.0f / headroom;
 #endif
 
     for (size_t i = 0; i < total; ++i) {
@@ -245,8 +239,9 @@ std::vector<sample_t> build_1d_nuc(const float amps[N], const int map[], size_t 
 }
 
 // Helper to build Gray-coded QAM constellation
-std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
+std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm, float& scale_out) {
     size_t m = 1u << bits_per_symbol;
+    scale_out = 1.0f;
     size_t side = 1u << (bits_per_symbol / 2);
     std::vector<sample_t> points(m);
 
@@ -255,7 +250,9 @@ std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
     // -(side-1)..+(side-1) in steps of 2), so the true peak in
     // unit-average-power units is (side-1)*norm.
     float peak = static_cast<float>(side - 1) * norm;
-    norm /= qam_headroom_for_peak(peak);
+    float headroom = qam_headroom_for_peak(peak);
+    norm /= headroom;  // divide, not *1/h: init() must match bit-for-bit
+    scale_out = 1.0f / headroom;
 #endif
 
     for (size_t i = 0; i < m; ++i) {
@@ -272,10 +269,10 @@ std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm) {
     return points;
 }
 
-std::vector<sample_t> build_qpsk() {
+std::vector<sample_t> build_qpsk(float& scale_out) {
     // Use build_uniform_qam for consistent Gray coding
     // This gives: idx=0→(-,-), idx=1→(-,+), idx=2→(+,-), idx=3→(+,+)
-    return build_uniform_qam(2, kQamNorm4);
+    return build_uniform_qam(2, kQamNorm4, scale_out);
 }
 
 // ============================================================================
@@ -442,7 +439,19 @@ void ConstellationDemapper::init() {
 #ifdef ATSC3_FIXED_POINT
     // Q16.16-ish (noise_variance, and so this scale, can span several
     // orders of magnitude -- generous range, not Q1.15).
-    llr_scale_q16_ = static_cast<int32_t>(std::lround((1.0 / config_.noise_variance) * 65536.0));
+    //
+    // noise_variance is in unit-average-power units, but distances here
+    // are measured on the headroom-scaled table (table_scale_ < 1 for
+    // most modes), so fold the table scale back out: the uniform slicer's
+    // LLR is linear in distance (scale s), the NUC max-log LLR is linear
+    // in *squared* distance (scale s^2). Without this, every headroom-
+    // scaled mode's LLRs came out s or s^2 times too small -- e.g. 0.41x
+    // for NUC-64, doubling the share of LLRs that round to 0 and costing
+    // ~7 points of hard-decision accuracy against the float build.
+    const double s = table_scale_;
+    const double distance_scale = is_nuc_modulation(config_.modulation) ? s * s : s;
+    llr_scale_q16_ = static_cast<int32_t>(
+        std::lround(65536.0 / (static_cast<double>(config_.noise_variance) * distance_scale)));
 
     half_side_ = 0;
     norm_const_q15_ = 0;
@@ -512,22 +521,22 @@ void ConstellationDemapper::init() {
 void ConstellationDemapper::generate_uniform_constellation() {
     switch (config_.modulation) {
         case config::Modulation::QPSK:
-            constellation_points_ = build_qpsk();
+            constellation_points_ = build_qpsk(table_scale_);
             break;
         case config::Modulation::QAM16:
-            constellation_points_ = build_uniform_qam(4, kQamNorm16);
+            constellation_points_ = build_uniform_qam(4, kQamNorm16, table_scale_);
             break;
         case config::Modulation::QAM64:
-            constellation_points_ = build_uniform_qam(6, kQamNorm64);
+            constellation_points_ = build_uniform_qam(6, kQamNorm64, table_scale_);
             break;
         case config::Modulation::QAM256:
-            constellation_points_ = build_uniform_qam(8, kQamNorm256);
+            constellation_points_ = build_uniform_qam(8, kQamNorm256, table_scale_);
             break;
         case config::Modulation::QAM1024:
-            constellation_points_ = build_uniform_qam(10, kQamNorm1024);
+            constellation_points_ = build_uniform_qam(10, kQamNorm1024, table_scale_);
             break;
         case config::Modulation::QAM4096:
-            constellation_points_ = build_uniform_qam(12, kQamNorm4096);
+            constellation_points_ = build_uniform_qam(12, kQamNorm4096, table_scale_);
             break;
         default:
             throw std::invalid_argument("Unsupported uniform modulation type");
@@ -540,34 +549,37 @@ void ConstellationDemapper::generate_nuc_constellation() {
     switch (config_.modulation) {
         case config::Modulation::NUC_QPSK:
             // QPSK is uniform, no code-rate dependent NUC
-            constellation_points_ = build_qpsk();
+            constellation_points_ = build_qpsk(table_scale_);
             break;
 
         case config::Modulation::NUC_16:
             // 2D NUC: 4 base points × 4 quadrants = 16 points
-            constellation_points_ = build_2d_nuc<NUC_16_BASE_POINTS>(NUC_16_TABLE[rate_idx]);
+            constellation_points_ =
+                build_2d_nuc<NUC_16_BASE_POINTS>(NUC_16_TABLE[rate_idx], table_scale_);
             break;
 
         case config::Modulation::NUC_64:
             // 2D NUC: 16 base points × 4 quadrants = 64 points
-            constellation_points_ = build_2d_nuc<NUC_64_BASE_POINTS>(NUC_64_TABLE[rate_idx]);
+            constellation_points_ =
+                build_2d_nuc<NUC_64_BASE_POINTS>(NUC_64_TABLE[rate_idx], table_scale_);
             break;
 
         case config::Modulation::NUC_256:
             // 2D NUC: 64 base points × 4 quadrants = 256 points
-            constellation_points_ = build_2d_nuc<NUC_256_BASE_POINTS>(NUC_256_TABLE[rate_idx]);
+            constellation_points_ =
+                build_2d_nuc<NUC_256_BASE_POINTS>(NUC_256_TABLE[rate_idx], table_scale_);
             break;
 
         case config::Modulation::NUC_1024:
             // 1D NUC: 32×32 separable constellation
-            constellation_points_ =
-                build_1d_nuc<NUC_1024_AMPLITUDES>(NUC_1024_TABLE[rate_idx], NUC_1024_MAP, 32);
+            constellation_points_ = build_1d_nuc<NUC_1024_AMPLITUDES>(
+                NUC_1024_TABLE[rate_idx], NUC_1024_MAP, 32, table_scale_);
             break;
 
         case config::Modulation::NUC_4096:
             // 1D NUC: 64×64 separable constellation
-            constellation_points_ =
-                build_1d_nuc<NUC_4096_AMPLITUDES>(NUC_4096_TABLE[rate_idx], NUC_4096_MAP, 64);
+            constellation_points_ = build_1d_nuc<NUC_4096_AMPLITUDES>(
+                NUC_4096_TABLE[rate_idx], NUC_4096_MAP, 64, table_scale_);
             break;
 
         default:

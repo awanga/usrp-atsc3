@@ -188,13 +188,13 @@ TEST(ConstellationDemapperTest, QPSKLLRSignMatchesBitAtHighSNR) {
         sample_t tx = points[idx];
 
         // Add noise
-#ifdef ATSC3_FIXED_POINT
-        float tx_re = q15_to_float(tx.real()) + noise(rng);
-        float tx_im = q15_to_float(tx.imag()) + noise(rng);
-        sample_t rx(float_to_q15(tx_re), float_to_q15(tx_im));
-#else
-        sample_t rx(tx.real() + noise(rng), tx.imag() + noise(rng));
-#endif
+        // Noise is specified per unit average power, so scale it onto the
+        // constellation's own scale (the fixed-point table is shrunk by a
+        // headroom factor; table_scale() is 1.0 in the float build).
+        float n_re = noise(rng);
+        float n_im = noise(rng);
+        sample_t rx = from_complex_float(to_complex_float(tx) +
+                                         demapper.table_scale() * std::complex<float>(n_re, n_im));
 
         // Demap
         int8_t llr[2];
@@ -239,13 +239,13 @@ TEST(ConstellationDemapperTest, QAM64LLRSignMatchesBitAtHighSNR) {
         sample_t tx = points[idx];
 
         // Add noise
-#ifdef ATSC3_FIXED_POINT
-        float tx_re = q15_to_float(tx.real()) + noise(rng);
-        float tx_im = q15_to_float(tx.imag()) + noise(rng);
-        sample_t rx(float_to_q15(tx_re), float_to_q15(tx_im));
-#else
-        sample_t rx(tx.real() + noise(rng), tx.imag() + noise(rng));
-#endif
+        // Noise is specified per unit average power, so scale it onto the
+        // constellation's own scale (the fixed-point table is shrunk by a
+        // headroom factor; table_scale() is 1.0 in the float build).
+        float n_re = noise(rng);
+        float n_im = noise(rng);
+        sample_t rx = from_complex_float(to_complex_float(tx) +
+                                         demapper.table_scale() * std::complex<float>(n_re, n_im));
 
         // Demap
         int8_t llr[6];
@@ -265,24 +265,7 @@ TEST(ConstellationDemapperTest, QAM64LLRSignMatchesBitAtHighSNR) {
     }
 
     double accuracy = static_cast<double>(correct_bits) / total_bits;
-#ifdef ATSC3_FIXED_POINT
-    // 64-QAM's peak constellation component (~1.08 at unit
-    // average power) overflows Q1.15's [-1, 1) range, so the
-    // constellation is scaled down with a small headroom margin (see
-    // qam_headroom_for_peak() in constellation_demapper.cc) -- a real
-    // fix, not a workaround, but it does cost some SNR relative to the
-    // float build's exact unit-average-power scaling. Swept the headroom
-    // margin from 0.8 to 0.99 (minimal headroom) while developing this:
-    // accuracy rises monotonically as headroom shrinks and plateaus
-    // around 98.4-98.7%, short of >99% even with essentially no margin
-    // left -- the remaining gap is Q1.15's inherent quantization floor
-    // for 64-QAM's tightest decision boundaries at this noise_variance,
-    // not a tunable parameter. 97% reflects what's actually achievable
-    // in genuine Q1.15 fixed point, not the float build's bar.
-    EXPECT_GT(accuracy, 0.97) << "QAM-64 LLR bit accuracy " << (accuracy * 100) << "% < 97%";
-#else
     EXPECT_GT(accuracy, 0.99) << "QAM-64 LLR bit accuracy " << (accuracy * 100) << "% < 99%";
-#endif
 }
 
 //==============================================================================
@@ -499,14 +482,13 @@ TEST(ConstellationDemapperTest, FullDemapPipeline) {
         tx_indices[i] = idx;
         tx_symbols[i] = points[idx];
 
-#ifdef ATSC3_FIXED_POINT
-        float rx_re = q15_to_float(tx_symbols[i].real()) + noise(rng);
-        float rx_im = q15_to_float(tx_symbols[i].imag()) + noise(rng);
-        rx_symbols[i] = sample_t(float_to_q15(rx_re), float_to_q15(rx_im));
-#else
+        // Noise per unit average power, on the constellation's own scale
+        // (see QPSKLLRSignMatchesBitAtHighSNR).
+        float n_re = noise(rng);
+        float n_im = noise(rng);
         rx_symbols[i] =
-            sample_t(tx_symbols[i].real() + noise(rng), tx_symbols[i].imag() + noise(rng));
-#endif
+            from_complex_float(to_complex_float(tx_symbols[i]) +
+                               demapper.table_scale() * std::complex<float>(n_re, n_im));
     }
 
     // Demap
@@ -531,15 +513,7 @@ TEST(ConstellationDemapperTest, FullDemapPipeline) {
     }
 
     double ber = static_cast<double>(bit_errors) / (num_symbols * 6);
-#ifdef ATSC3_FIXED_POINT
-    // Same Q1.15 headroom-vs-precision tradeoff as
-    // QAM64LLRSignMatchesBitAtHighSNR above (see that test's comment) --
-    // 7% reflects what's actually achievable in fixed point at this SNR,
-    // not the float build's bar.
-    EXPECT_LT(ber, 0.07) << "BER " << (ber * 100) << "% too high at 17 dB SNR";
-#else
     EXPECT_LT(ber, 0.05) << "BER " << (ber * 100) << "% too high at 17 dB SNR";
-#endif
 }
 
 #ifndef ATSC3_FIXED_POINT
@@ -611,13 +585,15 @@ struct ReferenceAxisTables {
     std::vector<std::vector<uint8_t>> cell_bit;   // [bit][cell]
     std::vector<std::vector<double>> boundaries;  // [bit] -> sorted positions (true units)
     double norm;                                  // headroom-adjusted
+    double headroom;                              // table shrink factor (>= 1)
 
     ReferenceAxisTables(size_t bits_per_symbol, double base_norm) {
         size_t bits_per_axis = bits_per_symbol / 2;
         half_side = static_cast<int>(1u << (bits_per_axis - 1));
         double side = static_cast<double>(2 * half_side);
         double peak = (side - 1.0) * base_norm;
-        norm = base_norm / ref_headroom_for_peak(peak);
+        headroom = ref_headroom_for_peak(peak);
+        norm = base_norm / headroom;
 
         cell_bit.assign(bits_per_axis, {});
         boundaries.assign(bits_per_axis, {});
@@ -711,7 +687,11 @@ TEST(ConstellationDemapperTest, FixedPointVsReferenceEquivalence) {
 
             double i_true = q15_to_float(symbol.real());
             double q_true = q15_to_float(symbol.imag());
-            double scale = 1.0 / config.noise_variance;
+            // LLRs are in the float build's units: noise_variance is per
+            // unit average power, while the distances above are measured
+            // on the headroom-shrunk grid, so scale them back up by the
+            // headroom (the slicer's LLR is linear in distance).
+            double scale = ref_tables.headroom / config.noise_variance;
 
             // Round the reference to the nearest integer before diffing,
             // matching what the real code's int8_t output already is --
