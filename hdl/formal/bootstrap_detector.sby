@@ -1,0 +1,62 @@
+# Run via prove_pdr.sh, not sby directly (see that script's header):
+#   hdl/formal/prove_pdr.sh bootstrap_detector
+#
+# Proved with ABC's PDR (bit-level, unbounded) rather than smtbmc
+# k-induction: with multipliers cut (below), what remains is 64-bit
+# add/compare datapath plus control, which bit-blasts well, while
+# smtbmc/z3 cannot finish even a depth-2 BMC. There is no cover task for
+# the same reason; non-vacuity was instead established by RTL mutants
+# (see bootstrap_detector_formal.v's header).
+
+[tasks]
+prove
+
+[options]
+mode prove
+
+[engines]
+abc pdr
+
+[script]
+# Stage 1: flatten the plain wrapper and expose the internal registers the
+# white-box checks need (see cordic.sby for why this replaces `bind`).
+read_verilog -formal -I. cordic.v
+read_verilog -formal -I. udiv_seq.v
+read_verilog -formal -I. bootstrap_detector.v
+read_verilog -formal -I. bootstrap_detector_bare.v
+hierarchy -top bootstrap_detector_bare
+proc
+flatten
+expose -dff w:\dut.state w:\dut.idx w:\dut.hidx w:\dut.win_n w:\dut.shift w:\dut.r_sum w:\dut.div_start w:\dut.div_a_divisor
+write_verilog gen_bootstrap_detector_bare.v
+
+# Stage 2: re-elaborate the generated module plus the formal top.
+design -reset
+read_verilog -formal -I. gen_bootstrap_detector_bare.v
+read_verilog -formal -I. bootstrap_detector_formal.v
+prep -top bootstrap_detector_formal
+
+# Abstract every multiplier output to a fresh free value each cycle. The
+# properties here are control-path and protocol only, none depends on a
+# product's value, so this is a sound over-approximation: anything proven
+# for arbitrary products holds for the real ones. Without it the solver
+# stalls on the 16x16 correlation products, the metric square and the CFO
+# products (multiplication is the classic hard case for bit-vector SMT).
+# Numerical correctness is test_bootstrap_detector.py's job.
+cutpoint t:$mul
+
+# The formal-size RAMs are 4 entries (plus cordic.v's 14-entry atan ROM),
+# so map them to plain registers rather than SMT arrays -- cheaper for
+# the solver at this size.
+memory_map
+opt_clean
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+cordic_types.vh ../rtl/include/cordic_types.vh
+status_words.vh ../rtl/include/status_words.vh
+cordic.v ../rtl/common/cordic.v
+udiv_seq.v ../rtl/common/udiv_seq.v
+bootstrap_detector.v ../rtl/sync/bootstrap_detector.v
+bootstrap_detector_bare.v
+bootstrap_detector_formal.v

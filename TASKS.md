@@ -555,7 +555,7 @@ below holds the same bit-exact bar against its C++ reference.
 - [x] Each rewrite verified ≥40 dB SNR against its own pre-rewrite
       behavior before being held to a bit-exact RTL bar
 
-### 9.1 Bootstrap Detector RTL [~]
+### 9.1 Bootstrap Detector RTL [x]
 - [x] `hdl/rtl/common/cordic.v` + `hdl/rtl/include/cordic_types.vh` —
       shared iterative dual-mode CORDIC core, bit-exact port of
       `lib/dsp/cordic.cc`; lint-clean (Verilator `--lint-only
@@ -567,18 +567,39 @@ below holds the same bit-exact bar against its C++ reference.
 - [x] cocotb bit-exact test for `cordic.v` vs. `lib/dsp/cordic.cc`, via a
       golden-vector CLI (`hdl/sim/golden/cordic_gen`) linking the real
       `atsc3_lib` — 136 cases (boundary + randomized), both modes
-- [ ] `hdl/rtl/sync/bootstrap_detector.v` — EWMA correlation term (a
+- [x] Golden-model fix first: the fixed-point metric square overflowed
+      int64 (UB) when input went quiet right after a signal; now
+      saturates to INT32_MAX, bit-identical otherwise
+- [x] `hdl/rtl/sync/bootstrap_detector.v` — EWMA correlation term (a
       single-pole IIR accumulator, matching the golden model's actual
       architecture, not a 2048-tap delay line) + a real 2048-sample
       sliding window for the power term only; window bound is 2048
-      (`kHalfSymbol`)
-- [ ] AXI4-S: `TDATA=ci16` in, `BootstrapDetection`-equivalent status
-      word out (per `status_words.vh`)
-- [ ] cocotb: synthetic bootstrap symbols at known CFO offsets, bit-exact
-      vs. golden vectors generated from the real `atsc3_lib`
-      (`ATSC3_FIXED_POINT=ON`)
-- [ ] Formal: correlator index bound (2047), zero-averaging-window config
-      rejected
+      (`kHalfSymbol`). Sequential datapath: `hdl/rtl/common/udiv_seq.v`
+      (new shared restoring divider) for the C++'s two `(P<<15)/R`
+      divides and the moving-average divide, shared `cordic.v` for
+      magnitude/angle
+- [x] AXI4-S: `TDATA=ci16` in, `BootstrapDetection` status word out;
+      `status_words.vh`'s metric field widened 16 → 32 bits (the C++ peak
+      metric exceeds 1.0 routinely, a q1_15 field would truncate it)
+- [x] cocotb: synthetic bootstrap symbols at known CFO offsets, bit-exact
+      vs. `hdl/sim/golden/bootstrap_gen` linking the real `atsc3_lib` —
+      every sample's smoothed metric/CFO plus every detection word, five
+      scenarios (default config, raw-angle + odd window + full-scale
+      corners, a slow fade sweeping the metric-saturation boundary, zero
+      window, oversized-window flag); negative-control mutants confirmed
+      caught
+- [x] Formal (`hdl/formal/prove_pdr.sh bootstrap_detector`, unbounded
+      ABC PDR with multipliers cut, since smtbmc/z3 stalls on this
+      datapath): correlator index bound, zero-averaging-window clamp,
+      window/history-index bounds, no divide-by-zero, shift-loop bound,
+      AXI4-S input/output exclusivity and output hold; non-vacuity
+      confirmed by RTL mutants
+- [ ] Known golden-model behavior carried into RTL as-is (not RTL bugs):
+      R normalizes by the delayed half's power only, so a noise→signal
+      edge yields a burst of spurious high-metric detections before the
+      real one; a single bootstrap yields a cascade of detections as the
+      metric decays past successive 0.8×peak falling edges. Both need a
+      golden-model algorithm decision before changing
 
 ### 9.2 Timing Recovery RTL [ ]
 - [ ] 16-bank×32-tap polyphase FIR (ROM taps, MAC array) + Gardner TED
@@ -723,6 +744,11 @@ below holds the same bit-exact bar against its C++ reference.
       frame sync's correlator, the time deinterleaver's RAM, and BCH's
       doubled worst-case latency
 - [ ] Post-synthesis functional equivalence via Yosys `equiv_opt`/`sat`
+- [ ] Bootstrap detector throughput: ~150–190 cycles/sample today (two
+      64-cycle restoring divides, up to 32 normalization shifts, iterative
+      CORDIC) vs. 16 cycles/sample needed for 6.25 MS/s at 100 MHz —
+      radix-4/early-terminating or pipelined dividers, a single-cycle
+      leading-zero shift, and a pipelined CORDIC
 
 ---
 

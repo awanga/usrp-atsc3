@@ -56,9 +56,16 @@ per `CLAUDE.md`'s dependency policy.
 # Lint (Verilog-2001 only, zero warnings gate)
 verilator --lint-only --language 1364-2001 -Wall \
     +incdir+hdl/rtl/include hdl/rtl/common/axi4s_skid_buffer.v
+# ...or every rtl/ file at once (adds -y rtl/common for shared cores)
+hdl/synth/lint.sh
 
 # Formal (BMC->k-induction "prove" + a reachability "cover" task)
 cd hdl/formal && sby -f axi4s_skid_buffer.sby
+
+# Formal for datapath-heavy blocks: ABC PDR via a wrapper (SBY 0.68's ABC
+# result parser is incompatible with Yosys 0.33's witness map; see
+# formal_conventions.md)
+hdl/formal/prove_pdr.sh bootstrap_detector
 
 # cocotb simulation via Verilator
 cd hdl/sim/cocotb && ../.venv/bin/python -m pytest test_runner.py -v
