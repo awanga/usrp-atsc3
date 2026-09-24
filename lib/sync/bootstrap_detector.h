@@ -49,7 +49,9 @@ struct BootstrapDetection {
     // Higher = stronger detection
     double metric = 0.0;
 
-    // Estimated SNR at detection point (dB)
+    // Estimated SNR at detection point (dB), from the peak metric
+    // (rho = sqrt(metric) = S / (S + N)); clamped to [-10, 30] dB, and
+    // biased low for a single short repetition (see bootstrap_detector.cc)
     double snr_db = 0.0;
 };
 

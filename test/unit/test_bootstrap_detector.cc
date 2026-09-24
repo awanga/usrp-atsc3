@@ -374,6 +374,44 @@ TEST(BootstrapDetectorTest, MetricIsBounded) {
     EXPECT_GT(r.max_metric, 0.5);  // the repeated full-scale block does correlate
 }
 
+// snr_db inverts the plateau metric M = (S / (S + N))^2. Uses a long
+// periodic structure (8 repetitions) so the EWMAs converge to the plateau,
+// then checks the estimate against the injected SNR.
+TEST(BootstrapDetectorTest, SnrEstimateMatchesInjectedSnr) {
+    constexpr size_t kHalf = BootstrapDetector::kHalfSymbol;
+    for (double snr_db : {0.0, 10.0, 20.0}) {
+        BootstrapConfig config;
+        config.threshold = 0.1;  // low enough to detect at 0 dB (M ~= 0.25)
+        BootstrapDetector detector(config);
+        std::mt19937 rng(static_cast<uint32_t>(100 + snr_db));
+
+        float sigma_s = 0.1f;
+        float sigma_n = sigma_s / static_cast<float>(std::pow(10.0, snr_db / 20.0));
+        std::normal_distribution<float> sig(0.0f, sigma_s);
+        std::normal_distribution<float> noise(0.0f, sigma_n);
+
+        std::vector<std::complex<float>> pattern(kHalf);
+        for (auto& c : pattern) {
+            c = {sig(rng), sig(rng)};
+        }
+        std::vector<sample_t> samples;
+        for (int rep = 0; rep < 8; ++rep) {
+            for (const auto& c : pattern) {
+                samples.push_back(
+                    from_complex_float(c + std::complex<float>(noise(rng), noise(rng))));
+            }
+        }
+        for (size_t i = 0; i < kHalf; ++i) {  // uncorrelated tail ends the peak
+            samples.push_back(from_complex_float({sig(rng) + noise(rng), sig(rng) + noise(rng)}));
+        }
+
+        RunLog r;
+        run(detector, samples, r);
+        ASSERT_EQ(r.detections.size(), 1u) << "at " << snr_db << " dB";
+        EXPECT_NEAR(r.detections[0].snr_db, snr_db, 1.0) << "at " << snr_db << " dB";
+    }
+}
+
 // Test bootstrap symbol length constant
 TEST(BootstrapDetectorTest, BootstrapLengthConstant) {
     // ATSC 3.0 bootstrap is always 4096 samples (per A/322 Section 5.2)

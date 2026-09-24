@@ -32,18 +32,26 @@ constexpr int kEwmaShift = 10;
 // peak.
 constexpr int64_t kMinCorrelatorEnergyQ30 = int64_t{1} << 16;
 
-// SNR estimate from the peak metric, shared by both builds (unchanged
-// formula: snr = M / (1 - sqrt(M))^2, clamped outside (0.1, 0.99)).
+// SNR estimate from the peak metric, shared by both builds. On a
+// converged repeated structure P -> S and R -> S + N (signal and noise
+// power per sample; see the header comment), so M = |P|^2 / R^2 -> rho^2
+// with rho = S / (S + N), and SNR = S / N = rho / (1 - rho). Clamped to
+// [kSnrFloorDb, kSnrCeilDb]. Biased low when the EWMAs have not converged
+// over a short structure (one 2048-sample repetition reaches ~86% of the
+// plateau metric), since the metric is then below rho^2.
+constexpr double kSnrFloorDb = -10.0;
+constexpr double kSnrCeilDb = 30.0;
+
 double snr_db_from_metric(double metric) {
-    if (metric > 0.1 && metric < 0.99) {
-        double sqrt_m = std::sqrt(metric);
-        double snr_linear = metric / ((1.0 - sqrt_m) * (1.0 - sqrt_m));
-        return 10.0 * std::log10(snr_linear);
+    double rho = std::sqrt(std::max(0.0, metric));
+    if (rho <= 0.0) {
+        return kSnrFloorDb;
     }
-    if (metric >= 0.99) {
-        return 30.0;
+    if (rho >= 1.0) {
+        return kSnrCeilDb;
     }
-    return 0.0;
+    double snr_db = 10.0 * std::log10(rho / (1.0 - rho));
+    return std::min(kSnrCeilDb, std::max(kSnrFloorDb, snr_db));
 }
 
 #ifdef ATSC3_FIXED_POINT
