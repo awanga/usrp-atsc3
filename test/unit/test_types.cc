@@ -109,14 +109,20 @@ TEST(TypesTest, Q15ToFloatConversion) {
 }
 
 TEST(TypesTest, Q15RoundTrip) {
-    // Test that conversion round-trips correctly for representable values
+    // Round-trips exactly over the symmetric range [-32767, 32767].
     // Use int32_t for loop counter to avoid overflow
-    for (int32_t i = -32768; i < 32767; i += 1000) {
+    for (int32_t i = -32767; i < 32767; i += 1000) {
         int16_t val = static_cast<int16_t>(i);
         float f = q15_to_float(val);
         int16_t back = float_to_q15(f);
         EXPECT_EQ(back, val) << "Round-trip failed for " << val;
     }
+    EXPECT_EQ(float_to_q15(q15_to_float(32767)), 32767);
+
+    // -32768 is the one int16 value that does not round-trip, by design:
+    // float_to_q15() saturates symmetrically (CLAUDE.md's Q1.15 rules),
+    // so -1.0 maps to -32767.
+    EXPECT_EQ(float_to_q15(q15_to_float(-32768)), -32767);
 }
 
 #endif  // ATSC3_FIXED_POINT

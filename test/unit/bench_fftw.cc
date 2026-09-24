@@ -12,12 +12,11 @@
 // This benchmark directly uses FFTW to test all three planning modes,
 // as the FftEngine wrapper only exposes FFTW_ESTIMATE and FFTW_PATIENT.
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <chrono>
 #include <complex>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <random>
 #include <vector>
 
@@ -43,6 +42,9 @@ inline uint64_t rdtsc() {
 }
 #endif
 
+// FFTW (and so everything below that uses the cycle counter) is float-only.
+#ifndef ATSC3_FIXED_POINT
+
 // Get CPU frequency estimate (cycles per second)
 uint64_t estimate_cpu_freq() {
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -65,8 +67,6 @@ uint64_t estimate_cpu_freq() {
     return (cycles * 1000000) / elapsed_us;
 }
 
-#ifndef ATSC3_FIXED_POINT
-
 // Plan mode descriptor
 struct PlanMode {
     const char* name;
@@ -74,8 +74,9 @@ struct PlanMode {
 };
 
 // FFTW plan modes to test
-const PlanMode plan_modes[] = {
-    {"ESTIMATE", FFTW_ESTIMATE}, {"MEASURE", FFTW_MEASURE}, {"PATIENT", FFTW_PATIENT}};
+const PlanMode plan_modes[] = {{"ESTIMATE", FFTW_ESTIMATE},
+                               {"MEASURE", FFTW_MEASURE},
+                               {"PATIENT", FFTW_PATIENT}};
 
 // ATSC 3.0 FFT sizes
 const size_t fft_sizes[] = {4096, 8192, 16384, 32768};
@@ -290,12 +291,18 @@ TEST_F(FftwBenchmark, Recommendations) {
     printf("FFTW Plan Mode Recommendations for ATSC 3.0:\n");
     printf("=============================================\n\n");
 
-    printf("| Use Case              | Recommended Mode | Wisdom | Rationale                    |\n");
-    printf("|-----------------------|------------------|--------|------------------------------|\n");
-    printf("| Development/testing   | FFTW_ESTIMATE    | No     | Fast startup, acceptable perf|\n");
-    printf("| Production (startup)  | FFTW_MEASURE     | Yes    | Optimal perf with caching    |\n");
-    printf("| Production (cached)   | FFTW_MEASURE     | Load   | Near-instant planning        |\n");
-    printf("| Batch processing      | FFTW_PATIENT     | Yes    | Maximum throughput           |\n\n");
+    printf(
+        "| Use Case              | Recommended Mode | Wisdom | Rationale                    |\n");
+    printf(
+        "|-----------------------|------------------|--------|------------------------------|\n");
+    printf(
+        "| Development/testing   | FFTW_ESTIMATE    | No     | Fast startup, acceptable perf|\n");
+    printf(
+        "| Production (startup)  | FFTW_MEASURE     | Yes    | Optimal perf with caching    |\n");
+    printf(
+        "| Production (cached)   | FFTW_MEASURE     | Load   | Near-instant planning        |\n");
+    printf(
+        "| Batch processing      | FFTW_PATIENT     | Yes    | Maximum throughput           |\n\n");
 
     printf("Current FftEngine defaults:\n");
     printf("  - use_patient_plan = false: Uses FFTW_ESTIMATE\n");
