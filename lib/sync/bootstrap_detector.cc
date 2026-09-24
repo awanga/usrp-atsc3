@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace atsc3 {
 namespace sync {
@@ -265,7 +266,20 @@ BootstrapDetection BootstrapDetector::check_detection() {
 
     // metric = (|P|/R)^2, in Q1.15 (magnitude is Q1.15-scaled |P|/R, now
     // correctly unbounded above rather than clipped to [0, 1]).
-    int32_t metric = static_cast<int32_t>((magnitude * magnitude) >> 15);
+    //
+    // Saturates to INT32_MAX rather than squaring unconditionally: when
+    // the input goes quiet right after a signal, R (an exact sliding
+    // window) drops to its floor of 1 while P (an EWMA) is still decaying,
+    // so |P|/R can reach ~2^47 -- magnitude * magnitude then overflows
+    // int64 (undefined behavior, caught by UBSan) and smaller cases wrap
+    // on the int32_t cast. magnitude >= 2^23 is exactly the point where
+    // (magnitude^2) >> 15 stops fitting in int32_t, so below it this is
+    // bit-identical to the plain square. It is also a single compare in
+    // RTL (hdl/rtl/sync/bootstrap_detector.v).
+    constexpr int64_t kMetricSatMagnitude = int64_t{1} << 23;
+    int32_t metric = (magnitude >= kMetricSatMagnitude)
+                         ? INT32_MAX
+                         : static_cast<int32_t>((magnitude * magnitude) >> 15);
 
     // Smooth metric with moving average (structurally unchanged from the
     // float path, now over integers).
