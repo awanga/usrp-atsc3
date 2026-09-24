@@ -41,28 +41,43 @@ constexpr size_t kNumVariants = 128;
 // Bootstrap Symbol Generation (Simplified Reference)
 //==============================================================================
 
-// Generate a reference bootstrap symbol for a given variant
+// Samples are generated in float units at this amplitude (unit-magnitude
+// phasors scaled to ~-12 dBFS) and converted with from_complex_float(), so
+// the same stimulus is valid in both builds -- constructing sample_t
+// directly from cos()/sin() truncates to {-1, 0, 1} in the fixed-point
+// build.
+constexpr float kAmplitude = 0.25f;
+
+// Generate a reference bootstrap symbol for a given variant, followed by an
+// uncorrelated next symbol of kHalfSymbol samples (a real bootstrap is a
+// sequence of symbols). The Schmidl-Cox metric peaks at the end of the
+// repeated structure (sample kBootstrapLength) and the detector reports on
+// the falling edge after it, so it needs samples past the symbol.
 // Uses Schmidl-Cox structure: second half is phase-rotated copy of first half
 // This is a simplified model for testing - real implementation uses ATSC PN sequences
 std::vector<sample_t> generate_bootstrap_symbol(const BootstrapVariant& variant,
                                                 double cfo_hz = 0.0, double snr_db = 30.0) {
-    std::vector<sample_t> symbol(kBootstrapLength);
+    constexpr size_t kTotal = kBootstrapLength + kHalfSymbol;
+    std::vector<std::complex<float>> symbol(kTotal);
 
     // Seed based on variant to get deterministic but variant-specific sequence
     uint32_t seed = variant.major_version * 32 + variant.minor_version * 8 + variant.pn_sequence;
     std::mt19937 rng(seed);
     std::uniform_real_distribution<float> phase_dist(0.0f, 2.0f * static_cast<float>(M_PI));
 
-    // Generate first half with random QPSK-like symbols
-    for (size_t i = 0; i < kHalfSymbol; i++) {
+    // First half and the following symbol: random QPSK-like phasors
+    for (size_t i = 0; i < kTotal; i++) {
+        if (i >= kHalfSymbol && i < kBootstrapLength) {
+            continue;
+        }
         float phase = phase_dist(rng);
-        symbol[i] = sample_t(std::cos(phase), std::sin(phase));
+        symbol[i] = std::complex<float>(std::cos(phase), std::sin(phase));
     }
 
     // Second half is phase-rotated copy of first half (Schmidl-Cox structure)
     // Phase rotation depends on variant
     float variant_phase = static_cast<float>(variant.pn_sequence) * static_cast<float>(M_PI) / 4.0f;
-    sample_t rotation(std::cos(variant_phase), std::sin(variant_phase));
+    std::complex<float> rotation(std::cos(variant_phase), std::sin(variant_phase));
 
     for (size_t i = 0; i < kHalfSymbol; i++) {
         symbol[kHalfSymbol + i] = symbol[i] * rotation;
@@ -71,27 +86,29 @@ std::vector<sample_t> generate_bootstrap_symbol(const BootstrapVariant& variant,
     // Apply CFO
     if (cfo_hz != 0.0) {
         double phase_inc = 2.0 * M_PI * cfo_hz / kSampleRate;
-        for (size_t i = 0; i < kBootstrapLength; i++) {
+        for (size_t i = 0; i < kTotal; i++) {
             double phase = phase_inc * static_cast<double>(i);
-            sample_t cfo_rotation(static_cast<float>(std::cos(phase)),
-                                  static_cast<float>(std::sin(phase)));
-            symbol[i] *= cfo_rotation;
+            symbol[i] *= std::complex<float>(static_cast<float>(std::cos(phase)),
+                                             static_cast<float>(std::sin(phase)));
         }
     }
 
-    // Add AWGN noise
+    // Add AWGN noise (signal power is 1 before scaling)
     if (snr_db < 100.0) {
-        double signal_power = 1.0;
-        double noise_power = signal_power / std::pow(10.0, snr_db / 10.0);
+        double noise_power = 1.0 / std::pow(10.0, snr_db / 10.0);
         double noise_std = std::sqrt(noise_power / 2.0);
 
         std::normal_distribution<float> noise_dist(0.0f, static_cast<float>(noise_std));
         for (auto& s : symbol) {
-            s += sample_t(noise_dist(rng), noise_dist(rng));
+            s += std::complex<float>(noise_dist(rng), noise_dist(rng));
         }
     }
 
-    return symbol;
+    std::vector<sample_t> out(kTotal);
+    for (size_t i = 0; i < kTotal; i++) {
+        out[i] = from_complex_float(symbol[i] * kAmplitude);
+    }
+    return out;
 }
 
 // Generate all 128 bootstrap variants
@@ -139,10 +156,12 @@ TEST_F(BootstrapVariantTest, AllVariantsHighSnr) {
 
         if (result.detected) {
             detected_count++;
-            // Verify detection is near expected position
-            EXPECT_GE(result.sample_index, kHalfSymbol - 100)
+            // The metric peaks at the end of the repeated structure. An
+            // early detection (e.g. right after the second half starts)
+            // would be the noise-to-signal-edge artifact, not the bootstrap.
+            EXPECT_GE(result.sample_index, kBootstrapLength - 200)
                 << "Variant " << i << " detected too early";
-            EXPECT_LE(result.sample_index, kBootstrapLength + 100)
+            EXPECT_LE(result.sample_index, kBootstrapLength + 200)
                 << "Variant " << i << " detected too late";
         }
     }
@@ -174,16 +193,29 @@ TEST_F(BootstrapVariantTest, AllVariantsModerateSnr) {
                                     << "% below 90% threshold at SNR=" << snr_db << "dB";
 }
 
+// Threshold for the low-SNR operating point. The metric's plateau is
+// (S / (S + N))^2 -- 0.58 at 5 dB, and ~0.50 after a single 2048-sample
+// repetition (the EWMAs reach ~86% of the plateau) -- so the fixture's
+// 0.6 threshold cannot detect at 5 dB by construction; a receiver
+// targeting 5 dB must run a lower threshold. FalseAlarmRateNoiseOnly
+// checks this threshold too.
+constexpr double kLowSnrThreshold = 0.35;
+
 // Test detection at low SNR (5 dB)
 TEST_F(BootstrapVariantTest, AllVariantsLowSnr) {
     constexpr double snr_db = 5.0;
     auto variants = generate_all_variants();
     size_t detected_count = 0;
 
+    sync::BootstrapConfig config;
+    config.sample_rate_hz = kSampleRate;
+    config.threshold = kLowSnrThreshold;
+    sync::BootstrapDetector detector(config);
+
     for (const auto& variant : variants) {
-        detector_->reset();
+        detector.reset();
         auto symbol = generate_bootstrap_symbol(variant, 0.0, snr_db);
-        auto result = detector_->process(symbol.data(), symbol.size());
+        auto result = detector.process(symbol.data(), symbol.size());
 
         if (result.detected) {
             detected_count++;
@@ -255,20 +287,32 @@ TEST_F(BootstrapVariantTest, FalseAlarmRateNoiseOnly) {
     std::mt19937 rng(42);
     std::normal_distribution<float> noise_dist(0.0f, 1.0f);
 
+    sync::BootstrapConfig low_config;
+    low_config.sample_rate_hz = kSampleRate;
+    low_config.threshold = kLowSnrThreshold;
+    sync::BootstrapDetector low_threshold_detector(low_config);
+    size_t low_threshold_false_alarms = 0;
+
     for (size_t trial = 0; trial < num_trials; trial++) {
         detector_->reset();
+        low_threshold_detector.reset();
 
         // Generate pure noise
         std::vector<sample_t> noise(samples_per_trial);
         for (auto& s : noise) {
-            s = sample_t(noise_dist(rng), noise_dist(rng));
+            s = from_complex_float(kAmplitude *
+                                   std::complex<float>(noise_dist(rng), noise_dist(rng)));
         }
 
-        auto result = detector_->process(noise.data(), noise.size());
-        if (result.detected) {
+        if (detector_->process(noise.data(), noise.size()).detected) {
             false_alarms++;
         }
+        if (low_threshold_detector.process(noise.data(), noise.size()).detected) {
+            low_threshold_false_alarms++;
+        }
     }
+    EXPECT_EQ(low_threshold_false_alarms, 0u)
+        << "noise-only false alarms at the low-SNR threshold " << kLowSnrThreshold;
 
     // False alarm rate should be below 50% (synthetic test with low threshold)
     double fa_rate = static_cast<double>(false_alarms) / static_cast<double>(num_trials);
@@ -342,12 +386,13 @@ TEST_F(BootstrapVariantTest, DetectionAtVariousPositions) {
         detector_->reset();
 
         // Create buffer with noise, then bootstrap at offset
-        std::vector<sample_t> buffer(offset + kBootstrapLength + 1000);
+        std::vector<sample_t> buffer(offset + bootstrap.size() + 1000);
         std::mt19937 rng(offset);
         std::normal_distribution<float> noise_dist(0.0f, 0.1f);
 
         for (auto& s : buffer) {
-            s = sample_t(noise_dist(rng), noise_dist(rng));
+            s = from_complex_float(kAmplitude *
+                                   std::complex<float>(noise_dist(rng), noise_dist(rng)));
         }
 
         // Insert bootstrap

@@ -6,6 +6,20 @@
 // Bootstrap is always 4096 samples regardless of data FFT size.
 // Reference: ATSC A/322 Section 5.2
 //
+// Metric: M = |P|^2 / R^2, with P an exponentially weighted sum of
+// x[n] * conj(x[n-L]) and R the identically weighted sum of
+// (|x[n]|^2 + |x[n-L]|^2) / 2 -- the energy of *both* halves, not just the
+// delayed one. By Cauchy-Schwarz |P| <= R for identically weighted sums,
+// so M is bounded by 1 and a strong signal arriving while the delay line
+// still holds weak noise cannot produce a spurious peak. M peaks at the
+// end of the repeated half-symbol structure. Below a minimum correlator
+// energy (near-silence) M is forced to 0.
+//
+// Detection: arm when the smoothed M exceeds threshold, track the peak,
+// report on the falling edge below 0.8 x peak; then stay disarmed until
+// the smoothed M drops back to the threshold, so one bootstrap yields
+// exactly one detection.
+//
 // AXI4-S Interface Contract:
 //   Input:  TDATA=cf32, TVALID, TREADY (streaming IQ samples)
 //   Output: Detection event with sample index and CFO estimate
@@ -31,7 +45,7 @@ struct BootstrapDetection {
     // Derived from phase of autocorrelation
     double cfo_hz = 0.0;
 
-    // Detection metric (0-1 normalized)
+    // Detection metric M = |P|^2 / R^2 (0-1; see the file comment)
     // Higher = stronger detection
     double metric = 0.0;
 
@@ -119,15 +133,12 @@ public:
 private:
     BootstrapConfig config_;
 
-    // Schmidl-Cox state
-    // P = sum of x[n] * conj(x[n - L]) for n in window
-    // R = sum of |x[n - L]|^2 for n in window
+    // Schmidl-Cox state (see the file comment), both EWMAs with
+    // alpha = 1/1024:
+    //   P: x[n] * conj(x[n - L])
+    //   R: (|x[n]|^2 + |x[n - L]|^2) / 2
 #ifdef ATSC3_FIXED_POINT
-    // Genuine fixed-point state, not double with
-    // quantized I/O. p_sum_re_/p_sum_im_ hold the EWMA of
-    // x[n]*conj(x[n-L]) as raw (unshifted) Q1.15 x Q1.15 products; the
-    // shift-based alpha approximation (1/1024) and the rest of the fixed-
-    // point design are documented in bootstrap_detector.cc.
+    // Raw (unshifted) Q1.15 x Q1.15 products; see bootstrap_detector.cc.
     int64_t p_sum_re_;
     int64_t p_sum_im_;
     int64_t r_sum_;
@@ -139,14 +150,6 @@ private:
     // Circular buffer for delayed samples (size = kHalfSymbol)
     std::vector<sample_t> delay_buffer_;
     size_t delay_idx_;
-
-    // Circular buffer for power computation (size = kHalfSymbol)
-#ifdef ATSC3_FIXED_POINT
-    std::vector<int64_t> power_buffer_;
-#else
-    std::vector<double> power_buffer_;
-#endif
-    size_t power_idx_;
 
     // Metric history for smoothing
 #ifdef ATSC3_FIXED_POINT
@@ -162,6 +165,7 @@ private:
     // Detection state
     size_t sample_count_;
     bool in_detection_;
+    bool rearm_blocked_;  // set by a detection, cleared once M <= threshold
 #ifdef ATSC3_FIXED_POINT
     int32_t peak_metric_;
     int16_t

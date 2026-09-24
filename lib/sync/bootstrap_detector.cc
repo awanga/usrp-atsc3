@@ -15,6 +15,37 @@ namespace sync {
 
 namespace {
 
+// EWMA decay for both P and R: x - x/1024 per sample (a power of two, so
+// the fixed-point update is one shift). With P's per-sample input
+// 2 * corr and R's (|x|^2 + |x_d|^2), the steady-state scale of both is
+// that of a 2048-sample (kHalfSymbol) window, and |P| <= R holds exactly
+// because |corr| <= (|x|^2 + |x_d|^2) / 2 term by term.
+constexpr int kEwmaShift = 10;
+
+// Near-silence floor on R, below which the metric is forced to 0. In raw
+// Q1.15 x Q1.15 product units (the fixed-point R's scale): R ~= 1024 *
+// (|x|^2 + |x_d|^2) at steady state, so 2^16 corresponds to an rms
+// amplitude of about 4 LSB (~-78 dBFS) -- far below any real input,
+// including a receiver's own noise floor after AGC. Without a floor,
+// exact silence leaves both EWMAs decaying into their truncation
+// residuals, whose ratio is arbitrary and can look like a correlation
+// peak.
+constexpr int64_t kMinCorrelatorEnergyQ30 = int64_t{1} << 16;
+
+// SNR estimate from the peak metric, shared by both builds (unchanged
+// formula: snr = M / (1 - sqrt(M))^2, clamped outside (0.1, 0.99)).
+double snr_db_from_metric(double metric) {
+    if (metric > 0.1 && metric < 0.99) {
+        double sqrt_m = std::sqrt(metric);
+        double snr_linear = metric / ((1.0 - sqrt_m) * (1.0 - sqrt_m));
+        return 10.0 * std::log10(snr_linear);
+    }
+    if (metric >= 0.99) {
+        return 30.0;
+    }
+    return 0.0;
+}
+
 #ifdef ATSC3_FIXED_POINT
 int16_t saturate_i16(int64_t v) {
     if (v > 32767) {
@@ -25,6 +56,11 @@ int16_t saturate_i16(int64_t v) {
     }
     return static_cast<int16_t>(v);
 }
+#else
+// The same floor in the float build's units (samples in [-1, 1), so
+// Q1.15 x Q1.15 products are scaled by 2^-30).
+constexpr double kMinCorrelatorEnergy = static_cast<double>(kMinCorrelatorEnergyQ30) / 1073741824.0;
+constexpr double kEwmaDecay = 1.0 / static_cast<double>(1 << kEwmaShift);
 #endif
 
 }  // namespace
@@ -37,13 +73,12 @@ BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
       r_sum_(0),
       delay_buffer_(kHalfSymbol, sample_t(0, 0)),
       delay_idx_(0),
-      power_buffer_(kHalfSymbol, 0),
-      power_idx_(0),
       metric_history_(std::max<size_t>(1, config.averaging_window), 0),
       metric_sum_(0),
       metric_idx_(0),
       sample_count_(0),
       in_detection_(false),
+      rearm_blocked_(false),
       peak_metric_(0),
       peak_angle_q15_(0),
       peak_sample_(0),
@@ -56,13 +91,12 @@ BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
       r_sum_(0.0),
       delay_buffer_(kHalfSymbol, sample_t(0, 0)),
       delay_idx_(0),
-      power_buffer_(kHalfSymbol, 0.0),
-      power_idx_(0),
       metric_history_(std::max<size_t>(1, config.averaging_window), 0.0),
       metric_sum_(0.0),
       metric_idx_(0),
       sample_count_(0),
       in_detection_(false),
+      rearm_blocked_(false),
       peak_metric_(0.0),
       peak_correlation_(0.0, 0.0),
       peak_sample_(0),
@@ -77,38 +111,29 @@ void BootstrapDetector::reset() {
     p_sum_re_ = 0;
     p_sum_im_ = 0;
     r_sum_ = 0;
-    std::fill(delay_buffer_.begin(), delay_buffer_.end(), sample_t(0, 0));
-    delay_idx_ = 0;
-    std::fill(power_buffer_.begin(), power_buffer_.end(), 0);
-    power_idx_ = 0;
     std::fill(metric_history_.begin(), metric_history_.end(), 0);
-    metric_idx_ = 0;
     metric_sum_ = 0;
-    sample_count_ = 0;
-    in_detection_ = false;
     peak_metric_ = 0;
     peak_angle_q15_ = 0;
-    peak_sample_ = 0;
     last_smoothed_metric_q15_ = 0;
     last_angle_q15_ = 0;
 #else
     p_sum_ = std::complex<double>(0.0, 0.0);
     r_sum_ = 0.0;
-    std::fill(delay_buffer_.begin(), delay_buffer_.end(), sample_t(0, 0));
-    delay_idx_ = 0;
-    std::fill(power_buffer_.begin(), power_buffer_.end(), 0.0);
-    power_idx_ = 0;
     std::fill(metric_history_.begin(), metric_history_.end(), 0.0);
-    metric_idx_ = 0;
     metric_sum_ = 0.0;
-    sample_count_ = 0;
-    in_detection_ = false;
     peak_metric_ = 0.0;
-    peak_sample_ = 0;
     peak_correlation_ = std::complex<double>(0.0, 0.0);
     last_smoothed_metric_ = 0.0;
     last_phase_ = 0.0;
 #endif
+    std::fill(delay_buffer_.begin(), delay_buffer_.end(), sample_t(0, 0));
+    delay_idx_ = 0;
+    metric_idx_ = 0;
+    sample_count_ = 0;
+    in_detection_ = false;
+    rearm_blocked_ = false;
+    peak_sample_ = 0;
 }
 
 void BootstrapDetector::set_config(const BootstrapConfig& config) {
@@ -132,157 +157,69 @@ void BootstrapDetector::set_config(const BootstrapConfig& config) {
 }
 
 void BootstrapDetector::process_sample(sample_t sample) {
-#ifdef ATSC3_FIXED_POINT
-    // Genuine integer arithmetic throughout -- no
-    // double, no per-sample float conversion. p_sum_/r_sum_ previously
-    // only quantized I/O and computed internally in double; see the HDL
-    // port plan's Decision 7.
     sample_t delayed_sample = delay_buffer_[delay_idx_];
 
+#ifdef ATSC3_FIXED_POINT
     int64_t x_re = sample.real();
     int64_t x_im = sample.imag();
     int64_t xd_re = delayed_sample.real();
     int64_t xd_im = delayed_sample.imag();
 
-    // x[n] * conj(x[n-L]), kept as raw (unshifted) Q1.15 x Q1.15 products.
-    // Both p_sum_ and r_sum_ stay in this same unshifted scale throughout,
-    // so it cancels exactly in check_detection()'s P/R ratio -- no
-    // precision is lost by skipping the usual >>15 rescale here, and it's
-    // one fewer shift per sample.
+    // x[n] * conj(x[n-L]) and |x[n]|^2 + |x[n-L]|^2, kept as raw
+    // (unshifted) Q1.15 x Q1.15 products: P and R share this scale, so it
+    // cancels exactly in check_detection()'s P/R ratio.
     int64_t corr_re = x_re * xd_re + x_im * xd_im;
     int64_t corr_im = x_im * xd_re - x_re * xd_im;
+    int64_t energy = x_re * x_re + x_im * x_im + xd_re * xd_re + xd_im * xd_im;
 
-    int64_t old_power = power_buffer_[power_idx_];
-    int64_t new_power = xd_re * xd_re + xd_im * xd_im;
-
-    // Sliding window update for R (power sum)
-    r_sum_ -= old_power;
-    r_sum_ += new_power;
-    if (r_sum_ < 1) {
-        r_sum_ = 1;  // prevent division by zero (integer analog of the float path's 1e-20 floor)
-    }
-
-    power_buffer_[power_idx_] = new_power;
-    power_idx_ = (power_idx_ + 1) % kHalfSymbol;
-
-    // EWMA for P, alpha = 1/1024: a power-of-2 approximation of the float
-    // path's 2/(kHalfSymbol+1) = 2/2049 (both are already approximations
-    // of a true 2048-tap sliding sum -- the float path's own comment below
-    // documents this as intentional, not a shortcut taken here). 1/1024
-    // makes alpha*kHalfSymbol land on exactly 2, so the whole update is
-    // one shift and one add, no fractional multiply:
-    //   p_new = p_old*(1 - 1/1024) + (1/1024)*corr*2048
-    //         = p_old - p_old/1024 + 2*corr
-    p_sum_re_ = p_sum_re_ - (p_sum_re_ >> 10) + 2 * corr_re;
-    p_sum_im_ = p_sum_im_ - (p_sum_im_ >> 10) + 2 * corr_im;
-
-    delay_buffer_[delay_idx_] = sample;
-    delay_idx_ = (delay_idx_ + 1) % kHalfSymbol;
-
-    ++sample_count_;
+    // Both EWMAs decay by x >> 10 (floor division, identically for both);
+    // P's input is 2 * corr and R's is the two-half energy, so |P| <= R.
+    // Bounds: |corr| <= 2^31 and energy <= 2^32 per sample, so both
+    // accumulators stay below ~2^43.
+    p_sum_re_ = p_sum_re_ - (p_sum_re_ >> kEwmaShift) + 2 * corr_re;
+    p_sum_im_ = p_sum_im_ - (p_sum_im_ >> kEwmaShift) + 2 * corr_im;
+    r_sum_ = r_sum_ - (r_sum_ >> kEwmaShift) + energy;
 #else
-    // Convert sample to double precision for accumulation
-    double re = static_cast<double>(sample.real());
-    double im = static_cast<double>(sample.imag());
-    std::complex<double> x(re, im);
+    std::complex<double> x(sample.real(), sample.imag());
+    std::complex<double> x_delayed(delayed_sample.real(), delayed_sample.imag());
 
-    // Get delayed sample (L = kHalfSymbol samples ago)
-    sample_t delayed_sample = delay_buffer_[delay_idx_];
-    double del_re = static_cast<double>(delayed_sample.real());
-    double del_im = static_cast<double>(delayed_sample.imag());
-    std::complex<double> x_delayed(del_re, del_im);
+    std::complex<double> corr = x * std::conj(x_delayed);
+    double energy = std::norm(x) + std::norm(x_delayed);
 
-    // Compute current correlation term: x[n] * conj(x[n-L])
-    std::complex<double> corr_term = x * std::conj(x_delayed);
+    p_sum_ = p_sum_ - p_sum_ * kEwmaDecay + 2.0 * corr;
+    r_sum_ = r_sum_ - r_sum_ * kEwmaDecay + energy;
+#endif
 
-    // Get oldest correlation term to subtract (sliding window)
-    // We need to track what we're removing from the sum
-    // This requires storing the product, but we approximate by using
-    // the oldest delayed sample's power contribution
-
-    // Update power of delayed sample
-    double old_power = power_buffer_[power_idx_];
-    double new_power = std::norm(x_delayed);
-
-    // Sliding window update for R (power sum)
-    r_sum_ -= old_power;
-    r_sum_ += new_power;
-    r_sum_ = std::max(r_sum_, 1e-20);  // Prevent division by zero
-
-    power_buffer_[power_idx_] = new_power;
-    power_idx_ = (power_idx_ + 1) % kHalfSymbol;
-
-    // For P (correlation sum), we use exponential averaging as approximation
-    // True sliding window would require storing kHalfSymbol complex products
-    constexpr double kAlpha = 2.0 / (kHalfSymbol + 1);
-    p_sum_ = (1.0 - kAlpha) * p_sum_ + kAlpha * corr_term * static_cast<double>(kHalfSymbol);
-
-    // Store current sample in delay buffer
     delay_buffer_[delay_idx_] = sample;
     delay_idx_ = (delay_idx_ + 1) % kHalfSymbol;
 
     ++sample_count_;
-#endif
 }
 
 BootstrapDetection BootstrapDetector::check_detection() {
     BootstrapDetection result;
 
 #ifdef ATSC3_FIXED_POINT
-    // Normalize P by R first (both are in the same unshifted product
-    // scale set up in process_sample(), so this ratio is exact regardless
-    // of the accumulators' absolute magnitude). The result has the same
-    // phase as p_sum_, since dividing by a positive real scalar (R)
-    // doesn't change phase -- but it is *not* generally bounded to
-    // Q1.15's [-1, 1): R is a true sliding-window sum that starts at 0
-    // and only reaches its full kHalfSymbol-sample window gradually,
-    // while P is an EWMA that responds faster, so right after a
-    // correlation lag first engages, |P|/R legitimately overshoots 1.0
-    // for a while (confirmed against the float path's own math -- this
-    // is a real property of the class's documented EWMA-vs-sliding-window
-    // approximation, not an error to clip away). Saturating here instead
-    // of normalizing would silently clip that overshoot and bias the
-    // metric during every such transient.
-    //
-    // CORDIC's angle output is unaffected by uniformly scaling both
-    // components, so: right-shift both components by just enough to fit
-    // int16_t (a block-floating-point-style normalization), run CORDIC,
-    // then left-shift the magnitude output back by the same amount.
-    int64_t norm_re = (p_sum_re_ * 32768) / r_sum_;
-    int64_t norm_im = (p_sum_im_ * 32768) / r_sum_;
-
-    int shift = 0;
-    while ((norm_re > 32767 || norm_re < -32767 || norm_im > 32767 || norm_im < -32767) &&
-           shift < 32) {
-        norm_re >>= 1;
-        norm_im >>= 1;
-        ++shift;
+    // |P|/R in Q1.15. |P| <= R by construction (see process_sample()), so
+    // the quotient fits Q1.15 up to the EWMAs' truncation rounding, which
+    // the saturation absorbs. P * 32768 < 2^58, no overflow. Below the
+    // energy floor the vector is (0, 0): CORDIC then returns magnitude 0
+    // and angle 0, so the metric is 0 without a separate path.
+    int16_t norm_re_q15 = 0;
+    int16_t norm_im_q15 = 0;
+    if (r_sum_ >= kMinCorrelatorEnergyQ30) {
+        norm_re_q15 = saturate_i16((p_sum_re_ * 32768) / r_sum_);
+        norm_im_q15 = saturate_i16((p_sum_im_ * 32768) / r_sum_);
     }
-    int16_t norm_re_q15 = saturate_i16(norm_re);
-    int16_t norm_im_q15 = saturate_i16(norm_im);
 
     dsp::CordicVectorResult vec = dsp::cordic_vector(norm_re_q15, norm_im_q15);
-    int64_t magnitude = static_cast<int64_t>(vec.magnitude) << shift;
 
-    // metric = (|P|/R)^2, in Q1.15 (magnitude is Q1.15-scaled |P|/R, now
-    // correctly unbounded above rather than clipped to [0, 1]).
-    //
-    // Saturates to INT32_MAX rather than squaring unconditionally: when
-    // the input goes quiet right after a signal, R (an exact sliding
-    // window) drops to its floor of 1 while P (an EWMA) is still decaying,
-    // so |P|/R can reach ~2^47 -- magnitude * magnitude then overflows
-    // int64 (undefined behavior, caught by UBSan) and smaller cases wrap
-    // on the int32_t cast. magnitude >= 2^23 is exactly the point where
-    // (magnitude^2) >> 15 stops fitting in int32_t, so below it this is
-    // bit-identical to the plain square. It is also a single compare in
-    // RTL (hdl/rtl/sync/bootstrap_detector.v).
-    constexpr int64_t kMetricSatMagnitude = int64_t{1} << 23;
-    int32_t metric = (magnitude >= kMetricSatMagnitude)
-                         ? INT32_MAX
-                         : static_cast<int32_t>((magnitude * magnitude) >> 15);
+    // metric = (|P|/R)^2 in Q1.15. magnitude <= ~46341 (both rails at
+    // +-32767), so metric <= 65536: no overflow anywhere.
+    int64_t magnitude = vec.magnitude;
+    int32_t metric = static_cast<int32_t>((magnitude * magnitude) >> 15);
 
-    // Smooth metric with moving average (structurally unchanged from the
-    // float path, now over integers).
+    // Smooth metric with moving average
     metric_sum_ -= metric_history_[metric_idx_];
     metric_sum_ += metric;
     metric_history_[metric_idx_] = metric;
@@ -296,9 +233,12 @@ BootstrapDetection BootstrapDetector::check_detection() {
     last_smoothed_metric_q15_ = smoothed_metric;
     last_angle_q15_ = vec.angle_q15;
 
-    // Detection state machine (structurally unchanged from the float path)
     if (!in_detection_) {
-        if (smoothed_metric > threshold_q15) {
+        if (rearm_blocked_) {
+            if (smoothed_metric <= threshold_q15) {
+                rearm_blocked_ = false;
+            }
+        } else if (smoothed_metric > threshold_q15) {
             in_detection_ = true;
             peak_metric_ = static_cast<int32_t>(smoothed_metric);
             peak_sample_ = sample_count_;
@@ -340,30 +280,17 @@ BootstrapDetection BootstrapDetector::check_detection() {
             // field from the RTL wire layout for the same reason).
             // Computed in double from the already-fixed-point
             // peak_metric_, at this one output boundary only.
-            double peak_metric_f = static_cast<double>(peak_metric_) / 32768.0;
-            if (peak_metric_f > 0.1 && peak_metric_f < 0.99) {
-                double sqrt_m = std::sqrt(peak_metric_f);
-                double snr_linear = peak_metric_f / ((1.0 - sqrt_m) * (1.0 - sqrt_m));
-                result.snr_db = 10.0 * std::log10(snr_linear);
-            } else if (peak_metric_f >= 0.99) {
-                result.snr_db = 30.0;
-            } else {
-                result.snr_db = 0.0;
-            }
+            result.snr_db = snr_db_from_metric(static_cast<double>(peak_metric_) / 32768.0);
 
             in_detection_ = false;
+            rearm_blocked_ = true;
             peak_metric_ = 0;
         }
     }
 #else
-    // Compute Schmidl-Cox metric: M = |P|^2 / R^2
-    double p_mag_sq = std::norm(p_sum_);
-    double r_sq = r_sum_ * r_sum_;
-
-    double metric = 0.0;
-    if (r_sq > 1e-20) {
-        metric = p_mag_sq / r_sq;
-    }
+    bool energetic = r_sum_ >= kMinCorrelatorEnergy;
+    double metric = energetic ? std::norm(p_sum_) / (r_sum_ * r_sum_) : 0.0;
+    std::complex<double> p_eff = energetic ? p_sum_ : std::complex<double>(0.0, 0.0);
 
     // Smooth metric with moving average
     metric_sum_ -= metric_history_[metric_idx_];
@@ -376,53 +303,39 @@ BootstrapDetection BootstrapDetector::check_detection() {
     // Stash for get_current_metric()/get_current_cfo_hz(), independent of
     // whether the detection FSM below fires this call.
     last_smoothed_metric_ = smoothed_metric;
-    last_phase_ = std::arg(p_sum_);
+    last_phase_ = std::arg(p_eff);
 
-    // Detection state machine
     if (!in_detection_) {
-        // Look for rising edge above threshold
-        if (smoothed_metric > config_.threshold) {
+        if (rearm_blocked_) {
+            if (smoothed_metric <= config_.threshold) {
+                rearm_blocked_ = false;
+            }
+        } else if (smoothed_metric > config_.threshold) {
             in_detection_ = true;
             peak_metric_ = smoothed_metric;
             peak_sample_ = sample_count_;
-            peak_correlation_ = p_sum_;
+            peak_correlation_ = p_eff;
         }
     } else {
-        // Track peak
         if (smoothed_metric > peak_metric_) {
             peak_metric_ = smoothed_metric;
             peak_sample_ = sample_count_;
-            peak_correlation_ = p_sum_;
+            peak_correlation_ = p_eff;
         }
 
         // Falling edge detection (peak passed)
         if (smoothed_metric < peak_metric_ * 0.8) {
-            // Detection complete
             result.detected = true;
             result.sample_index = peak_sample_;
             result.metric = peak_metric_;
 
-            // Compute CFO from correlation phase
-            // Phase = 2 * pi * CFO * L / Fs
-            // CFO = phase * Fs / (2 * pi * L)
+            // Phase = 2 * pi * CFO * L / Fs  =>  CFO = phase * Fs / (2 * pi * L)
             double phase = std::arg(peak_correlation_);
             result.cfo_hz = phase * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
+            result.snr_db = snr_db_from_metric(peak_metric_);
 
-            // Estimate SNR from metric
-            // metric = 1 / (1 + 1/SNR)^2 approximately
-            // SNR ~= metric / (1 - sqrt(metric))^2 for high SNR
-            if (peak_metric_ > 0.1 && peak_metric_ < 0.99) {
-                double sqrt_m = std::sqrt(peak_metric_);
-                double snr_linear = peak_metric_ / ((1.0 - sqrt_m) * (1.0 - sqrt_m));
-                result.snr_db = 10.0 * std::log10(snr_linear);
-            } else if (peak_metric_ >= 0.99) {
-                result.snr_db = 30.0;  // Very high SNR
-            } else {
-                result.snr_db = 0.0;  // Low SNR
-            }
-
-            // Reset for next detection
             in_detection_ = false;
+            rearm_blocked_ = true;
             peak_metric_ = 0.0;
         }
     }

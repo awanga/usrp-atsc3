@@ -269,6 +269,111 @@ TEST(BootstrapDetectorTest, SampleByBufferEquivalence) {
     EXPECT_EQ(detector1.get_sample_count(), detector2.get_sample_count());
 }
 
+// Build-independent stimulus for the regression tests below: generated
+// in float units at a realistic backoff and converted with
+// from_complex_float(), so the same test runs in both builds.
+constexpr float kAmplitude = 0.25f;  // ~-12 dBFS per rail
+
+std::vector<sample_t> random_signal(std::mt19937& rng, size_t n, float amplitude) {
+    std::normal_distribution<float> dist(0.0f, amplitude);
+    std::vector<sample_t> out(n);
+    for (auto& s : out) {
+        s = from_complex_float({dist(rng), dist(rng)});
+    }
+    return out;
+}
+
+// One half-symbol of random signal, repeated (the Schmidl-Cox structure),
+// then an uncorrelated following symbol, as in a real bootstrap sequence.
+std::vector<sample_t> bootstrap_then_next_symbol(std::mt19937& rng) {
+    constexpr size_t kHalf = BootstrapDetector::kHalfSymbol;
+    std::vector<sample_t> half = random_signal(rng, kHalf, kAmplitude);
+    std::vector<sample_t> out = half;
+    out.insert(out.end(), half.begin(), half.end());
+    std::vector<sample_t> next = random_signal(rng, kHalf, kAmplitude);
+    out.insert(out.end(), next.begin(), next.end());
+    return out;
+}
+
+struct RunLog {
+    std::vector<BootstrapDetection> detections;
+    double max_metric = 0.0;
+};
+
+void run(BootstrapDetector& detector, const std::vector<sample_t>& samples, RunLog& r) {
+    for (const auto& s : samples) {
+        BootstrapDetection d = detector.process(s);
+        if (d.detected) {
+            r.detections.push_back(d);
+        }
+        r.max_metric = std::max(r.max_metric, detector.get_current_metric());
+    }
+}
+
+// One bootstrap yields exactly one detection, at the end of the repeated
+// structure -- not a burst of detections as the metric decays.
+TEST(BootstrapDetectorTest, SingleDetectionAtSymbolEnd) {
+    BootstrapDetector detector;  // register-reset defaults (threshold 0.7)
+    std::mt19937 rng(7);
+    RunLog r;
+    run(detector, random_signal(rng, 1000, kAmplitude * 0.03f), r);
+    run(detector, bootstrap_then_next_symbol(rng), r);
+    run(detector, random_signal(rng, 1000, kAmplitude * 0.03f), r);
+
+    ASSERT_EQ(r.detections.size(), 1u);
+    int64_t end_of_structure = 1000 + static_cast<int64_t>(BootstrapDetector::kBootstrapLength);
+    EXPECT_NEAR(static_cast<double>(r.detections[0].sample_index),
+                static_cast<double>(end_of_structure), 200.0);
+}
+
+// A strong signal arriving while the delay line still holds weak noise
+// must not look like a correlation: the metric normalizes by both halves'
+// energy, so it stays near 0 without a repeated structure.
+TEST(BootstrapDetectorTest, NoSpuriousDetectionAtNoiseToSignalEdge) {
+    BootstrapDetector detector;
+    std::mt19937 rng(11);
+    RunLog r;
+    run(detector, random_signal(rng, 3000, kAmplitude * 0.01f), r);
+    run(detector, random_signal(rng, 6000, kAmplitude), r);
+
+    EXPECT_TRUE(r.detections.empty());
+    EXPECT_LT(r.max_metric, 0.1);
+}
+
+// Silence after a detection neither re-detects nor leaves a stale
+// metric: below the correlator-energy floor the metric is 0.
+TEST(BootstrapDetectorTest, SilenceAfterSignalDoesNotDetect) {
+    BootstrapDetector detector;
+    std::mt19937 rng(13);
+    RunLog r;
+    run(detector, bootstrap_then_next_symbol(rng), r);
+    ASSERT_EQ(r.detections.size(), 1u);
+
+    run(detector, std::vector<sample_t>(30000, sample_t(0, 0)), r);
+    EXPECT_EQ(r.detections.size(), 1u);
+    EXPECT_LT(detector.get_current_metric(), 1e-9);  // float build: running-sum residue
+}
+
+// |P| <= R by construction, so the metric never exceeds 1 (up to Q1.15
+// rounding in the fixed-point build), including full-scale input.
+TEST(BootstrapDetectorTest, MetricIsBounded) {
+    BootstrapDetector detector;
+    std::mt19937 rng(17);
+    RunLog r;
+    run(detector, bootstrap_then_next_symbol(rng), r);
+    std::uniform_int_distribution<int> coin(0, 1);
+    std::vector<sample_t> full_scale(5000);
+    for (auto& s : full_scale) {
+        s = from_complex_float({coin(rng) ? 1.0f : -1.0f, coin(rng) ? 1.0f : -1.0f});
+    }
+    std::vector<sample_t> repeated = full_scale;
+    repeated.insert(repeated.end(), full_scale.begin(), full_scale.end());
+    run(detector, repeated, r);
+
+    EXPECT_LE(r.max_metric, 1.01);
+    EXPECT_GT(r.max_metric, 0.5);  // the repeated full-scale block does correlate
+}
+
 // Test bootstrap symbol length constant
 TEST(BootstrapDetectorTest, BootstrapLengthConstant) {
     // ATSC 3.0 bootstrap is always 4096 samples (per A/322 Section 5.2)
@@ -279,19 +384,17 @@ TEST(BootstrapDetectorTest, BootstrapLengthConstant) {
 #ifdef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Fixed-point equivalence: fixed-point rewrite vs. the pre-rewrite double
-// algorithm. Per the HDL port plan, each fixed-point rewrite needs its own
-// >=40 dB SNR-vs-pre-rewrite checkpoint before its RTL work starts.
+// Fixed-point equivalence: the fixed-point detector vs. the same algorithm
+// in double. Per the HDL port plan, each fixed-point rewrite needs a
+// >=40 dB SNR checkpoint against its reference before RTL holds it to a
+// bit-exact bar.
 //
-// This is deliberately NOT a comparison against BootstrapDetector's own
-// float build: the two builds already differ by ordinary Q1.15 sample
-// quantization (expected, unrelated to this rewrite). Instead,
-// ReferenceDetector below is the exact pre-rewrite double algorithm
-// (kAlpha=2/2049 EWMA, std::arg/std::sqrt), fed the *same* quantized-then-
-// dequantized samples the fixed-point detector sees, so the only thing
-// left to measure is error introduced by the rewrite itself (the integer
-// EWMA's power-of-2 alpha approximation and CORDIC's finite iteration
-// count), not by Q1.15 sample resolution.
+// ReferenceDetector is the float build's algorithm (both-halves-energy
+// normalization, alpha = 1/1024 EWMAs, energy floor, re-arm hysteresis)
+// in double, fed the *same* quantized-then-dequantized samples the
+// fixed-point detector sees, so what is measured is the fixed-point
+// arithmetic's own error (integer EWMA truncation, CORDIC's finite
+// iteration count), not Q1.15 sample resolution.
 //==============================================================================
 
 class ReferenceDetector {
@@ -300,25 +403,12 @@ public:
 
     explicit ReferenceDetector(const BootstrapConfig& config)
         : config_(config),
-          p_sum_(0.0, 0.0),
-          r_sum_(0.0),
           delay_buffer_(kHalfSymbol, std::complex<double>(0.0, 0.0)),
-          delay_idx_(0),
-          power_buffer_(kHalfSymbol, 0.0),
-          power_idx_(0),
-          metric_history_(std::max<size_t>(1, config.averaging_window), 0.0),
-          metric_sum_(0.0),
-          metric_idx_(0),
-          sample_count_(0),
-          in_detection_(false),
-          peak_metric_(0.0),
-          peak_correlation_(0.0, 0.0),
-          peak_sample_(0) {}
+          metric_history_(std::max<size_t>(1, config.averaging_window), 0.0) {}
 
     // detected/metric/cfo_hz/sample_index mirror the "detected" event, as
     // in BootstrapDetection. current_metric/current_cfo_hz are the
-    // same-instant running values (updated every call regardless of
-    // detection state), matching
+    // same-instant running values, matching
     // BootstrapDetector::get_current_metric()/get_current_cfo_hz().
     struct Result {
         bool detected = false;
@@ -330,27 +420,19 @@ public:
     };
 
     Result process(std::complex<double> x) {
+        constexpr double kDecay = 1.0 / 1024.0;
+        constexpr double kMinEnergy = 65536.0 / 1073741824.0;  // 2^16 in Q30 units
+
         std::complex<double> x_delayed = delay_buffer_[delay_idx_];
-        std::complex<double> corr_term = x * std::conj(x_delayed);
-
-        double old_power = power_buffer_[power_idx_];
-        double new_power = std::norm(x_delayed);
-        r_sum_ -= old_power;
-        r_sum_ += new_power;
-        r_sum_ = std::max(r_sum_, 1e-20);
-        power_buffer_[power_idx_] = new_power;
-        power_idx_ = (power_idx_ + 1) % kHalfSymbol;
-
-        constexpr double kAlpha = 2.0 / (kHalfSymbol + 1);
-        p_sum_ = (1.0 - kAlpha) * p_sum_ + kAlpha * corr_term * static_cast<double>(kHalfSymbol);
-
+        p_sum_ = p_sum_ - p_sum_ * kDecay + 2.0 * x * std::conj(x_delayed);
+        r_sum_ = r_sum_ - r_sum_ * kDecay + std::norm(x) + std::norm(x_delayed);
         delay_buffer_[delay_idx_] = x;
         delay_idx_ = (delay_idx_ + 1) % kHalfSymbol;
         ++sample_count_;
 
-        double p_mag_sq = std::norm(p_sum_);
-        double r_sq = r_sum_ * r_sum_;
-        double metric = (r_sq > 1e-20) ? p_mag_sq / r_sq : 0.0;
+        bool energetic = r_sum_ >= kMinEnergy;
+        double metric = energetic ? std::norm(p_sum_) / (r_sum_ * r_sum_) : 0.0;
+        std::complex<double> p_eff = energetic ? p_sum_ : std::complex<double>(0.0, 0.0);
 
         metric_sum_ -= metric_history_[metric_idx_];
         metric_sum_ += metric;
@@ -361,20 +443,24 @@ public:
         Result result;
         result.current_metric = smoothed_metric;
         result.current_cfo_hz =
-            std::arg(p_sum_) * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
+            std::arg(p_eff) * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
 
         if (!in_detection_) {
-            if (smoothed_metric > config_.threshold) {
+            if (rearm_blocked_) {
+                if (smoothed_metric <= config_.threshold) {
+                    rearm_blocked_ = false;
+                }
+            } else if (smoothed_metric > config_.threshold) {
                 in_detection_ = true;
                 peak_metric_ = smoothed_metric;
                 peak_sample_ = sample_count_;
-                peak_correlation_ = p_sum_;
+                peak_correlation_ = p_eff;
             }
         } else {
             if (smoothed_metric > peak_metric_) {
                 peak_metric_ = smoothed_metric;
                 peak_sample_ = sample_count_;
-                peak_correlation_ = p_sum_;
+                peak_correlation_ = p_eff;
             }
             if (smoothed_metric < peak_metric_ * 0.8) {
                 result.detected = true;
@@ -383,6 +469,7 @@ public:
                 double phase = std::arg(peak_correlation_);
                 result.cfo_hz = phase * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
                 in_detection_ = false;
+                rearm_blocked_ = true;
                 peak_metric_ = 0.0;
             }
         }
@@ -391,20 +478,19 @@ public:
 
 private:
     BootstrapConfig config_;
-    std::complex<double> p_sum_;
-    double r_sum_;
+    std::complex<double> p_sum_{0.0, 0.0};
+    double r_sum_ = 0.0;
     std::vector<std::complex<double>> delay_buffer_;
-    size_t delay_idx_;
-    std::vector<double> power_buffer_;
-    size_t power_idx_;
+    size_t delay_idx_ = 0;
     std::vector<double> metric_history_;
-    double metric_sum_;
-    size_t metric_idx_;
-    size_t sample_count_;
-    bool in_detection_;
-    double peak_metric_;
-    std::complex<double> peak_correlation_;
-    size_t peak_sample_;
+    double metric_sum_ = 0.0;
+    size_t metric_idx_ = 0;
+    size_t sample_count_ = 0;
+    bool in_detection_ = false;
+    bool rearm_blocked_ = false;
+    double peak_metric_ = 0.0;
+    std::complex<double> peak_correlation_{0.0, 0.0};
+    size_t peak_sample_ = 0;
 };
 
 TEST(BootstrapDetectorTest, FixedPointVsReferenceEquivalence) {
