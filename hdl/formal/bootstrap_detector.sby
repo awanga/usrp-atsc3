@@ -27,7 +27,7 @@ read_verilog -formal -I. bootstrap_detector_bare.v
 hierarchy -top bootstrap_detector_bare
 proc
 flatten
-expose -dff w:\dut.state w:\dut.idx w:\dut.hidx w:\dut.win_n w:\dut.shift w:\dut.r_sum w:\dut.div_start w:\dut.div_a_divisor
+expose -dff w:\dut.state w:\dut.idx w:\dut.hidx w:\dut.win_n w:\dut.r_sum w:\dut.in_det w:\dut.rearm_blocked w:\dut.div_start w:\dut.div_avg w:\dut.div_a_divisor
 write_verilog gen_bootstrap_detector_bare.v
 
 # Stage 2: re-elaborate the generated module plus the formal top.

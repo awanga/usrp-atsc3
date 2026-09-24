@@ -4,33 +4,37 @@
 // (Schmidl-Cox autocorrelation at lag L = HALF_SYMBOL = 2048). Per input
 // sample, in the same order as process_sample() then check_detection():
 //
-//   1. P (correlation) EWMA, alpha = 1/1024:  p = p - (p >>> 10) + 2*corr,
-//      corr = x[n] * conj(x[n-L]). A single-pole accumulator, not a
-//      2048-tap delay line -- the golden model's actual architecture.
-//      R (power) is a true L-sample sliding window, floored at 1.
-//   2. norm = (P * 32768) / R per rail, C++ truncate-toward-zero division,
-//      then the golden model's block-floating-point shift loop (arithmetic
-//      >>1 on both rails until both fit +-32767, at most 32 times).
+//   1. Two EWMAs with alpha = 1/1024 (single-pole accumulators, not
+//      2048-tap delay lines):
+//        P: p = p - (p >>> 10) + 2 * x[n] * conj(x[n-L])
+//        R: r = r - (r >>> 10) + |x[n]|^2 + |x[n-L]|^2
+//      Identical weights make |P| <= R (Cauchy-Schwarz), so the metric is
+//      bounded by 1 and a noise-to-signal edge cannot fake a correlation.
+//   2. If R is below the near-silence floor (2^16), the normalized vector
+//      is (0, 0) and the divides are skipped. Otherwise
+//      norm = saturate16((P * 32768) / R) per rail, C++ truncate-toward-zero
+//      division.
 //   3. Shared CORDIC core (hdl/rtl/common/cordic.v), vectoring mode:
 //      magnitude and angle of the normalized P.
-//   4. metric = (magnitude << shift)^2 >> 15, saturated to INT32_MAX once
-//      magnitude >= 2^23 (matches the golden model's overflow guard).
+//   4. metric = magnitude^2 >> 15 (<= 65536: magnitude <= ~46341).
 //   5. Moving average of metric over the averaging window (history RAM +
 //      running sum), divided by the window length.
 //   6. Detection FSM: arm when smoothed > threshold, track the peak, fire
 //      on the falling edge below 0.8 * peak (26214 in Q1.15, which is
-//      float_to_q15(0.8f)'s truncated value).
+//      float_to_q15(0.8f)'s truncated value), then stay disarmed until
+//      smoothed <= threshold (one detection per bootstrap).
 //
 // Every arithmetic width mirrors the C++ int64_t/int32_t/int16_t choices
 // directly rather than a tightened width, same policy as cordic.v; width
 // optimization is timing-closure work.
 //
-// Throughput: this is a sequential datapath (two 64-cycle divides, up to
-// 32 normalization shifts, the iterative CORDIC), roughly 150-190 clock
-// cycles per input sample. At the 100 MHz nominal clock that is well
-// below the 6.25 MS/s sample rate. Correctness first; faster dividers and
-// a pipelined datapath are the timing-closure work tracked in TASKS.md.
-// s_axis_tready backpressures the input while a sample is in flight.
+// Throughput: this is a sequential datapath (two parallel 64-cycle
+// divides, the iterative CORDIC, a 64-cycle averaging divide), roughly
+// 150 clock cycles per input sample. At the 100 MHz nominal clock that is
+// well below the 6.25 MS/s sample rate. Correctness first; faster dividers
+// and a pipelined datapath are the timing-closure work tracked in
+// TASKS.md. s_axis_tready backpressures the input while a sample is in
+// flight.
 //
 // AXI4-S: TDATA=ci16 {re[15:0], im[15:0]} TVALID TREADY in (TLAST
 // ignored, the golden model has no input framing). Out: one
@@ -90,39 +94,34 @@ module bootstrap_detector #(
                      ST_ACC          = 4'd2,
                      ST_DIV_START    = 4'd3,
                      ST_DIV_WAIT     = 4'd4,
-                     ST_SHIFT        = 4'd5,
-                     ST_CORDIC_START = 4'd6,
-                     ST_CORDIC_WAIT  = 4'd7,
-                     ST_METRIC       = 4'd8,
-                     ST_SUM          = 4'd9,
-                     ST_AVG_WAIT     = 4'd10,
-                     ST_DETECT       = 4'd11,
-                     ST_EMIT         = 4'd12;
+                     ST_CORDIC_START = 4'd5,
+                     ST_CORDIC_WAIT  = 4'd6,
+                     ST_METRIC       = 4'd7,
+                     ST_SUM          = 4'd8,
+                     ST_AVG_WAIT     = 4'd9,
+                     ST_DETECT       = 4'd10,
+                     ST_EMIT         = 4'd11;
 
     // float_to_q15(0.8f), truncated, as in check_detection()'s falling edge
     localparam signed [63:0] FALLING_Q15 = 64'sd26214;
-    // magnitude at which (magnitude^2) >> 15 no longer fits int32_t
-    localparam [63:0] METRIC_SAT_MAG = 64'd1 << 23;
-    localparam [31:0] INT32_MAX      = 32'h7FFF_FFFF;
+    // kMinCorrelatorEnergyQ30: near-silence floor on R
+    localparam signed [63:0] MIN_ENERGY  = 64'sd65536;
 
     reg [3:0] state;
 
     //--------------------------------------------------------------------------
-    // RAMs: delay line x[n-L], its power |x[n-L]|^2 at the time it was
-    // delayed (power_buffer_), and the metric history. Plain inferred
+    // RAMs: delay line x[n-L] and the metric history. Plain inferred
     // synchronous-read memories; zeroed by the post-reset clear sweep.
     //--------------------------------------------------------------------------
 
     reg [31:0] delay_mem [0:HALF_SYMBOL-1];
-    reg [31:0] power_mem [0:HALF_SYMBOL-1];
     reg [31:0] hist_mem  [0:MAX_WIN-1];
 
     reg [31:0] delay_rd;
-    reg [31:0] power_rd;
     reg [31:0] hist_rd;
 
     reg [CLR_LOG2:0]           clr_idx;
-    reg [HALF_SYMBOL_LOG2-1:0] idx;   // delay_idx_ == power_idx_ in C++
+    reg [HALF_SYMBOL_LOG2-1:0] idx;   // delay_idx_
     reg [MAX_WIN_LOG2-1:0]     hidx;  // metric_idx_
     reg [MAX_WIN_LOG2:0]       win_n; // effective window, 1..MAX_WIN
 
@@ -132,12 +131,11 @@ module bootstrap_detector #(
 
     reg signed [15:0] x_re, x_im;
     reg signed [63:0] p_re, p_im;   // p_sum_re_/p_sum_im_
-    reg signed [63:0] r_sum;        // r_sum_
+    reg signed [63:0] r_sum;        // r_sum_, always >= 0
     reg [47:0]        sample_count; // status-word width (see status_words.vh)
 
     reg               p_re_neg, p_im_neg;
-    reg signed [63:0] norm_re, norm_im;
-    reg [5:0]         shift;
+    reg signed [15:0] norm_re, norm_im;
 
     reg signed [15:0] angle;
     reg [31:0]        magnitude;
@@ -146,12 +144,13 @@ module bootstrap_detector #(
     reg [63:0]        smoothed;
 
     reg               in_det;
+    reg               rearm_blocked;
     reg [31:0]        peak_metric;
     reg [47:0]        peak_sample;
     reg signed [15:0] peak_angle;
 
     //--------------------------------------------------------------------------
-    // Step 1: correlation/power update (ST_ACC)
+    // Step 1: correlation/energy update (ST_ACC)
     //--------------------------------------------------------------------------
 
     wire signed [15:0] xd_re = delay_rd[31:16];
@@ -159,29 +158,30 @@ module bootstrap_detector #(
 
     // Each 16x16 signed product fits int32 (max (-32768)^2 = 2^30); sums
     // are formed at 64 bits like the C++ int64_t locals.
-    wire signed [31:0] m_rr = x_re * xd_re;
-    wire signed [31:0] m_ii = x_im * xd_im;
-    wire signed [31:0] m_ir = x_im * xd_re;
-    wire signed [31:0] m_ri = x_re * xd_im;
+    wire signed [31:0] m_rr   = x_re * xd_re;
+    wire signed [31:0] m_ii   = x_im * xd_im;
+    wire signed [31:0] m_ir   = x_im * xd_re;
+    wire signed [31:0] m_ri   = x_re * xd_im;
+    wire signed [31:0] m_xx_r = x_re * x_re;
+    wire signed [31:0] m_xx_i = x_im * x_im;
     wire signed [31:0] m_dd_r = xd_re * xd_re;
     wire signed [31:0] m_dd_i = xd_im * xd_im;
 
     wire signed [63:0] corr_re = {{32{m_rr[31]}}, m_rr} + {{32{m_ii[31]}}, m_ii};
     wire signed [63:0] corr_im = {{32{m_ir[31]}}, m_ir} - {{32{m_ri[31]}}, m_ri};
-    // up to 2^31, so formed at 64 bits; stored in power_mem as 32-bit unsigned
-    wire signed [63:0] new_power = {{32{m_dd_r[31]}}, m_dd_r} + {{32{m_dd_i[31]}}, m_dd_i};
-    wire signed [63:0] old_power = {32'd0, power_rd};
-
-    wire signed [63:0] r_raw  = r_sum - old_power + new_power;
-    wire signed [63:0] r_next = (r_raw < 64'sd1) ? 64'sd1 : r_raw;
+    wire signed [63:0] energy  = {{32{m_xx_r[31]}}, m_xx_r} + {{32{m_xx_i[31]}}, m_xx_i} +
+                                 {{32{m_dd_r[31]}}, m_dd_r} + {{32{m_dd_i[31]}}, m_dd_i};
 
     wire signed [63:0] p_re_next = p_re - (p_re >>> 10) + (corr_re <<< 1);
     wire signed [63:0] p_im_next = p_im - (p_im >>> 10) + (corr_im <<< 1);
+    wire signed [63:0] r_next    = r_sum - (r_sum >>> 10) + energy;
 
     //--------------------------------------------------------------------------
     // Step 2: (P * 32768) / R, truncating toward zero: divide magnitudes,
     // restore the sign. |P| < 2^44 by the EWMA's bound, so |P| << 15 fits.
     //--------------------------------------------------------------------------
+
+    wire energetic = (r_sum >= MIN_ENERGY);
 
     wire signed [63:0] p_re_abs = p_re[63] ? -p_re : p_re;
     wire signed [63:0] p_im_abs = p_im[63] ? -p_im : p_im;
@@ -214,11 +214,10 @@ module bootstrap_detector #(
         .quotient (div_b_quotient)
     );
 
-    wire signed [63:0] quo_a = div_a_quotient;
-    wire signed [63:0] quo_b = div_b_quotient;
-
-    wire norm_out_of_range = (norm_re > 64'sd32767) || (norm_re < -64'sd32767) ||
-                             (norm_im > 64'sd32767) || (norm_im < -64'sd32767);
+    wire signed [63:0] quo_a  = div_a_quotient;
+    wire signed [63:0] quo_b  = div_b_quotient;
+    wire signed [63:0] q_re_s = p_re_neg ? -quo_a : quo_a;
+    wire signed [63:0] q_im_s = p_im_neg ? -quo_b : quo_b;
 
     function signed [15:0] saturate_i16;
         input signed [63:0] v;
@@ -246,8 +245,8 @@ module bootstrap_detector #(
         .rst   (rst),
         .start (cordic_start),
         .mode  (`CORDIC_MODE_VECTOR),
-        .in_a  (saturate_i16(norm_re)),
-        .in_b  (saturate_i16(norm_im)),
+        .in_a  (norm_re),
+        .in_b  (norm_im),
         .busy  (cordic_busy),
         .done  (cordic_done),
         .out_a (cordic_angle),
@@ -258,12 +257,10 @@ module bootstrap_detector #(
     // Step 4/5: metric and its moving average
     //--------------------------------------------------------------------------
 
-    // CORDIC magnitude is never negative and at most ~46341, so << 32
-    // still fits comfortably in 64 bits.
-    wire [63:0] mag_shifted = {32'd0, magnitude} << shift;
-    wire [45:0] mag_sq      = mag_shifted[22:0] * mag_shifted[22:0];
-    wire [31:0] metric_next = (mag_shifted >= METRIC_SAT_MAG) ? INT32_MAX
-                                                              : {1'b0, mag_sq[45:15]};
+    // (int64 magnitude * magnitude) >> 15, truncated to int32 as in C++.
+    // magnitude is never negative (CORDIC vectoring output).
+    wire [63:0] mag_sq      = {32'd0, magnitude} * {32'd0, magnitude};
+    wire [31:0] metric_next = mag_sq[46:15];
 
     wire [63:0] sum_next = metric_sum - {32'd0, hist_rd} + {32'd0, metric};
 
@@ -302,10 +299,8 @@ module bootstrap_detector #(
     wire [MAX_WIN_LOG2-1:0]     hist_waddr = clearing ? clr_idx[MAX_WIN_LOG2-1:0] : hidx;
 
     always @(posedge clk) begin
-        if (dly_we) begin
+        if (dly_we)
             delay_mem[dly_waddr] <= clearing ? 32'd0 : {x_re, x_im};
-            power_mem[dly_waddr] <= clearing ? 32'd0 : new_power[31:0];
-        end
         if (hist_we)
             hist_mem[hist_waddr] <= clearing ? 32'd0 : metric;
 
@@ -313,7 +308,6 @@ module bootstrap_detector #(
         // their old slot, and each is stable for well over one cycle before
         // the state that consumes the read (ST_ACC / ST_SUM) comes around.
         delay_rd <= delay_mem[idx];
-        power_rd <= power_mem[idx];
         hist_rd  <= hist_mem[hidx];
     end
 
@@ -347,15 +341,15 @@ module bootstrap_detector #(
             sample_count <= 48'd0;
             p_re_neg <= 1'b0;
             p_im_neg <= 1'b0;
-            norm_re <= 64'sd0;
-            norm_im <= 64'sd0;
-            shift <= 6'd0;
+            norm_re <= 16'sd0;
+            norm_im <= 16'sd0;
             angle <= 16'sd0;
             magnitude <= 32'd0;
             metric <= 32'd0;
             metric_sum <= 64'd0;
             smoothed <= 64'd0;
             in_det <= 1'b0;
+            rearm_blocked <= 1'b0;
             peak_metric <= 32'd0;
             peak_sample <= 48'd0;
             peak_angle <= 16'sd0;
@@ -397,7 +391,7 @@ module bootstrap_detector #(
                 end
 
                 ST_ACC: begin
-                    // delay_rd/power_rd were read on the accept edge.
+                    // delay_rd was read on the accept edge.
                     p_re  <= p_re_next;
                     p_im  <= p_im_next;
                     r_sum <= r_next;
@@ -407,33 +401,30 @@ module bootstrap_detector #(
                 end
 
                 ST_DIV_START: begin
-                    p_re_neg       <= p_re[63];
-                    p_im_neg       <= p_im[63];
-                    div_avg        <= 1'b0;
-                    div_a_dividend <= p_re_abs <<< 15;
-                    div_a_divisor  <= r_sum;
-                    div_start      <= 1'b1;
-                    state          <= ST_DIV_WAIT;
+                    if (energetic) begin
+                        p_re_neg       <= p_re[63];
+                        p_im_neg       <= p_im[63];
+                        div_avg        <= 1'b0;
+                        div_a_dividend <= p_re_abs <<< 15;
+                        div_a_divisor  <= r_sum;
+                        div_start      <= 1'b1;
+                        state          <= ST_DIV_WAIT;
+                    end else begin
+                        // Below the energy floor: vector (0, 0), so CORDIC
+                        // yields magnitude 0 and angle 0 (metric 0).
+                        norm_re <= 16'sd0;
+                        norm_im <= 16'sd0;
+                        state   <= ST_CORDIC_START;
+                    end
                 end
 
                 ST_DIV_WAIT: begin
                     // Both dividers start together with the same width, so
                     // they finish on the same cycle.
                     if (div_a_done) begin
-                        norm_re <= p_re_neg ? -quo_a : quo_a;
-                        norm_im <= p_im_neg ? -quo_b : quo_b;
-                        shift   <= 6'd0;
-                        state   <= ST_SHIFT;
-                    end
-                end
-
-                ST_SHIFT: begin
-                    if (norm_out_of_range && (shift < 6'd32)) begin
-                        norm_re <= norm_re >>> 1;
-                        norm_im <= norm_im >>> 1;
-                        shift   <= shift + 6'd1;
-                    end else begin
-                        state <= ST_CORDIC_START;
+                        norm_re <= saturate_i16(q_re_s);
+                        norm_im <= saturate_i16(q_im_s);
+                        state   <= ST_CORDIC_START;
                     end
                 end
 
@@ -483,7 +474,10 @@ module bootstrap_detector #(
                     s_axis_tready <= 1'b1;
 
                     if (!in_det) begin
-                        if (smoothed_s > threshold) begin
+                        if (rearm_blocked) begin
+                            if (smoothed_s <= threshold)
+                                rearm_blocked <= 1'b0;
+                        end else if (smoothed_s > threshold) begin
                             in_det      <= 1'b1;
                             peak_metric <= smoothed[31:0];
                             peak_sample <= sample_count;
@@ -495,16 +489,16 @@ module bootstrap_detector #(
                         peak_angle  <= peak_a_next;
 
                         if (falling_edge) begin
-                            in_det      <= 1'b0;
-                            peak_metric <= 32'd0;
+                            in_det        <= 1'b0;
+                            rearm_blocked <= 1'b1;
+                            peak_metric   <= 32'd0;
 
                             m_axis_tdata <= {`BOOTSTRAP_DETECTION_WIDTH{1'b0}};
                             m_axis_tdata[`BOOTSTRAP_DETECTION_DETECTED_BIT] <= 1'b1;
                             m_axis_tdata[`BOOTSTRAP_DETECTION_SAMPLE_INDEX_HI:
                                          `BOOTSTRAP_DETECTION_SAMPLE_INDEX_LO] <= peak_s_next;
                             m_axis_tdata[`BOOTSTRAP_DETECTION_CFO_HZ_HI:
-                                         `BOOTSTRAP_DETECTION_CFO_HZ_LO] <=
-                                cfo_shr_peak[31:0];
+                                         `BOOTSTRAP_DETECTION_CFO_HZ_LO] <= cfo_shr_peak[31:0];
                             m_axis_tdata[`BOOTSTRAP_DETECTION_METRIC_HI:
                                          `BOOTSTRAP_DETECTION_METRIC_LO] <= peak_next;
                             m_axis_tvalid <= 1'b1;
@@ -531,11 +525,12 @@ module bootstrap_detector #(
     end
 
     // Unused by design: the golden model has no input framing; the busy
-    // flags are implied by the FSM sequencing the done pulses; the low
-    // bits of mag_sq are the >> 15 and the high bits of the CFO products
-    // are sign bits of a value known to fit int32.
+    // flags are implied by the FSM sequencing the done pulses; mag_sq's
+    // low bits are the >> 15 and its high bits are the int32 truncation;
+    // the CFO products' high bits are sign bits of a value known to fit
+    // int32.
     wire unused_ok = &{1'b0, s_axis_tlast, div_a_busy, div_b_busy, div_b_done,
-                       cordic_busy, mag_sq[14:0], cfo_shr_cur[48:32],
+                       cordic_busy, mag_sq[14:0], mag_sq[63:47], cfo_shr_cur[48:32],
                        cfo_shr_peak[48:32], 1'b0};
 
 endmodule

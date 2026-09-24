@@ -13,9 +13,9 @@ Two things are compared:
 
 Stimulus is synthetic Schmidl-Cox bootstrap-like symbols (one random
 half-symbol of L = 2048 samples, repeated) at known CFO offsets inside
-the unambiguous range +-Fs/(2L), in noise, followed by silence and
-full-scale bursts to exercise the metric-saturation and normalization-shift
-corners. The input is driven with random valid gaps and the status output
+the unambiguous range +-Fs/(2L), in noise, followed by silence,
+full-scale bursts, and a correlated fade through the near-silence energy
+floor. The input is driven with random valid gaps and the status output
 with random ready backpressure.
 
 Run via test_runner.py (pytest), not directly.
@@ -216,6 +216,14 @@ async def two_bootstraps_default_config(dut):
                + noise(rnd, 1500, sigma)
                + bootstrap(rnd, -1200.0, fs, amp, sigma)
                + [(0, 0)] * 2500)
+    ends = (300 + 2 * HALF_SYMBOL, 300 + 4 * HALF_SYMBOL + 1500)
+
+    # Sanity on the golden model itself: neither noise-to-signal edge
+    # fires, and each bootstrap fires exactly once, at its end.
+    _, golden_det = run_golden((fs, DEFAULT_THRESHOLD_Q15, 64), samples)
+    assert len(golden_det) == 2, f"expected one detection per bootstrap, got {golden_det}"
+    for (index, _, _), end in zip(golden_det, ends):
+        assert abs(index - end) <= 200, f"detection at {index}, bootstrap ends at {end}"
     await run_scenario(dut, (fs, DEFAULT_THRESHOLD_Q15, 64), samples, 11, True)
 
 
@@ -237,25 +245,30 @@ async def raw_angle_odd_window(dut):
 
 
 @cocotb.test()
-async def metric_saturation_boundary(dut):
-    """A bootstrap fading out slowly into silence: R shrinks smoothly as the
-    fade passes through the delay line while P decays, so |P|/R sweeps
-    through the metric-saturation boundary (magnitude 2^23) instead of
-    jumping past it. Window 1 makes each sample's metric directly visible."""
-    rnd = random.Random(0xFADE)
-    amp = 6000.0
-    samples = (bootstrap(rnd, 500.0, DEFAULT_FS, amp, 0.0)
-               + decaying_tail(rnd, 6500, amp, 300.0))
+async def energy_floor_boundary(dut):
+    """A repeated (correlated) pattern fading slowly: the metric stays well
+    above 0 while R sweeps down through the near-silence floor (2^16), where
+    the golden model forces the metric to 0 -- so the floor's exact value
+    and comparison are checked, not just that silence reads 0. Window 1
+    makes each sample's metric directly visible."""
+    rnd = random.Random(0xF100)
+    pattern = [complex(rnd.gauss(0, 1), rnd.gauss(0, 1)) for _ in range(HALF_SYMBOL)]
+    samples = []
+    for n in range(14000):
+        v = pattern[n % HALF_SYMBOL] * 150.0 * math.exp(-n / 2500.0)
+        samples.append((_clamp16(v.real), _clamp16(v.imag)))
 
-    def covers_boundary(golden_mon):
+    def gated_while_correlated(golden_mon):
         metrics = [m for m, _ in golden_mon]
-        # just below saturation: magnitude in [2^22, 2^23)
-        assert any((1 << 29) <= m < 0x7FFFFFFF for m in metrics), (
-            "stimulus never approaches the saturation boundary")
-        assert 0x7FFFFFFF in metrics, "stimulus never saturates the metric"
+        last_nonzero = max(i for i, m in enumerate(metrics) if m)
+        assert metrics[last_nonzero] > 8192, (
+            "metric had already decayed before the energy floor gated it")
+        assert all(m == 0 for m in metrics[last_nonzero + 1:]), "metric reappeared"
 
-    await run_scenario(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 1), samples, 44, True,
-                       covers_boundary)
+    # No detection expected: the fade makes the halves unequal in amplitude
+    # (x[n-L] is ~2.3x x[n]), which caps the metric near 0.55.
+    await run_scenario(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 1), samples, 44, False,
+                       gated_while_correlated)
 
 
 @cocotb.test()
@@ -264,7 +277,10 @@ async def zero_window_clamps_to_one(dut):
     does not raise cfg_window_clamped, which is reserved for the RTL-only
     upper bound."""
     rnd = random.Random(0x0)
-    samples = noise(rnd, 200, 500.0) + bootstrap(rnd, -400.0, DEFAULT_FS, 7000.0, 500.0)
+    # Trailing noise: the detector reports on the falling edge after the
+    # end of the repeated structure, so it needs samples past it.
+    samples = (noise(rnd, 200, 500.0) + bootstrap(rnd, -400.0, DEFAULT_FS, 7000.0, 500.0)
+               + noise(rnd, 600, 500.0))
     await run_scenario(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 0), samples, 33, True)
     assert dut.cfg_window_clamped.value == 0
 

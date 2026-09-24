@@ -112,7 +112,7 @@ relative_index        = absolute_index - first_active_carrier
 | Struct | `.vh` width define | Total width | Notes |
 |---|---|---|---|
 | `PilotSymbol` | `PILOT_SYMBOL_WIDTH` | 96 bits (12 B) | index + 2×complex + type + 1 reserved byte |
-| `BootstrapDetection` | `BOOTSTRAP_DETECTION_WIDTH` | 120 bits (15 B) | `snr_db` excluded (log10, see above); `metric` is 32-bit, not q1_15, since the C++ peak metric exceeds 1.0 |
+| `BootstrapDetection` | `BOOTSTRAP_DETECTION_WIDTH` | 120 bits (15 B) | `snr_db` excluded (log10, see above); `metric` is 32-bit, not q1_15: the C++ int32_t peak metric can reach 65536 (2.0) through rounding |
 | `FrameEvent` | `FRAME_EVENT_WIDTH` | 136 bits (17 B) | belongs to frame_sync, not timing_recovery -- corrected in the HDL port plan from an earlier draft |
 | `DemapResult` | *(none)* | -- | already the existing `int8_t`(LLR) AXI4-S stream; see above |
 | L1Pre / L1Post | *(none)* | -- | already `config/hdl_register_map.json`'s `l1_status` bank |

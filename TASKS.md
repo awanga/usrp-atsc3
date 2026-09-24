@@ -567,39 +567,39 @@ below holds the same bit-exact bar against its C++ reference.
 - [x] cocotb bit-exact test for `cordic.v` vs. `lib/dsp/cordic.cc`, via a
       golden-vector CLI (`hdl/sim/golden/cordic_gen`) linking the real
       `atsc3_lib` — 136 cases (boundary + randomized), both modes
-- [x] Golden-model fix first: the fixed-point metric square overflowed
-      int64 (UB) when input went quiet right after a signal; now
-      saturates to INT32_MAX, bit-identical otherwise
-- [x] `hdl/rtl/sync/bootstrap_detector.v` — EWMA correlation term (a
-      single-pole IIR accumulator, matching the golden model's actual
-      architecture, not a 2048-tap delay line) + a real 2048-sample
-      sliding window for the power term only; window bound is 2048
-      (`kHalfSymbol`). Sequential datapath: `hdl/rtl/common/udiv_seq.v`
-      (new shared restoring divider) for the C++'s two `(P<<15)/R`
-      divides and the moving-average divide, shared `cordic.v` for
-      magnitude/angle
+- [x] Golden-model fixes first: the fixed-point metric square overflowed
+      int64 (UB) after signal→silence; then the detection algorithm itself
+      was corrected (below)
+- [x] Spurious-detection fix (C++ and RTL): R normalized by the delayed
+      half only (a sliding window, against an EWMA P), so noise→signal
+      edges produced bursts of false high-metric detections, and the FSM
+      re-armed immediately, cascading detections per bootstrap. R is now
+      the identically weighted EWMA of both halves' energy (|P| ≤ R by
+      Cauchy-Schwarz, metric ≤ 1, peak at the end of the structure), with
+      a near-silence energy floor and re-arm hysteresis — one detection
+      per bootstrap. Also fixed `snr_db` (it reported SNR² in dB)
+- [x] `hdl/rtl/sync/bootstrap_detector.v` — two single-pole EWMA
+      accumulators (P and R) plus the 2048-sample x[n-L] delay RAM; the
+      old per-sample power RAM is gone. Sequential datapath: `hdl/rtl/common/udiv_seq.v` (new shared
+      restoring divider) for the C++'s two `(P<<15)/R` divides (skipped
+      below the energy floor) and the moving-average divide, shared
+      `cordic.v` for magnitude/angle
 - [x] AXI4-S: `TDATA=ci16` in, `BootstrapDetection` status word out;
-      `status_words.vh`'s metric field widened 16 → 32 bits (the C++ peak
-      metric exceeds 1.0 routinely, a q1_15 field would truncate it)
+      `status_words.vh`'s metric field widened 16 → 32 bits (the C++
+      int32 peak metric can reach 65536 through rounding)
 - [x] cocotb: synthetic bootstrap symbols at known CFO offsets, bit-exact
       vs. `hdl/sim/golden/bootstrap_gen` linking the real `atsc3_lib` —
       every sample's smoothed metric/CFO plus every detection word, five
-      scenarios (default config, raw-angle + odd window + full-scale
-      corners, a slow fade sweeping the metric-saturation boundary, zero
-      window, oversized-window flag); negative-control mutants confirmed
-      caught
+      scenarios (two bootstraps after noise edges, raw-angle + odd window +
+      full-scale corners, a correlated fade through the energy floor, zero
+      window, oversized-window flag); negative-control mutants (energy
+      floor, history wrap, no hysteresis) each caught
 - [x] Formal (`hdl/formal/prove_pdr.sh bootstrap_detector`, unbounded
       ABC PDR with multipliers cut, since smtbmc/z3 stalls on this
       datapath): correlator index bound, zero-averaging-window clamp,
-      window/history-index bounds, no divide-by-zero, shift-loop bound,
-      AXI4-S input/output exclusivity and output hold; non-vacuity
-      confirmed by RTL mutants
-- [ ] Known golden-model behavior carried into RTL as-is (not RTL bugs):
-      R normalizes by the delayed half's power only, so a noise→signal
-      edge yields a burst of spurious high-metric detections before the
-      real one; a single bootstrap yields a cascade of detections as the
-      metric decays past successive 0.8×peak falling edges. Both need a
-      golden-model algorithm decision before changing
+      window/history-index bounds, P/R divide only above the energy floor
+      (no divide-by-zero), detect/re-arm exclusivity, AXI4-S input/output
+      exclusivity and output hold; non-vacuity confirmed by RTL mutants
 
 ### 9.2 Timing Recovery RTL [ ]
 - [ ] 16-bank×32-tap polyphase FIR (ROM taps, MAC array) + Gardner TED
@@ -744,11 +744,11 @@ below holds the same bit-exact bar against its C++ reference.
       frame sync's correlator, the time deinterleaver's RAM, and BCH's
       doubled worst-case latency
 - [ ] Post-synthesis functional equivalence via Yosys `equiv_opt`/`sat`
-- [ ] Bootstrap detector throughput: ~150–190 cycles/sample today (two
-      64-cycle restoring divides, up to 32 normalization shifts, iterative
-      CORDIC) vs. 16 cycles/sample needed for 6.25 MS/s at 100 MHz —
-      radix-4/early-terminating or pipelined dividers, a single-cycle
-      leading-zero shift, and a pipelined CORDIC
+- [ ] Bootstrap detector throughput: ~150 cycles/sample today (two
+      64-cycle restoring divides, the averaging divide, iterative CORDIC)
+      vs. 16 cycles/sample needed for 6.25 MS/s at 100 MHz —
+      radix-4/early-terminating or pipelined dividers and a pipelined
+      CORDIC
 
 ---
 
