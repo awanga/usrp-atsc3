@@ -33,13 +33,24 @@ const std::string kCapturesDir = std::string(SOURCE_DIR) + "/test/captures";
 // We auto-detect from filename or default to 6.25 MS/s
 constexpr double kDefaultSampleRate = 6.25e6;
 
+// True if path is an un-fetched git-lfs pointer (a ~130-byte text stub)
+// rather than real IQ data. Reading one as samples yields garbage, so
+// such captures are skipped with an explicit `git lfs pull` hint instead.
+bool is_lfs_pointer(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    std::string head(40, '\0');
+    f.read(&head[0], static_cast<std::streamsize>(head.size()));
+    return head.compare(0, 16, "version https://") == 0 &&
+           head.find("git-lfs") != std::string::npos;
+}
+
 // Helper to find an available capture file
 std::string find_capture_file() {
     namespace fs = std::filesystem;
 
     // Try to find any .sigmf-data file
     for (const auto& entry : fs::directory_iterator(kCapturesDir)) {
-        if (entry.path().extension() == ".sigmf-data") {
+        if (entry.path().extension() == ".sigmf-data" && !is_lfs_pointer(entry.path().string())) {
             return entry.path().string();
         }
     }
@@ -73,7 +84,8 @@ protected:
     void SetUp() override {
         capture_file_ = find_capture_file();
         if (capture_file_.empty()) {
-            GTEST_SKIP() << "No IQ captures available in " << kCapturesDir;
+            GTEST_SKIP() << "No IQ captures available in " << kCapturesDir
+                         << " (git-lfs pointer files are ignored; run `git lfs pull`)";
         }
     }
 
