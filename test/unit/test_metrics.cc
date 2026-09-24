@@ -19,6 +19,12 @@ namespace atsc3 {
 namespace metrics {
 namespace {
 
+// A sample given in float units, in the build's own sample format (Q1.15
+// under ATSC3_FIXED_POINT), so these tests run unchanged in both builds.
+ATSC3_SAMPLE_T S(float re, float im) {
+    return from_complex_float({re, im});
+}
+
 // ============================================================================
 // SNR Estimator Tests
 // ============================================================================
@@ -34,8 +40,8 @@ TEST_F(SnrEstimatorTest, DefaultConstruction) {
 }
 
 TEST_F(SnrEstimatorTest, ProcessPilotsUpdatesStats) {
-    std::vector<ATSC3_SAMPLE_T> received = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}};
-    std::vector<ATSC3_SAMPLE_T> reference = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}};
+    std::vector<ATSC3_SAMPLE_T> received = {S(1.0f, 0.0f), S(0.0f, 1.0f), S(-1.0f, 0.0f)};
+    std::vector<ATSC3_SAMPLE_T> reference = {S(1.0f, 0.0f), S(0.0f, 1.0f), S(-1.0f, 0.0f)};
 
     estimator_.process_pilots(received.data(), reference.data(), 3);
 
@@ -46,7 +52,8 @@ TEST_F(SnrEstimatorTest, ProcessPilotsUpdatesStats) {
 
 TEST_F(SnrEstimatorTest, PerfectPilotsHighSNR) {
     // Perfect reception - no noise
-    std::vector<ATSC3_SAMPLE_T> pilots = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f}};
+    std::vector<ATSC3_SAMPLE_T> pilots = {S(1.0f, 0.0f), S(0.0f, 1.0f), S(-1.0f, 0.0f),
+                                          S(0.0f, -1.0f)};
 
     // Process multiple symbols to fill window
     for (int i = 0; i < 64; ++i) {
@@ -62,12 +69,13 @@ TEST_F(SnrEstimatorTest, NoisyPilotsLowerSNR) {
     std::mt19937 rng(42);
     std::normal_distribution<float> noise(0.0f, 0.1f);
 
-    std::vector<ATSC3_SAMPLE_T> reference = {{1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}};
+    std::vector<ATSC3_SAMPLE_T> reference = {S(1.0f, 0.0f), S(0.0f, 1.0f), S(-1.0f, 0.0f)};
 
     for (int i = 0; i < 100; ++i) {
         std::vector<ATSC3_SAMPLE_T> received;
         for (const auto& ref : reference) {
-            received.emplace_back(ref.real() + noise(rng), ref.imag() + noise(rng));
+            std::complex<float> r = to_complex_float(ref);
+            received.push_back(S(r.real() + noise(rng), r.imag() + noise(rng)));
         }
         estimator_.process_pilots(received.data(), reference.data(), 3);
     }
@@ -79,7 +87,7 @@ TEST_F(SnrEstimatorTest, NoisyPilotsLowerSNR) {
 }
 
 TEST_F(SnrEstimatorTest, ResetClearsState) {
-    std::vector<ATSC3_SAMPLE_T> pilots = {{1.0f, 0.0f}};
+    std::vector<ATSC3_SAMPLE_T> pilots = {S(1.0f, 0.0f)};
     estimator_.process_pilots(pilots.data(), pilots.data(), 1);
 
     estimator_.reset();
@@ -114,10 +122,8 @@ TEST_F(MerEstimatorTest, QPSKPerfectSymbols) {
 
     // Perfect QPSK symbols at normalized positions
     float scale = 1.0f / std::sqrt(2.0f);
-    std::vector<ATSC3_SAMPLE_T> symbols = {{scale, scale},
-                                           {-scale, scale},
-                                           {-scale, -scale},
-                                           {scale, -scale}};
+    std::vector<ATSC3_SAMPLE_T> symbols = {S(scale, scale), S(-scale, scale), S(-scale, -scale),
+                                           S(scale, -scale)};
 
     for (int i = 0; i < 1024; ++i) {
         estimator_.process_symbols(symbols.data(), symbols.size());
@@ -135,15 +141,14 @@ TEST_F(MerEstimatorTest, NoisyQPSKLowerMER) {
     std::normal_distribution<float> noise(0.0f, 0.05f);
 
     float scale = 1.0f / std::sqrt(2.0f);
-    std::vector<ATSC3_SAMPLE_T> ideal = {{scale, scale},
-                                         {-scale, scale},
-                                         {-scale, -scale},
-                                         {scale, -scale}};
+    std::vector<ATSC3_SAMPLE_T> ideal = {S(scale, scale), S(-scale, scale), S(-scale, -scale),
+                                         S(scale, -scale)};
 
     for (int i = 0; i < 1024; ++i) {
         std::vector<ATSC3_SAMPLE_T> noisy;
         for (const auto& sym : ideal) {
-            noisy.emplace_back(sym.real() + noise(rng), sym.imag() + noise(rng));
+            std::complex<float> c = to_complex_float(sym);
+            noisy.push_back(S(c.real() + noise(rng), c.imag() + noise(rng)));
         }
         estimator_.process_symbols(noisy.data(), noisy.size());
     }
@@ -158,10 +163,8 @@ TEST_F(MerEstimatorTest, QAM16Symbols) {
     estimator_.set_constellation(ConstellationType::QAM16);
 
     float scale = 1.0f / std::sqrt(10.0f);
-    std::vector<ATSC3_SAMPLE_T> symbols = {{scale, scale},
-                                           {3 * scale, scale},
-                                           {scale, 3 * scale},
-                                           {3 * scale, 3 * scale}};
+    std::vector<ATSC3_SAMPLE_T> symbols = {S(scale, scale), S(3 * scale, scale),
+                                           S(scale, 3 * scale), S(3 * scale, 3 * scale)};
 
     for (int i = 0; i < 1024; ++i) {
         estimator_.process_symbols(symbols.data(), symbols.size());
@@ -349,12 +352,12 @@ TEST_F(MetricsAggregatorTest, IntegratedMetrics) {
     aggregator_.signal_strength().update_rssi(-55.0);
     aggregator_.signal_strength().update_agc_gain(10.0);
 
-    std::vector<ATSC3_SAMPLE_T> pilots = {{1.0f, 0.0f}, {0.0f, 1.0f}};
+    std::vector<ATSC3_SAMPLE_T> pilots = {S(1.0f, 0.0f), S(0.0f, 1.0f)};
     aggregator_.snr_estimator().process_pilots(pilots.data(), pilots.data(), 2);
 
     aggregator_.mer_estimator().set_constellation(ConstellationType::QPSK);
     float scale = 1.0f / std::sqrt(2.0f);
-    std::vector<ATSC3_SAMPLE_T> symbols = {{scale, scale}};
+    std::vector<ATSC3_SAMPLE_T> symbols = {S(scale, scale)};
     aggregator_.mer_estimator().process_symbols(symbols.data(), 1);
 
     aggregator_.ber_estimator().process_codeword(5, true, 50);
