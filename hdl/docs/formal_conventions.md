@@ -160,9 +160,16 @@ not finish a depth-2 BMC there. Two measures, both used by
 
 Neither ABC PDR nor `smtbmc` gives a practical `cover` task on these
 models, so non-vacuity has to come from **RTL mutants** instead: inject a
-bug each key assertion should catch, confirm the proof fails at a
-plausible depth, restore, and record the result in the harness header
-(see `bootstrap_detector_formal.v`). Also keep in mind that `prev_*` shadow
+bug each key assertion should catch, confirm it fails at a plausible
+depth with `prove_pdr.sh --mutant <job>` (bounded `bmc3`), restore, and
+record the result in the harness header (see
+`bootstrap_detector_formal.v`). Don't hunt mutants with PDR: it is a
+proof engine and stalls on deep counterexamples -- a bootstrap detector
+mutant needing ~160 frames (two samples through the dividers) ran PDR for
+14 hours without a verdict, while `bmc3` found it in under two minutes.
+Both modes of `prove_pdr.sh` run under a time limit (`PDR_TIMEOUT`,
+`BMC_FRAMES`/`BMC_TIMEOUT`) and report exhausting it as UNDECIDED (exit
+2), never as a pass. Also keep in mind that `prev_*` shadow
 registers sample the DUT's uninitialized outputs on the reset cycle: gate
 any `prev_*`-based assertion on `!prev_rst`. PDR found exactly that bug
 in the first version of this harness.
