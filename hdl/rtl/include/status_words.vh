@@ -54,7 +54,7 @@
 // config/hdl_register_map.json.
 //------------------------------------------------------------------------------
 
-`define BOOTSTRAP_DETECTION_WIDTH 104
+`define BOOTSTRAP_DETECTION_WIDTH 120
 
 `define BOOTSTRAP_DETECTION_DETECTED_BIT 0
 // bits [7:1] reserved, drive 0
@@ -73,9 +73,14 @@
 // conversion done in C++ (phase * sample_rate_hz / (2*pi*L)), not a raw
 // CORDIC angle, so it does not depend on the CORDIC angle convention.
 
-`define BOOTSTRAP_DETECTION_METRIC_HI 103
+`define BOOTSTRAP_DETECTION_METRIC_HI 119
 `define BOOTSTRAP_DETECTION_METRIC_LO 88
-// q1_15, same format/truncation convention as config/hdl_register_map.json.
+// Unsigned 32-bit, scaled by 2^15 (Q16.15 in a 32-bit container), the raw
+// value of bootstrap_detector.cc's int32_t peak_metric_ (C++ reports it as
+// peak_metric_ / 32768.0). Not q1_15: (|P|/R)^2 routinely exceeds 1.0 while
+// the EWMA correlation term settles (peaks of ~3.9 are typical right after
+// a bootstrap starts), and the C++ saturates it at INT32_MAX, not 1.0. A
+// 16-bit q1_15 field would silently truncate those values.
 
 //------------------------------------------------------------------------------
 // FrameEvent (lib/sync/frame_sync.h:90-103) -- frame-sync status.
