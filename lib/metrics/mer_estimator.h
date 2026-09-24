@@ -94,7 +94,7 @@ private:
     MerStats stats_;
 
     /// Make hard decision on symbol and return ideal constellation point
-    ATSC3_SAMPLE_T hard_decision(const ATSC3_SAMPLE_T& symbol) const;
+    std::complex<float> hard_decision(std::complex<float> symbol) const;
 
     /// Update constellation parameters based on type
     void update_constellation_params();

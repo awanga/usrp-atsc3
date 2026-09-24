@@ -38,12 +38,17 @@ void SnrEstimator::process_pilots(const ATSC3_SAMPLE_T* received_pilots,
     double symbol_error_power = 0.0;
 
     for (size_t i = 0; i < num_pilots; ++i) {
+        // Float units in both builds (see MerEstimator::process_symbols()):
+        // int16 subtraction and std::norm would overflow on Q1.15 input.
+        std::complex<float> received = to_complex_float(received_pilots[i]);
+        std::complex<float> reference = to_complex_float(reference_pilots[i]);
+
         // Signal power from reference (known transmitted value)
-        double ref_power = std::norm(reference_pilots[i]);
+        double ref_power = std::norm(reference);
         symbol_signal_power += ref_power;
 
         // Error is difference between received and reference
-        ATSC3_SAMPLE_T error = received_pilots[i] - reference_pilots[i];
+        std::complex<float> error = received - reference;
         double error_power = std::norm(error);
         symbol_error_power += error_power;
     }

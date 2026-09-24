@@ -48,6 +48,27 @@ using sample_t = std::complex<float>;
 using real_t = float;
 #endif
 
+// Build-independent conversion between sample_t and std::complex<float>
+// in the float build's units (Q1.15 value / 32768 in the fixed-point
+// build; identity in the float build). For host-side code that is not an
+// RTL port (metrics, tests); from_complex_float() saturates like
+// float_to_q15().
+#ifdef ATSC3_FIXED_POINT
+inline std::complex<float> to_complex_float(sample_t s) {
+    return {q15_to_float(s.real()), q15_to_float(s.imag())};
+}
+inline sample_t from_complex_float(std::complex<float> c) {
+    return {float_to_q15(c.real()), float_to_q15(c.imag())};
+}
+#else
+inline std::complex<float> to_complex_float(sample_t s) {
+    return s;
+}
+inline sample_t from_complex_float(std::complex<float> c) {
+    return c;
+}
+#endif
+
 // Alias for compatibility with older code
 using ATSC3_SAMPLE_T = sample_t;
 using ATSC3_REAL_T = real_t;

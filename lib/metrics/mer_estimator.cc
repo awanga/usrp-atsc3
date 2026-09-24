@@ -61,7 +61,7 @@ void MerEstimator::update_constellation_params() {
     }
 }
 
-ATSC3_SAMPLE_T MerEstimator::hard_decision(const ATSC3_SAMPLE_T& symbol) const {
+std::complex<float> MerEstimator::hard_decision(std::complex<float> symbol) const {
     // Normalize symbol
     float real_norm = symbol.real() / constellation_scale_;
     float imag_norm = symbol.imag() / constellation_scale_;
@@ -81,7 +81,7 @@ ATSC3_SAMPLE_T MerEstimator::hard_decision(const ATSC3_SAMPLE_T& symbol) const {
     float real_dec = quantize(real_norm) * constellation_scale_;
     float imag_dec = quantize(imag_norm) * constellation_scale_;
 
-    return ATSC3_SAMPLE_T(real_dec, imag_dec);
+    return {real_dec, imag_dec};
 }
 
 void MerEstimator::process_symbols(const ATSC3_SAMPLE_T* symbols, size_t num_symbols) {
@@ -93,11 +93,17 @@ void MerEstimator::process_symbols(const ATSC3_SAMPLE_T* symbols, size_t num_sym
     double batch_ref_power = 0.0;
 
     for (size_t i = 0; i < num_symbols; ++i) {
+        // Host-side metric, not an RTL port: work in float units in both
+        // builds. Raw Q1.15 integers would be quantized against float
+        // constellation scales, and std::norm on std::complex<int16_t>
+        // squares in 16 bits.
+        std::complex<float> symbol = to_complex_float(symbols[i]);
+
         // Make hard decision
-        ATSC3_SAMPLE_T ideal = hard_decision(symbols[i]);
+        std::complex<float> ideal = hard_decision(symbol);
 
         // Calculate error
-        ATSC3_SAMPLE_T error = symbols[i] - ideal;
+        std::complex<float> error = symbol - ideal;
 
         batch_error_power += std::norm(error);
         batch_ref_power += std::norm(ideal);
