@@ -728,12 +728,123 @@ below holds the same bit-exact bar against its C++ reference.
   needed: the mutant still passes BMC's depth-20 base case but correctly
   fails k-induction.
 
-### 9.4 FFT Engine RTL [ ]
-- [ ] Memory-based in-place radix-2 DIT, shared 16384-entry twiddle ROM,
+### 9.4 FFT Engine RTL [x]
+- [x] Memory-based in-place radix-2 DIT, shared 16384-entry twiddle ROM,
       bit-exact by construction; streaming R2SDF explicitly deferred
       future work
-- [ ] AXI4-S wrapper, cocotb, formal (bit-reversal address generator
+- [x] AXI4-S wrapper, cocotb, formal (bit-reversal address generator
       bounds, butterfly arithmetic)
+
+#### Implementation Notes
+- `hdl/rtl/ofdm/fft_engine.v`: forward-direction-only (per
+  `config/hdl_register_map.json`, DIRECTION is `const`-fixed to
+  `kForward` — this is a receiver, there's no transmit path to port —
+  so there's no `cfg_direction` port and no inverse-normalize output
+  path, unlike the C++ `FftEngine`). A single 32768-entry true-dual-port
+  work RAM (`work_re`/`work_im`) holds the transform in place; a shared
+  16384-entry twiddle ROM covers all three legal FFT sizes at once:
+  `master_rom_index = j << (15 - stage)` is the same address at a given
+  `stage` for FFT_8K/16K/32K alike, because the FFT-size-dependent terms
+  cancel (`j * (N/m) * (32768/N) = j * (32768/m)`) — one ROM, generated
+  once from the real `compute_twiddles()` formula
+  (`hdl/sim/golden/fft_twiddle_gen.cc`, sign=-1/forward, calling the
+  real `atsc3::float_to_q15()`), not three. Bit-reversal is a single
+  15-bit reverse of `sample_cnt` (whose top bits are always 0 for the
+  active size) right-shifted by `15 - log2(N)` — reversing all 15 bits
+  then shifting lines up with reversing just the low log2(N) bits
+  directly. Same flattened-single-counter butterfly indexing as
+  `bootstrap_detector.v`'s enumeration style: `bfly_idx` alone (no
+  nested stage/group/element loop) determines `j_idx`/`group_idx`/
+  `idx_even`/`idx_odd` for a given `stage`, since same-stage butterflies
+  never share an index and order doesn't matter.
+- Same "correctness first" sequential FSM as every other 9.x block: a
+  butterfly and an unload sample both take a full ADDR→READ/WAIT→WRITE/
+  EMIT 3-cycle sequence (RAM read needs a settled cycle before
+  `ram_rdata_a` reflects the new address) rather than a pipelined R2SDF
+  streaming architecture — correct by construction against the golden
+  model at any clock rate, throughput left to 9.17 timing-closure work.
+- Real bug, found by cocotb's randomized tests, not by inspection: the
+  unload loop's steady state looped `ST_UNLOAD_EMIT → ST_UNLOAD_ADDR →
+  ST_UNLOAD_EMIT` directly, skipping the settle cycle every other state
+  in the FSM has. This fed `sample_cnt - 1`'s RAM data as `sample_cnt`'s
+  output for every sample after the first. A first fix attempt added
+  the missing `ST_UNLOAD_WAIT` state but only on the loop's first
+  iteration; that turned "everything shifted by one" into "index 0
+  correct, index 1 duplicates it, then shifted by one again" — proof
+  the steady-state path needed the same fix, not just the first sample.
+  The real fix makes every iteration walk the full `ST_UNLOAD_ADDR →
+  ST_UNLOAD_WAIT → ST_UNLOAD_EMIT` sequence, looping back to `ADDR`
+  rather than straight to `EMIT`. Verified against a hand-built N=8
+  Python reference before confirming against the real golden model at
+  8192/16384 with random data.
+- `hdl/sim/golden/fft_engine_gen.cc`: golden-vector CLI linking the real
+  `FftEngine::create()` (forward-only invocation, matching the RTL's
+  scope). `hdl/sim/cocotb/test_fft_engine.py` runs full bit-exact
+  transforms at real FFT_SIZE (8192, 16384) — impulse and random input —
+  rather than a small-parameterization escape hatch: this block's ROM
+  addressing and bit-reversal algebra is exactly what needs checking at
+  the real width, and cocotb, not formal, is the tool for that. 32768 is
+  left to formal's structural checks plus the fact that 8192/16384
+  already exercise every stage-count the FSM has (13 and 14 stages;
+  32768's 15th stage is the same butterfly/ROM-addressing logic one
+  more time, not new code).
+- `hdl/formal/fft_engine.sby`: scoped to the TASKS.md ask (bit-reversal
+  address bound, butterfly arithmetic bound) plus FSM legality and
+  AXI4-S protocol — not transform correctness, cocotb's job. Two
+  performance fixes were needed beyond the usual `cutpoint t:$mul`
+  (same "none of these properties depend on a product's value"
+  reasoning as every other block): first, Yosys's Stage 1
+  flatten/elaborate pass stalled indefinitely on the twiddle ROM's
+  16384-entry `initial` block — a `` `ifndef FORMAL_SKIP_ROM_INIT ``
+  guard around that `` `include `` (defined via `-DFORMAL_SKIP_ROM_INIT`
+  only in `fft_engine.sby`'s `read_verilog`) skips populating actual ROM
+  content for the formal build only; none of the proved properties
+  depend on ROM values, only on addressing, so leaving those registers
+  free is sound. Second, even after that fix, the two work-RAM
+  `$mem_v2` cells (32768 x 32-bit, true dual port) still OOM'd z3 (~8GB,
+  cgroup-killed) partway through `engine_0.induction` — cutting them too
+  (`cutpoint t:$mul t:$mem_v2`) turned a proof that couldn't finish into
+  one that closes in single-digit seconds; sound for the same reason as
+  the ROM (no property reads RAM data, and `m_axis_tdata`'s one
+  data-dependent property only needs its own previous-cycle value to
+  stay equal, which holds under a free RAM read too since the register
+  simply isn't reassigned on a stalled cycle).
+- Two of the AXI4-S protocol properties were themselves wrong on the
+  first pass, both caught by the proof itself rather than by
+  inspection, worth recording since both are easy mistakes to repeat:
+  (1) comparing an address/counter against `fft_size_r_probe[ADDR_WIDTH
+  -1:0]` silently drops bit 15, so for FFT_32K (`16'h8000`) the RHS
+  truncates to 0 and the bound trivially fails — comparing against the
+  full-width `fft_size_r_probe` and letting Verilog zero-extend the
+  narrower LHS is the fix (the real RTL's own `fft_size_r[ADDR_WIDTH-1:0]
+  - 1'b1` equality checks are fine as-is: the same drop-to-0 then
+  `-1` wraps to exactly the right max index, a coincidence that only
+  works for equality-against-`size-1`, not a general `<` bound). (2)
+  `m_axis_tvalid == (state == ST_UNLOAD_EMIT)`, the same FSM-state-pin
+  idiom `timing_recovery.sby` needed to close induction, is not
+  uninductive here — it's simply false: `fft_engine.v` sets
+  `m_axis_tvalid <= 1` *from inside* `ST_UNLOAD_EMIT`'s own case
+  branch, so the registered value isn't visible until the following
+  cycle, by which point `state` has already advanced (to
+  `ST_UNLOAD_ADDR` mid-transform, or `ST_IDLE` on the last sample).
+  Confirmed empirically with a throwaway cocotb probe (not checked in)
+  before trusting it: free-running, `m_axis_tvalid` pulses for one
+  cycle per 3-cycle unload period coinciding with `state ==
+  ST_UNLOAD_ADDR`; under backpressure it instead holds at 1 for as long
+  as `state` stays at `ST_UNLOAD_EMIT`. No single state value
+  characterizes it. What's actually true regardless of history — every
+  path that sets or clears `m_axis_tvalid` is gated on `m_axis_tready`,
+  so it cannot change on a cycle where `m_axis_tready` is low — is what
+  the harness checks instead, alongside the pre-existing `m_axis_tdata`/
+  `m_axis_tlast` hold-steady-while-stalled properties (now joined by
+  "`m_axis_tvalid` itself can't retract," the AXI4-S rule those two were
+  already implicitly assuming). `s_axis_tready == (state ==
+  ST_LOAD)` remains a valid exact pin: `ST_IDLE` sets it one state
+  *before* entering `ST_LOAD`, so unlike `m_axis_tvalid` there's no
+  same-cycle visibility lag. `cover` reaches `ST_LOAD` and
+  `cfg_fft_size_invalid`; deeper goals (`m_axis_tvalid`, a completed
+  unload) are left to cocotb, same reasoning as every other block's
+  `.sby`.
 
 ### 9.5 Pilot Extraction + Frequency Correction RTL [ ]
 - [ ] `pilot_extractor.cc`'s `estimate_channel()` core is already clean
