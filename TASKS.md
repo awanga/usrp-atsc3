@@ -607,10 +607,49 @@ below holds the same bit-exact bar against its C++ reference.
 - [ ] AXI4-S `ci16` in/out; cocotb timing-offset sweep; formal: phase
       accumulator wrap behavior, AXI4-S protocol properties
 
-### 9.3 CP Removal RTL [ ]
-- [ ] Counter vs. CP-length register, gates `TVALID`; no numerical
+### 9.3 CP Removal RTL [x]
+- [x] Counter vs. CP-length register, gates `TVALID`; no numerical
       content to diverge on — cocotb covers all 11 CP fractions
       bit-exact; formal: counter never exceeds the max defined length
+
+#### Implementation Notes
+- `hdl/rtl/ofdm/cp_removal.v`: a pure position counter, no TDATA
+  arithmetic at all. Streams straight through (TREADY held high and
+  samples dropped during the CP; wired to the downstream TREADY and
+  passed through during the FFT portion) rather than porting
+  `CpRemoval::process()`'s whole-symbol buffering — both emit the
+  identical value sequence and TLAST framing, just at different latency,
+  the same kind of freedom `bootstrap_detector.v` takes against its own
+  golden model.
+- `cp_length = cp_fraction_numerator * (fft_size >> 13)` is an exact
+  integer multiply (fft_size is always a multiple of 8192 for the three
+  defined sizes) — no divider anywhere in this block.
+- Config (FFT_SIZE, CP_LENGTH) is validated, clamped, and **latched at
+  reset**, not read live — matching `bootstrap_detector.v`'s
+  `cfg_averaging_window`/`win_n` pattern. This isn't just style
+  consistency: with a live config, the "counter never exceeds the max
+  defined length" property isn't provable (an adversarial config change
+  could shrink `symbol_len` below the current `cnt` with no clock edge in
+  between) — latching at reset makes it a genuine invariant.
+- `hdl/sim/golden/cp_removal_gen.cc`: golden-vector CLI linking the real
+  `atsc3_lib`, grouping its output by completed symbol (not per-sample)
+  since the C++ callback fires once per whole symbol.
+- `hdl/sim/cocotb/test_cp_removal.py`: all 11 `CpFraction` values at
+  FFT_8K, `FFT_16K` to exercise the `numerator * scale` multiply,
+  multi-symbol continuity, and randomized backpressure on both sides —
+  bit-exact against the golden CLI in every case.
+- `hdl/formal/cp_removal.sby`: `mode prove` (BMC + k-induction) with
+  plain `smtbmc z3`, no multiplier cutting or ABC PDR needed — the
+  13x3-bit multiply here is far smaller than `bootstrap_detector`'s
+  64-bit datapath. Proves the counter bound, clamp correctness, reset
+  behavior, and the AXI4-S framing rule; `cover` reaches every property
+  except "completed a whole symbol" (needs a BMC trace hundreds to tens
+  of thousands of cycles deep for the smallest real CP fraction —
+  impractical to unroll, and cocotb already demonstrates it concretely
+  at full scale). A wraparound-removal mutant confirmed the counter-bound
+  property is load-bearing and that `mode prove` (not bare `mode bmc`) is
+  needed: the mutant still passes BMC's depth-20 base case but correctly
+  fails k-induction.
 
 ### 9.4 FFT Engine RTL [ ]
 - [ ] Memory-based in-place radix-2 DIT, shared 16384-entry twiddle ROM,
