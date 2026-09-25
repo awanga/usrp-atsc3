@@ -98,6 +98,23 @@ def test_timing_recovery():
     )
 
 
+def test_fft_engine():
+    runner = get_runner("verilator")
+    runner.build(
+        verilog_sources=[RTL_OFDM / "fft_engine.v"],
+        includes=[RTL_INCLUDE, RTL_OFDM],
+        hdl_toplevel="fft_engine",
+        build_dir=SIM_BUILD / "fft_engine",
+        always=True,
+        build_args=["-Wall"],
+    )
+    runner.test(
+        hdl_toplevel="fft_engine",
+        test_module="test_fft_engine",
+        build_dir=SIM_BUILD / "fft_engine",
+    )
+
+
 def test_cp_removal():
     runner = get_runner("verilator")
     runner.build(

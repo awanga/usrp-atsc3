@@ -1,0 +1,75 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+# Stage 1: elaborate fft_engine_bare (a plain single-instance wrapper
+# around fft_engine), flatten it, and expose the internal control
+# registers the white-box checks in fft_engine_formal.v need as ordinary
+# output ports. See hdl/docs/formal_conventions.md for why this
+# flatten+expose flow replaces a `bind`-based checker.
+#
+# FORMAL_SKIP_ROM_INIT skips the twiddle ROM's 16384-entry `initial`
+# load (see fft_engine.v) -- none of the properties proved here depend
+# on ROM *values* (only on control-flow and addressing, and the
+# complex multiply that consumes the ROM is itself cut below), and
+# populating all 16384 entries was the dominant cost in Yosys's
+# Stage 1 elaboration/flatten pass.
+read_verilog -formal -I. -DFORMAL_SKIP_ROM_INIT fft_engine.v
+read_verilog -formal -I. fft_engine_bare.v
+hierarchy -top fft_engine_bare
+proc
+flatten
+expose -dff w:\dut.state w:\dut.stage w:\dut.bfly_idx w:\dut.sample_cnt w:\dut.log2_n_r w:\dut.fft_size_r
+write_verilog gen_fft_engine_bare.v
+
+# Stage 2: reset the design and re-elaborate from the generated,
+# now-exposed fft_engine_bare plus the actual formal harness top, which
+# instantiates it and asserts/covers against the exposed probes.
+design -reset
+read_verilog -formal -I. gen_fft_engine_bare.v
+read_verilog -formal -I. fft_engine_formal.v
+prep -top fft_engine_formal
+
+# None of the proved properties depend on a butterfly's numeric result
+# (only on which addresses it touches), so cutting the twiddle complex
+# multiply is a sound over-approximation here -- the same reasoning
+# bootstrap_detector.sby and timing_recovery.sby use, needed for the
+# same reason (this block's twiddle multiply is 16x16-bit, wide enough
+# to be worth cutting rather than finding out the hard way it stalls
+# smtbmc).
+#
+# Same reasoning applies to the work RAM (two $mem_v2 cells, 32768 x
+# 32-bit each, true dual port): every proved property is an address/
+# control-flow bound recomputed independently in fft_engine_formal.v,
+# none of them read work_re/work_im's actual contents, and the DUT's
+# own FSM never branches on RAM data either (this block, like
+# cp_removal and timing_recovery, is a fixed sequential counter walk --
+# see hdl/docs/formal_conventions.md's "Datapath-heavy blocks" section).
+# The one place RAM data reaches a checked property -- m_axis_tdata
+# must hold steady while m_axis_tready is low -- only needs equality
+# with its own previous cycle, which a free value still satisfies
+# because m_axis_tdata is a register that simply isn't re-assigned on a
+# stalled cycle. Cutting both $mem_v2 array reasoning out is what
+# turned this from an OOM (~8GB, two z3 processes each modeling a
+# 32768-entry symbolic array over the same BMC/induction depth used for
+# every other block) into a proof that actually finishes -- confirmed
+# empirically: this exact model OOM-killed z3 (cgroup memory limit)
+# ~9 minutes into engine_0.induction before this cutpoint was added.
+cutpoint t:$mul t:$mem_v2
+opt_clean
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+fft_twiddles.vh ../rtl/ofdm/fft_twiddles.vh
+fft_engine.v ../rtl/ofdm/fft_engine.v
+fft_engine_bare.v
+fft_engine_formal.v
