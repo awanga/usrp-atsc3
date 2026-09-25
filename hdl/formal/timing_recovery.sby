@@ -1,0 +1,54 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+# Stage 1: elaborate timing_recovery_bare (a plain single-instance
+# wrapper around timing_recovery, plus its polyphase_fir sub-core),
+# flatten it, and expose the internal state/mu_q16 registers the
+# white-box checks in timing_recovery_formal.v need as ordinary output
+# ports. See hdl/docs/formal_conventions.md for why this flatten+expose
+# flow replaces a `bind`-based checker.
+read_verilog -formal -I. polyphase_fir.v
+read_verilog -formal -I. timing_recovery.v
+read_verilog -formal -I. timing_recovery_bare.v
+hierarchy -top timing_recovery_bare
+proc
+flatten
+expose -dff w:\dut.state w:\dut.mu_q16
+write_verilog gen_timing_recovery_bare.v
+
+# Stage 2: reset the design and re-elaborate from the generated,
+# now-exposed timing_recovery_bare plus the actual formal harness top,
+# which instantiates it and asserts/covers against the exposed probes.
+design -reset
+read_verilog -formal -I. gen_timing_recovery_bare.v
+read_verilog -formal -I. timing_recovery_formal.v
+prep -top timing_recovery_formal
+
+# Every property here is control/protocol-only (FSM legality, AXI4-S
+# handshake, and a *structural* cross-check of the mu_q16 reset
+# derivation that doesn't depend on any product's value) -- none depends
+# on the polyphase FIR's MAC result or the loop filter's kp/ki products,
+# so cutting multipliers is a sound over-approximation here (same
+# reasoning as bootstrap_detector.sby) and keeps smtbmc/z3 from stalling
+# on the 16x16 and 16x64 multiplies this block has that cp_removal.sby's
+# much smaller 13x3 multiply didn't need cut.
+cutpoint t:$mul
+opt_clean
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+timing_recovery_coeffs.vh ../rtl/sync/timing_recovery_coeffs.vh
+polyphase_fir.v ../rtl/sync/polyphase_fir.v
+timing_recovery.v ../rtl/sync/timing_recovery.v
+timing_recovery_bare.v
+timing_recovery_formal.v

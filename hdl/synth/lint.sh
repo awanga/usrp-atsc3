@@ -15,12 +15,22 @@ INCLUDE_DIR="$RTL_DIR/include"
 
 status=0
 shopt -s globstar nullglob
+
+# -y/+incdir+ for every immediate rtl/ subdirectory, not just common/: a
+# block can instantiate a shared core from rtl/common/ (cordic.v,
+# udiv_seq.v) or a same-directory sub-module (rtl/sync/polyphase_fir.v),
+# and `` `include `` a same-directory generated file (e.g.
+# rtl/sync/timing_recovery_coeffs.vh) -- all while still linting one file
+# at a time.
+search_args=("+incdir+$INCLUDE_DIR")
+for d in "$RTL_DIR"/*/; do
+    d="${d%/}"
+    search_args+=("-y" "$d" "+incdir+$d")
+done
+
 for f in "$RTL_DIR"/**/*.v; do
     echo "linting: ${f#"$HDL_ROOT"/}"
-    # -y lets blocks that instantiate shared cores (cordic.v, udiv_seq.v)
-    # resolve them from rtl/common/ while still linting one file at a time.
-    if ! verilator --lint-only --language 1364-2001 -Wall \
-            "+incdir+$INCLUDE_DIR" -y "$RTL_DIR/common" "$f"; then
+    if ! verilator --lint-only --language 1364-2001 -Wall "${search_args[@]}" "$f"; then
         status=1
     fi
 done

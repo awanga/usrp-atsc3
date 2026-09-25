@@ -601,11 +601,88 @@ below holds the same bit-exact bar against its C++ reference.
       (no divide-by-zero), detect/re-arm exclusivity, AXI4-S input/output
       exclusivity and output hold; non-vacuity confirmed by RTL mutants
 
-### 9.2 Timing Recovery RTL [ ]
-- [ ] 16-bank×32-tap polyphase FIR (ROM taps, MAC array) + Gardner TED
+### 9.2 Timing Recovery RTL [x]
+- [x] 16-bank×32-tap polyphase FIR (ROM taps, MAC array) + Gardner TED
       feedback loop, bit-exact vs. the 9.0b rewrite
-- [ ] AXI4-S `ci16` in/out; cocotb timing-offset sweep; formal: phase
+- [x] AXI4-S `ci16` in/out; cocotb timing-offset sweep; formal: phase
       accumulator wrap behavior, AXI4-S protocol properties
+
+#### Implementation Notes
+- `hdl/rtl/sync/polyphase_fir.v`: a shared, sequential (2 cycles/tap,
+  ~70 cycles/call) 32-tap MAC core reused for all four `interpolate()`
+  calls a symbol boundary needs (the emitted symbol plus the Gardner
+  TED's curr/mid/prev), the same "correctness first, pipeline later"
+  policy `bootstrap_detector.v` documents (9.17 timing-closure work).
+  Coefficient ROM (`timing_recovery_coeffs.vh`, generated) is dumped
+  directly from `PolyphaseInterpolator::get_coeffs()` — a new accessor
+  added to `lib/sync/timing_recovery.h` for exactly this — rather than
+  re-deriving the raised-cosine/Kaiser-window filter design in a
+  separate tool, so the ROM is guaranteed bit-exact to whatever the C++
+  actually computes, not just what it's supposed to.
+- `hdl/rtl/sync/timing_recovery.v`: owns the 128-entry circular sample
+  buffer and all persistent state (`buf_write_idx`/`buf_read_idx`/
+  `buf_count`, `mu_q16`, `timing_error_q15`, `loop_integrator_q15`),
+  matching the C++ class split exactly (`PolyphaseInterpolator::
+  interpolate()` takes a buffer pointer and index, owns neither).
+- `kp_q15`/`ki_q15` are taken as direct config registers rather than
+  re-derived in RTL from `loop_bandwidth_hz`/`loop_damping`/
+  `symbol_rate_hz` (`compute_loop_gains()`'s one-time, division-and-
+  multiply-heavy filter design) — the register-map-listed path, but the
+  same "designed once in double, quantized for storage" treatment the
+  polyphase ROM gets rather than genuinely synthesizable per-cycle
+  logic. New `get_kp_q15()`/`get_ki_q15()` accessors let the golden CLI
+  report what a given config actually produces, so cocotb configures
+  the RTL with the identical numbers.
+- Config (`kp_q15`, `ki_q15`, `samples_per_symbol`, `initial_offset`) is
+  latched at reset, not read live — same `cp_removal.v`/
+  `bootstrap_detector.v` pattern, same reason (a live config the FSM is
+  mid-boundary against isn't a golden-model behavior to match).
+  `cfg_locked` is the one config input read live: `set_locked()` is an
+  explicitly asynchronous runtime control in the C++ API (training vs.
+  tracking mode), not a reconfigure-only value.
+- `mu_q16` (Q0.16, wraps to [0,1) via plain unsigned overflow) is
+  initialized at reset from a Q1.15 `cfg_initial_offset_q15` via a
+  1-bit left shift ({value[14:0], 1'b0}) — reinterpreting the
+  twos-complement pattern as unsigned and doubling it is bit-exact to
+  the C++'s `wrapped = mu - floor(mu); mu_q16_ = uint16_t(wrapped *
+  65536)` for every possible 16-bit input, not just non-negative ones,
+  and the formal harness cross-checks this claim independently (see
+  below) rather than trusting the derivation by inspection alone.
+  Phase selection (mu_q16's top 4 bits, or (mu_q16+0x8000)'s top 4 bits
+  for the Gardner TED's mid-point) is exact because num_phases=16 is a
+  power of 2.
+- Found by cocotb, not by construction: an early version zero-extended
+  (`{1'b0, x_curr_re}`) rather than sign-extended the Gardner TED's
+  `x_curr - x_prev`/`x_mid` operands, silently reinterpreting negative
+  interpolator outputs as large positive values. All scenarios that
+  never engage the loop filter (`cfg_locked=0`) passed regardless;
+  every scenario that does diverged from the golden model starting at
+  the very first update. Fixed by using plain signed subtraction on the
+  already-`reg signed` operands and letting Verilog's context-determined
+  sign extension handle the width, instead of a manual (and wrong)
+  concatenation.
+- `hdl/formal/timing_recovery.sby`: scoped to exactly the TASKS.md ask
+  (phase-accumulator wrap, AXI4-S protocol), not an exhaustive proof of
+  the 15-state control FSM or the FIR's arithmetic (cocotb's job, at
+  real width, against the real golden model). `s_axis_tready`/
+  `m_axis_tvalid` are pinned to their exact controlling FSM state
+  (ST_IDLE / ST_OUTPUT) rather than stated as purely temporal
+  properties — the weaker temporal forms are true but were not
+  themselves inductive (k-induction found an unreachable predecessor,
+  `m_axis_tvalid=1` while `state==ST_CLEAR`, that nothing in the RTL
+  would ever clear); pinning to state first, then deriving stability
+  from that, closes the proof. The phase-accumulator-wrap property is
+  an independent cross-check (a second, differently-computed reference)
+  of the mu_q16 reset derivation, not a re-read of the DUT's own
+  formula. Despite the polyphase FIR's and loop filter's multiplies
+  (cut, sound for these control/protocol-only properties, same
+  reasoning as `bootstrap_detector.sby`), plain `smtbmc z3` closes this
+  in a few seconds — no need for ABC PDR here. `cover` excludes
+  `s_axis_tready`/`m_axis_tvalid`/`mon_valid` (reaching any of them
+  needs the reset-time 128-cycle buffer-clear sweep to finish first,
+  well past any practical BMC depth) — the same reasoning
+  `cp_removal.sby`'s excluded cover goal documents; cocotb exercises
+  all three concretely, repeatedly, at full scale.
 
 ### 9.3 CP Removal RTL [x]
 - [x] Counter vs. CP-length register, gates `TVALID`; no numerical

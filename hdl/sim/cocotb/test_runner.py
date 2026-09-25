@@ -78,6 +78,26 @@ def test_bootstrap_detector():
     )
 
 
+def test_timing_recovery():
+    runner = get_runner("verilator")
+    runner.build(
+        verilog_sources=[
+            RTL_SYNC / "timing_recovery.v",
+            RTL_SYNC / "polyphase_fir.v",
+        ],
+        includes=[RTL_INCLUDE, RTL_SYNC],
+        hdl_toplevel="timing_recovery",
+        build_dir=SIM_BUILD / "timing_recovery",
+        always=True,
+        build_args=["-Wall"],
+    )
+    runner.test(
+        hdl_toplevel="timing_recovery",
+        test_module="test_timing_recovery",
+        build_dir=SIM_BUILD / "timing_recovery",
+    )
+
+
 def test_cp_removal():
     runner = get_runner("verilator")
     runner.build(
