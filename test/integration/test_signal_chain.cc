@@ -33,6 +33,27 @@ const std::string kCapturesDir = std::string(SOURCE_DIR) + "/test/captures";
 // We auto-detect from filename or default to 6.25 MS/s
 constexpr double kDefaultSampleRate = 6.25e6;
 
+// IQSource::read() always fills std::complex<float> (see iq_source.h) --
+// reinterpret_cast-ing a sample_t* buffer to std::complex<float>* and
+// passing it straight through only happens to work in the float build,
+// where sample_t IS std::complex<float>. In the fixed-point build
+// sample_t is std::complex<int16_t> (half the size), so that cast makes
+// read() write float-sized samples into an int16-sized buffer -- a 2x
+// heap overflow, silent until something downstream corrupts (seen as
+// "malloc(): corrupted top size" / SIGSEGV in ctest, not at the call
+// site itself). Reading into a same-count std::complex<float> staging
+// buffer and converting through the real, shared from_complex_float()
+// (types.h) is correct in both builds, and an identity copy in the
+// float one.
+size_t read_samples(hal::IQSource& source, sample_t* out, size_t n) {
+    std::vector<std::complex<float>> staging(n);
+    size_t got = source.read(staging.data(), n);
+    for (size_t i = 0; i < got; ++i) {
+        out[i] = from_complex_float(staging[i]);
+    }
+    return got;
+}
+
 // True if path is an un-fetched git-lfs pointer (a ~130-byte text stub)
 // rather than real IQ data. Reading one as samples yields garbage, so
 // such captures are skipped with an explicit `git lfs pull` hint instead.
@@ -142,7 +163,7 @@ TEST_F(SignalChainTest, BootstrapDetectionOnCapture) {
     size_t total_samples = 0;
 
     while (total_samples < kMaxSamples && !detected) {
-        size_t n = source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+        size_t n = read_samples(*source, buf.data(), buf.size());
         if (n == 0) {
             break;  // EOF
         }

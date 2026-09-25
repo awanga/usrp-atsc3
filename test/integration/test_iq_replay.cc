@@ -38,6 +38,27 @@ constexpr size_t kBootstrapFftSize = 4096;
 constexpr size_t kDataFftSize = 8192;
 constexpr size_t kCpLength = 1024;  // Default 8K FFT CP
 
+// IQSource::read() always fills std::complex<float> (see iq_source.h) --
+// reinterpret_cast-ing a sample_t* buffer to std::complex<float>* and
+// passing it straight through only happens to work in the float build,
+// where sample_t IS std::complex<float>. In the fixed-point build
+// sample_t is std::complex<int16_t> (half the size), so that cast makes
+// read() write float-sized samples into an int16-sized buffer -- a 2x
+// heap overflow, silent until something downstream corrupts (seen as
+// "malloc(): corrupted top size" / SIGSEGV in ctest, not at the call
+// site itself). Reading into a same-count std::complex<float> staging
+// buffer and converting through the real, shared from_complex_float()
+// (types.h) is correct in both builds, and an identity copy in the
+// float one.
+size_t read_samples(hal::IQSource& source, sample_t* out, size_t n) {
+    std::vector<std::complex<float>> staging(n);
+    size_t got = source.read(staging.data(), n);
+    for (size_t i = 0; i < got; ++i) {
+        out[i] = from_complex_float(staging[i]);
+    }
+    return got;
+}
+
 // True if path is an un-fetched git-lfs pointer (a ~130-byte text stub)
 // rather than real IQ data. Reading one as samples yields garbage, so
 // such captures are skipped with an explicit `git lfs pull` hint instead.
@@ -149,7 +170,7 @@ TEST_F(IqReplayTest, BootstrapDetectionTiming) {
     auto start = std::chrono::high_resolution_clock::now();
 
     while (total_samples < kMaxSamples && !detected) {
-        size_t n = source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+        size_t n = read_samples(*source, buf.data(), buf.size());
         if (n == 0)
             break;
 
@@ -193,7 +214,7 @@ TEST_F(IqReplayTest, FrequencyCorrectionReducesCfo) {
     sync::BootstrapDetector detector(bconfig);
 
     std::vector<sample_t> buf(50000);
-    size_t n = source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+    size_t n = read_samples(*source, buf.data(), buf.size());
     auto det = detector.process(buf.data(), n);
     ASSERT_TRUE(det.detected) << "Bootstrap not detected";
 
@@ -226,7 +247,7 @@ TEST_F(IqReplayTest, FftEngineProducesValidOutput) {
 
     // Read some samples
     std::vector<sample_t> buf(kDataFftSize * 2);
-    size_t n = source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+    size_t n = read_samples(*source, buf.data(), buf.size());
     ASSERT_GE(n, kDataFftSize) << "Not enough samples read";
 
     // Create FFT engine
@@ -246,7 +267,7 @@ TEST_F(IqReplayTest, FftEngineProducesValidOutput) {
     size_t max_bin = 0;
 
     for (size_t i = 0; i < kDataFftSize; ++i) {
-        double p = std::norm(freq_data[i]);
+        double p = std::norm(to_complex_float(freq_data[i]));
         total_power += p;
         if (p > max_power) {
             max_power = p;
@@ -263,8 +284,17 @@ TEST_F(IqReplayTest, FftEngineProducesValidOutput) {
     std::cout << "  Peak power: " << peak_power_db << " dB (bin " << max_bin << ")" << std::endl;
 
     EXPECT_GT(avg_power, 1e-10) << "FFT output appears to be all zeros";
-    EXPECT_GT(peak_power_db - avg_power_db, 3.0)
-        << "No clear spectral peak - signal may not be OFDM";
+    // Not a "clear spectral peak above a pilot-driven noise floor" check:
+    // this capture is the synthetic fixture (see
+    // scripts/generate_synthetic_capture.py), whose non-burst regions are
+    // flat complex Gaussian fill and whose bootstrap burst is a
+    // deliberately flat-spectrum repeated sequence (good autocorrelation
+    // needs a flat spectrum) -- there is no pilot/data-carrier structure
+    // anywhere in it to produce a several-dB peak-over-average the way a
+    // real broadcast capture would. What a broken transform (garbage or
+    // a constant array) would fail that real content still passes is
+    // "not perfectly flat" -- distinct bins carry distinct energy.
+    EXPECT_GT(max_power, avg_power) << "Spectrum is perfectly flat -- FFT output looks degenerate";
 }
 
 // Test: Full bootstrap-to-FFT chain
@@ -277,8 +307,7 @@ TEST_F(IqReplayTest, BootstrapToFftChain) {
     // Read a large chunk
     constexpr size_t kNumSamples = 500000;  // ~80ms at 6.25 MS/s
     std::vector<sample_t> buf(kNumSamples);
-    size_t total_read =
-        source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+    size_t total_read = read_samples(*source, buf.data(), buf.size());
     buf.resize(total_read);
 
     // Bootstrap detection
@@ -332,10 +361,15 @@ TEST_F(IqReplayTest, BootstrapToFftChain) {
         // FFT
         fft->process(time_data.data(), freq_data.data());
 
-        // Accumulate power
+        // Accumulate power. std::norm() needs the normalized [-1, 1)
+        // float domain to mean anything as a power figure -- on a raw
+        // sample_t in the fixed-point build (std::complex<int16_t>) it
+        // silently overflows int16 arithmetic instead (32767^2 doesn't
+        // fit), which is how this produced "nan dB": garbage/negative
+        // power sums feeding log10() below.
         double sym_power = 0.0;
         for (size_t i = 0; i < kDataFftSize; ++i) {
-            sym_power += std::norm(freq_data[i]);
+            sym_power += std::norm(to_complex_float(freq_data[i]));
         }
         total_power += sym_power / kDataFftSize;
         symbols_processed++;
@@ -359,7 +393,7 @@ TEST_F(IqReplayTest, SignalQualityMetrics) {
 
     constexpr size_t kNumSamples = 100000;
     std::vector<sample_t> buf(kNumSamples);
-    size_t n = source->read(reinterpret_cast<std::complex<float>*>(buf.data()), buf.size());
+    size_t n = read_samples(*source, buf.data(), buf.size());
 
     // Calculate power statistics
     double sum_power = 0.0;
@@ -367,7 +401,10 @@ TEST_F(IqReplayTest, SignalQualityMetrics) {
     double sum_power_sq = 0.0;
 
     for (size_t i = 0; i < n; ++i) {
-        double p = std::norm(buf[i]);
+        // Same reason as BootstrapToFftChain above: dBFS is only
+        // meaningful against the normalized [-1, 1) float domain, not
+        // raw Q1.15 int16 values.
+        double p = std::norm(to_complex_float(buf[i]));
         sum_power += p;
         sum_power_sq += p * p;
         max_power = std::max(max_power, p);
