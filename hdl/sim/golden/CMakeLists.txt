@@ -13,3 +13,6 @@ target_link_libraries(bootstrap_gen atsc3_lib)
 
 add_executable(cp_removal_gen cp_removal_gen.cc)
 target_link_libraries(cp_removal_gen atsc3_lib)
+
+add_executable(timing_recovery_gen timing_recovery_gen.cc)
+target_link_libraries(timing_recovery_gen atsc3_lib)
