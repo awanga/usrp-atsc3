@@ -10,3 +10,6 @@ target_link_libraries(cordic_gen atsc3_lib)
 
 add_executable(bootstrap_gen bootstrap_gen.cc)
 target_link_libraries(bootstrap_gen atsc3_lib)
+
+add_executable(cp_removal_gen cp_removal_gen.cc)
+target_link_libraries(cp_removal_gen atsc3_lib)

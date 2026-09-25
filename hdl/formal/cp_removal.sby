@@ -1,0 +1,46 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+# Stage 1: elaborate cp_removal_bare (a plain single-instance wrapper
+# around cp_removal), flatten it, and expose the internal
+# latched-config/position registers the white-box checks in
+# cp_removal_formal.v need (cnt, fft_size_r, cp_numerator_r) as ordinary
+# output ports. See hdl/docs/formal_conventions.md for why this
+# flatten+expose flow replaces a `bind`-based checker.
+read_verilog -formal -I. cp_removal.v
+read_verilog -formal -I. cp_removal_bare.v
+hierarchy -top cp_removal_bare
+proc
+flatten
+expose -dff w:\dut.cnt w:\dut.fft_size_r w:\dut.cp_numerator_r
+write_verilog gen_cp_removal_bare.v
+
+# Stage 2: reset the design and re-elaborate from the generated,
+# now-exposed cp_removal_bare plus the actual formal harness top, which
+# instantiates it and asserts/covers against the exposed probes.
+design -reset
+read_verilog -formal -I. gen_cp_removal_bare.v
+read_verilog -formal -I. cp_removal_formal.v
+prep -top cp_removal_formal
+
+# cp_removal's only arithmetic is a 13x3-bit multiply (cp_numerator_r *
+# fft_scale) and 16-bit compares/adds -- far smaller than
+# bootstrap_detector's 64-bit datapath, so unlike that block this proof
+# does not need `cutpoint t:$mul` or ABC PDR; plain smtbmc k-induction
+# closes it directly.
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+cp_removal.v ../rtl/ofdm/cp_removal.v
+cp_removal_bare.v
+cp_removal_formal.v

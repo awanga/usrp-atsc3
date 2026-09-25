@@ -14,6 +14,7 @@ HDL_ROOT = pathlib.Path(__file__).resolve().parents[2]
 RTL_INCLUDE = HDL_ROOT / "rtl" / "include"
 RTL_COMMON = HDL_ROOT / "rtl" / "common"
 RTL_SYNC = HDL_ROOT / "rtl" / "sync"
+RTL_OFDM = HDL_ROOT / "rtl" / "ofdm"
 SIM_BUILD = HDL_ROOT / "sim" / "cocotb" / "sim_build"
 
 
@@ -74,4 +75,21 @@ def test_bootstrap_detector():
         hdl_toplevel="bootstrap_detector",
         test_module="test_bootstrap_detector",
         build_dir=SIM_BUILD / "bootstrap_detector",
+    )
+
+
+def test_cp_removal():
+    runner = get_runner("verilator")
+    runner.build(
+        verilog_sources=[RTL_OFDM / "cp_removal.v"],
+        includes=[RTL_INCLUDE],
+        hdl_toplevel="cp_removal",
+        build_dir=SIM_BUILD / "cp_removal",
+        always=True,
+        build_args=["-Wall"],
+    )
+    runner.test(
+        hdl_toplevel="cp_removal",
+        test_module="test_cp_removal",
+        build_dir=SIM_BUILD / "cp_removal",
     )
