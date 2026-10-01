@@ -26,7 +26,7 @@ read_verilog -formal -I. fft_engine_bare.v
 hierarchy -top fft_engine_bare
 proc
 flatten
-expose -dff w:\dut.state w:\dut.stage w:\dut.bfly_idx w:\dut.sample_cnt w:\dut.log2_n_r w:\dut.fft_size_r
+expose -dff w:\dut.state w:\dut.stage w:\dut.bfly_idx w:\dut.sample_cnt w:\dut.log2_n_r w:\dut.fft_size_r w:\dut.ram_we_a w:\dut.ram_addr_a w:\dut.ram_wdata_a_re w:\dut.ram_wdata_a_im
 write_verilog gen_fft_engine_bare.v
 
 # Stage 2: reset the design and re-elaborate from the generated,
@@ -38,30 +38,11 @@ read_verilog -formal -I. fft_engine_formal.v
 prep -top fft_engine_formal
 
 # None of the proved properties depend on a butterfly's numeric result
-# (only on which addresses it touches), so cutting the twiddle complex
-# multiply is a sound over-approximation here -- the same reasoning
-# bootstrap_detector.sby and timing_recovery.sby use, needed for the
-# same reason (this block's twiddle multiply is 16x16-bit, wide enough
-# to be worth cutting rather than finding out the hard way it stalls
-# smtbmc).
-#
-# Same reasoning applies to the work RAM (two $mem_v2 cells, 32768 x
-# 32-bit each, true dual port): every proved property is an address/
-# control-flow bound recomputed independently in fft_engine_formal.v,
-# none of them read work_re/work_im's actual contents, and the DUT's
-# own FSM never branches on RAM data either (this block, like
-# cp_removal and timing_recovery, is a fixed sequential counter walk --
-# see hdl/docs/formal_conventions.md's "Datapath-heavy blocks" section).
-# The one place RAM data reaches a checked property -- m_axis_tdata
-# must hold steady while m_axis_tready is low -- only needs equality
-# with its own previous cycle, which a free value still satisfies
-# because m_axis_tdata is a register that simply isn't re-assigned on a
-# stalled cycle. Cutting both $mem_v2 array reasoning out is what
-# turned this from an OOM (~8GB, two z3 processes each modeling a
-# 32768-entry symbolic array over the same BMC/induction depth used for
-# every other block) into a proof that actually finishes -- confirmed
-# empirically: this exact model OOM-killed z3 (cgroup memory limit)
-# ~9 minutes into engine_0.induction before this cutpoint was added.
+# or on work-RAM contents (only on addresses, control flow and the data
+# written on load, which is checked at the RAM write port), so cutting the
+# twiddle multiply and both 32768-entry $mem_v2 cells is a sound
+# over-approximation. Without the memory cut z3 runs out of memory
+# (~8 GB) during induction.
 cutpoint t:$mul t:$mem_v2
 opt_clean
 

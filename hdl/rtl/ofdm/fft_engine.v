@@ -9,9 +9,8 @@
 // RTL hardcodes the forward-direction twiddle sign and the C++'s
 // unconditional (non-normalizing) output path; there is no cfg_direction
 // port. FFT_SIZE is one of {8192, 16384, 32768}: bootstrap correlation
-// is always 4K and uses its own dedicated correlator
-// (bootstrap_detector.v), never this engine (CLAUDE.md Common
-// Pitfalls) -- see axi4s_types.vh's `ATSC3_FFT_4K` comment.
+// is always 4K OFDM and uses its own correlator (bootstrap_detector.v),
+// never this engine.
 //
 // Algorithm (mirrors process()/cooley_tukey_dit() exactly):
 //   1. Load: each of FFT_SIZE input samples is written directly to its
@@ -30,7 +29,7 @@
 //      order, saturated to int16 at the I/O boundary, exactly like the
 //      C++'s non-normalizing output path.
 //
-// Shared 16384-entry twiddle ROM (TASKS.md's 9.4 spec): rather than one
+// Shared 16384-entry twiddle ROM: rather than one
 // table per FFT_SIZE, a single table sized for the largest size (32768,
 // needing FFT_SIZE/2 = 16384 unique twiddle values) serves every size.
 // For a stage numbered the same way regardless of FFT_SIZE (m = 2^stage,
@@ -46,17 +45,24 @@
 // transform) places the reversed low log2(FFT_SIZE) bits at the *top*
 // of the 15-bit result, offset by exactly (15 - log2(FFT_SIZE)) bits
 // from where a native log2(FFT_SIZE)-bit reversal would put them -- the
-// same shift-cancellation as the ROM addressing above, worked out by
-// hand and cross-checked by the formal proof (see fft_engine.sby).
+// same shift-cancellation as the ROM addressing above (the formal
+// harness checks every load address against an independently written
+// reversal).
 //
 // RAM: one 32768-entry, 64-bit-wide (complex int32) true dual-port
 // block, both ports usable for either a read or a write each cycle --
 // a real (if large) on-chip memory resource, not a modeling shortcut.
 // Each butterfly costs 3 cycles (address both operands; multiply-
-// accumulate once data is valid; write both results), a streaming R2SDF
-// pipeline is explicitly out of scope for this milestone (TASKS.md);
-// correctness first, per the same policy bootstrap_detector.v and
-// timing_recovery.v document (9.17 timing-closure work).
+// accumulate once data is valid; write both results). Not pipelined:
+// correctness first, as in bootstrap_detector.v; a streaming R2SDF
+// architecture is later throughput work.
+//
+// Handshake and latency: s_axis_tready is high only while loading (state
+// ST_LOAD), so a transform accepts exactly FFT_SIZE beats and then holds
+// off input until its output has been issued. m_axis_tvalid/tdata/tlast
+// hold until accepted. With input and output never stalling, a transform
+// takes FFT_SIZE (load) + 3 * FFT_SIZE/2 * log2(FFT_SIZE) (butterflies)
+// + 3 * FFT_SIZE (unload) cycles: about 192.5k for 8K.
 //
 // Config (FFT_SIZE) is validated, clamped, and latched at reset, the
 // same cp_removal.v/timing_recovery.v pattern and the same reason (the
@@ -347,23 +353,9 @@ module fft_engine #(
                 end
 
                 // Every sample goes through the same 3-cycle ADDR/WAIT/
-                // EMIT sequence as a butterfly's ADDR/READ/WRITE -- an
-                // address needs a full settled cycle before
-                // ram_rdata_a reflects it. An earlier version of this
-                // loop set up sample_cnt+1's address from inside
-                // ST_UNLOAD_EMIT and looped straight back into itself
-                // with no settling cycle in between (correct only for
-                // the *first* sample, whose ST_UNLOAD_ADDR->ST_UNLOAD_
-                // WAIT->ST_UNLOAD_EMIT path does have one), silently
-                // emitting sample_cnt-1's data as sample_cnt for every
-                // sample after the first. Caught by test_fft_engine.py's
-                // random scenarios, traced to ground with a hand-
-                // computed small-N (N=8) reference after the first,
-                // narrower fix (which only added the missing cycle to
-                // the first sample) turned "everything shifted by one"
-                // into "index 0 is right, index 1 duplicates it, then
-                // shifted by one again from there" -- the signature of
-                // the same missing-cycle bug still present in the loop.
+                // EMIT sequence as a butterfly's ADDR/READ/WRITE: an
+                // address needs a full settled cycle before ram_rdata_a
+                // reflects it, on every iteration, not just the first.
                 ST_UNLOAD_ADDR: begin
                     ram_addr_a <= sample_cnt;
                     state      <= ST_UNLOAD_WAIT;
