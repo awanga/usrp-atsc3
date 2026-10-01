@@ -29,11 +29,9 @@ else()
     message(WARNING "SymbiYosys (sby) not found - HDL formal verification will be unavailable")
 endif()
 
-# cocotb runs from its own project-local venv (see hdl/docs/toolchain.md);
-# not wired as a CMake target since pytest's own discovery already covers
-# hdl/sim/cocotb/test_runner.py, and neither cocotb nor SymbiYosys benefit
-# from CMake's C/C++-oriented build-graph model. Invoke directly:
-#   hdl/sim/cocotb/.venv/bin/python -m pytest hdl/sim/cocotb/test_runner.py
+# Simulation, synthesis, formal and mutant checks run from their own
+# scripts, not CMake targets (see hdl/docs/toolchain.md). The whole gate:
+#   hdl/run_all.sh [--mutants]
 
 # Golden-vector CLIs (link the real atsc3_lib; cocotb shells out to these
 # rather than reimplementing the golden model in Python).
