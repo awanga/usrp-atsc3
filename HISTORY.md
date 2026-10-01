@@ -66,6 +66,28 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   are specific to integer arithmetic.
 - **Next:** pilot extraction + frequency correction RTL (TASKS.md).
 
+## 2026-10-01 — Licensing and synthetic capture fixtures
+
+- **Decision:** MPL-2.0 for software, CERN-OHL-W-2.0 for HDL design
+  sources, CC-BY-4.0 for docs, DCO for contributions. NUC tables are
+  generated from ATSC A/322:2018 Annex C instead of copied from a GPL-3.0
+  project. Float FFT: FFTW when found (faster), else a built-in radix-2
+  engine; `-DATSC3_USE_FFTW=OFF` gives a GPL-free `lib/`.
+- **Reason:** the owner wanted weak copyleft (free commercial use,
+  modifications published) that stays compatible with the GPL parts
+  (GNU Radio, UHD, FFTW). pocketfft was considered and rejected because
+  it allocates per transform.
+- **Status:** on `feature/licensing` (off `develop`, worktree
+  `../usrp-atsc3-licensing`, unpushed). The generated NUC tables are
+  identical to the old ones. The new FFT tests kill a twiddle-sign
+  mutant and an inverse-scale mutant. Float ctest there: 636/643 with
+  FFTW, 632/639 without; the 7 failures are the capture tests, which
+  read stale LFS pointers on `develop`. The synthetic capture fixtures
+  were committed on this branch, and the 11 capture tests pass in both
+  builds.
+- **Next:** README approval, then merge, then SPDX headers on this
+  branch after it rebases (TASKS.md Open).
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here
