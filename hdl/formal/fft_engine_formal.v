@@ -1,50 +1,33 @@
-// fft_engine_formal.v — Formal harness top for fft_engine
+// fft_engine_formal.v — Formal harness for fft_engine
 //
-// Verification-only. Not synthesized, not part of rtl/. Instantiates the
-// flatten+expose-generated fft_engine_bare (produced earlier in
-// fft_engine.sby's [script] -- see that file, fft_engine_bare.v, and
-// hdl/docs/formal_conventions.md for the two-stage flatten+expose flow
-// this replaces a `bind`-based checker with).
+// Main property (data integrity vs a ghost model, load path): input beat
+// k of a transform is written exactly once, sign-extended and otherwise
+// unmodified, to work-RAM address bitrev(k) over log2(FFT_SIZE) bits, with
+// the bit reversal written out per legal size rather than the RTL's
+// reverse-then-shift. The transform's
+// numeric result is not proved: the twiddle multiply and the work RAM
+// are cut (fft_engine.sby) to keep the 32K-entry memories tractable, so
+// butterfly values and RAM contents are free here. test_fft_engine.py
+// checks whole transforms bit-exact against lib/ofdm/fft_engine.cc at
+// 8K and 16K, including TLAST framing (pinning an output-beat ghost to
+// the unload FSM is not inductive without a pending-beat invariant that
+// no single FSM state expresses, so output framing is left to cocotb).
 //
-// Scoped to exactly TASKS.md's 9.4 formal ask -- "bit-reversal address
-// generator bounds, butterfly arithmetic [bounds]" -- plus FSM legality
-// and AXI4-S protocol, not a full proof of transform correctness
-// (cocotb's job, against the real golden model, at real FFT_SIZE; see
-// test_fft_engine.py, which found and pinned down a real off-by-one in
-// the unload read pipeline that these address-bound properties, being
-// purely structural, would never have caught).
+// Supplementary (structural bounds, recomputed from the exposed
+// registers): FSM legality; fft_size_r one of {8K, 16K, 32K} with the
+// matching log2_n_r; sample_cnt, bfly_idx and stage in range; the RTL's
+// load address below fft_size_r; idx_even/idx_odd in range and distinct
+// (a same-stage collision would corrupt the in-place transform);
+// s_axis_tready pinned to ST_LOAD; AXI4-S output stability.
 //
-// All of bitrev_addr / idx_even / idx_odd / tw_addr are recomputed here
-// from the exposed registers (fft_size_r, log2_n_r, stage, bfly_idx,
-// sample_cnt) using the same formulas fft_engine.v uses -- an
-// independent restatement, not a re-read of the DUT's own wires, so the
-// proof checks the *formulas*, not just that the RTL agrees with
-// itself.
+// Assumptions: only that the first cycle is a reset. Configuration is
+// latched at reset, so cfg_fft_size is left free.
 //
-// Properties:
-//   - FSM legality: state is always one of the 8 defined encodings.
-//   - fft_size_r is always one of {8K, 16K, 32K}; log2_n_r matches it
-//     exactly (13/14/15).
-//   - sample_cnt < fft_size_r; bfly_idx < fft_size_r/2; stage is in
-//     [1, log2_n_r] whenever a butterfly state is active.
-//   - bitrev_addr < fft_size_r always (the bit-reversal address
-//     generator bound).
-//   - idx_even < fft_size_r, idx_odd < fft_size_r, and idx_even !=
-//     idx_odd always (the butterfly arithmetic bound -- a same-stage
-//     collision would silently corrupt the in-place transform).
-//   - s_axis_tready / m_axis_tvalid pinned to their exact controlling
-//     FSM state (ST_LOAD / ST_UNLOAD_EMIT), the same reason
-//     timing_recovery_formal.v does this rather than a purely temporal
-//     stability statement (k-induction needs the FSM-state anchor to
-//     close, not just the symptom).
+// Bounds: depth 20 covers the load-path property (accept -> RAM write
+// is one cycle; cover: a load write at a nonzero index). Output events
+// need a full 8K transform, far past any BMC depth.
 //
-// The twiddle complex multiply is cut (`cutpoint t:$mul` in
-// fft_engine.sby): none of the properties above depend on a butterfly's
-// numeric *result*, only on which addresses it touches, so this is a
-// sound over-approximation, the same reasoning bootstrap_detector.sby
-// and timing_recovery.sby use.
-//
-// Run: cd hdl/formal && sby -f fft_engine.sby
+// Run: hdl/formal/run_formal.sh fft_engine
 
 `include "axi4s_types.vh"
 
@@ -77,6 +60,9 @@ module fft_engine_formal (
     wire [ADDR_WIDTH-1:0]  sample_cnt_probe;
     wire [3:0]             log2_n_r_probe;
     wire [ADDR_WIDTH:0]    fft_size_r_probe;
+    wire                   ram_we_a_probe;
+    wire [ADDR_WIDTH-1:0]  ram_addr_a_probe;
+    wire [31:0]            ram_wdata_a_re_probe, ram_wdata_a_im_probe;
 
     fft_engine_bare dut_top (
         .clk                  (clk),
@@ -96,7 +82,11 @@ module fft_engine_formal (
         .\dut.bfly_idx    (bfly_idx_probe),
         .\dut.sample_cnt  (sample_cnt_probe),
         .\dut.log2_n_r    (log2_n_r_probe),
-        .\dut.fft_size_r  (fft_size_r_probe)
+        .\dut.fft_size_r  (fft_size_r_probe),
+        .\dut.ram_we_a       (ram_we_a_probe),
+        .\dut.ram_addr_a     (ram_addr_a_probe),
+        .\dut.ram_wdata_a_re (ram_wdata_a_re_probe),
+        .\dut.ram_wdata_a_im (ram_wdata_a_im_probe)
     );
 
     reg past_valid;
@@ -119,6 +109,62 @@ module fft_engine_formal (
         prev_m_ready <= m_axis_tready;
         prev_m_tdata <= m_axis_tdata;
         prev_m_tlast <= m_axis_tlast;
+    end
+
+    //--------------------------------------------------------------------
+    // Ghost model: load-path data integrity
+    //--------------------------------------------------------------------
+    // Explicit reversal for each legal size (independent of the RTL's
+    // reverse-all-15-bits-then-shift formulation).
+    function [ADDR_WIDTH-1:0] bitrev_ref;
+        input [ADDR_WIDTH-1:0] k;
+        input [3:0]            nbits;
+        begin
+            case (nbits)
+                4'd13:   bitrev_ref = {2'd0, k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7], k[8], k[9], k[10], k[11], k[12]};
+                4'd14:   bitrev_ref = {1'd0, k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7], k[8], k[9], k[10], k[11], k[12], k[13]};
+                default: bitrev_ref = {k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7], k[8], k[9], k[10], k[11], k[12], k[13], k[14]};
+            endcase
+        end
+    endfunction
+
+    wire                  in_fire  = s_axis_tvalid && s_axis_tready;
+    reg                   g_wr_due;
+    reg  [ADDR_WIDTH-1:0] g_wr_addr;
+    reg  [31:0]           g_wr_data;
+    reg  [ADDR_WIDTH-1:0] g_in_idx;
+    reg                   prev_bfly_write;
+
+    always @(posedge clk) begin
+        prev_bfly_write <= (state_probe == 4'd4);  // ST_BFLY_WRITE
+        if (rst) begin
+            g_wr_due  <= 1'b0;
+            g_in_idx  <= {ADDR_WIDTH{1'b0}};
+        end else begin
+            g_wr_due <= in_fire;
+            if (in_fire) begin
+                g_wr_addr <= bitrev_ref(g_in_idx, log2_n_r_probe);
+                g_wr_data <= s_axis_tdata;
+                g_in_idx  <= (g_in_idx == fft_size_r_probe - 1'b1) ? {ADDR_WIDTH{1'b0}}
+                                                                    : g_in_idx + 1'b1;
+            end
+        end
+    end
+
+    always @(*) begin
+        if (past_valid && !rst && !prev_rst) begin
+            // The ghost's input numbering is the DUT's sample counter.
+            if (state_probe == 4'd1) assert (sample_cnt_probe == g_in_idx);
+            else assert (g_in_idx == {ADDR_WIDTH{1'b0}});  // loads complete before anything else
+            if (g_wr_due) begin
+                assert (ram_we_a_probe);
+                assert (ram_addr_a_probe == g_wr_addr);
+                assert (ram_wdata_a_re_probe == {{16{g_wr_data[31]}}, g_wr_data[31:16]});
+                assert (ram_wdata_a_im_probe == {{16{g_wr_data[15]}}, g_wr_data[15:0]});
+            end
+            // Port A writes only load beats and butterfly results.
+            if (ram_we_a_probe) assert (g_wr_due || prev_bfly_write);
+        end
     end
 
     //--------------------------------------------------------------------
@@ -280,6 +326,7 @@ module fft_engine_formal (
     always @(posedge clk) begin
         if (past_valid) begin
             cover (state_probe == 4'd1);  // ST_LOAD
+            cover (g_wr_due && g_in_idx == 15'd3);  // third load beat written
             cover (cfg_fft_size_invalid);
         end
     end
