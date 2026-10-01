@@ -21,8 +21,11 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 # Build Options
 # ------------------------------------------------------------------------------
 option(ATSC3_FIXED_POINT "Build with fixed-point (int16_t) sample type" OFF)
-option(ATSC3_USE_FFTW
-       "Float build: use FFTW3 (GPL-2.0+) instead of the built-in FFT" OFF)
+set(ATSC3_USE_FFTW
+    AUTO
+    CACHE STRING
+          "Float build FFT backend: AUTO (FFTW3 if found), ON (require), OFF (built-in)")
+set_property(CACHE ATSC3_USE_FFTW PROPERTY STRINGS AUTO ON OFF)
 option(ATSC3_ENABLE_ML "Enable ML inference backend (post-MVP)" OFF)
 option(ATSC3_ENABLE_HDL_STUBS "Build HDL stub generation targets (post-MVP)"
        OFF)
@@ -102,12 +105,22 @@ endif()
 # Find Dependencies
 # ------------------------------------------------------------------------------
 
-# FFTW3: optional float-build FFT backend. It is GPL-2.0+, so a binary built
-# with it is GPL; the default built-in FFT keeps lib/ free of copyleft code.
+# FFTW3: preferred float-build FFT backend (faster than the built-in one).
+# It is GPL-2.0+, so a binary linking it is GPL; -DATSC3_USE_FFTW=OFF builds
+# lib/ with the built-in FFT and no copyleft dependency.
 set(ATSC3_FFTW_ACTIVE OFF)
-if(ATSC3_USE_FFTW AND NOT ATSC3_FIXED_POINT)
-  find_package(FFTW3 REQUIRED)
-  set(ATSC3_FFTW_ACTIVE ON)
+if(NOT ATSC3_FIXED_POINT)
+  if(ATSC3_USE_FFTW STREQUAL "AUTO")
+    find_package(FFTW3)
+    if(FFTW3_FOUND)
+      set(ATSC3_FFTW_ACTIVE ON)
+    else()
+      message(STATUS "FFTW3 not found: using the built-in FFT")
+    endif()
+  elseif(ATSC3_USE_FFTW)
+    find_package(FFTW3 REQUIRED)
+    set(ATSC3_FFTW_ACTIVE ON)
+  endif()
 endif()
 
 # Boost (required for various utilities)
@@ -223,6 +236,9 @@ set(CPACK_PACKAGE_CONTACT "atsc3@example.com")
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libboost-system-dev")
+if(ATSC3_FFTW_ACTIVE)
+  string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libfftw3-dev")
+endif()
 set(CPACK_DEBIAN_PACKAGE_SECTION "comm")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")

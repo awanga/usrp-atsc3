@@ -3,9 +3,9 @@
 //
 // fft_engine.cc — FFT Engine implementation
 //
-// Float mode: built-in radix-2 Cooley-Tukey, or FFTW3 when built with
-// ATSC3_USE_FFTW (FFTW is GPL-2.0+, so it stays opt-in). Fixed-point mode:
-// Q1.15 radix-2 Cooley-Tukey.
+// Float mode: FFTW3 when the build found it (ATSC3_USE_FFTW), otherwise a
+// built-in radix-2 Cooley-Tukey. Fixed-point mode: Q1.15 radix-2
+// Cooley-Tukey.
 
 #include "fft_engine.h"
 
@@ -51,7 +51,7 @@ bool is_valid_fft_size(size_t n) {
 #ifndef ATSC3_FIXED_POINT
 
 //==============================================================================
-// Built-in Backend (float mode, default)
+// Built-in Backend (float mode without FFTW)
 //==============================================================================
 
 class Radix2FloatEngine : public FftEngine {

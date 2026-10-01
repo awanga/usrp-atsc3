@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Alfred Wanga
 #
 # lib/ - Core DSP Library
-# Pure C++17 + Boost (+ FFTW3 with ATSC3_USE_FFTW). No GR/UHD headers allowed.
+# Pure C++17 + Boost (+ FFTW3 when found; see ATSC3_USE_FFTW). No GR/UHD headers allowed.
 
 # Add subdirectory CMake files (sets SYNC_SOURCES, OFDM_SOURCES, etc.)
 add_subdirectory(simd)

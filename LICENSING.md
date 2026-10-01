@@ -37,12 +37,15 @@ whole, while the source files here keep their own license:
 |-----------|-------|------------------|
 | `blocks/`, `python/` (GNU Radio module) | GNU Radio (GPL-3.0) | GPL-3.0 |
 | `hal/` UHD source | UHD (GPL-3.0) | GPL-3.0 |
-| `lib/` built with `-DATSC3_USE_FFTW=ON` | FFTW3 (GPL-2.0+) | GPL |
-| `lib/` default build | Boost (BSL-1.0) only | MPL-2.0 |
+| `lib/` float build with FFTW3 installed (the default prefers it for speed) | FFTW3 (GPL-2.0+) | GPL |
+| `lib/` with `-DATSC3_USE_FFTW=OFF`, or the fixed-point build | Boost (BSL-1.0) only | MPL-2.0 |
 | `av/` | FFmpeg, GStreamer (LGPL-2.1+, linked dynamically) | MPL-2.0 (keep FFmpeg built without `--enable-gpl`) |
 
 `lib/` contains no copyleft code of its own: the NUC constellation tables
 are generated from the ATSC A/322 standard by `scripts/gen_nuc_tables.py`.
+
+To ship `lib/` without any copyleft dependency, configure the float
+build with `-DATSC3_USE_FFTW=OFF` (or buy MIT's commercial FFTW license).
 
 ## Patents
 
