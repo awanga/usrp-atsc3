@@ -56,7 +56,7 @@ guard-band headroom. N210 FPGA can sustain 25 MS/s over GigE.
 | UHD                   | 3.15.x      | Paired with GR 3.8; GR 3.10 via shim  |
 | CMake                 | ≥ 3.16      |                                        |
 | GCC / Clang           | GCC ≥ 9, Clang ≥ 11 |                               |
-| FFTW3                 | ≥ 3.3       | Single-precision (`-lfftw3f`)          |
+| FFTW3                 | ≥ 3.3       | Optional, used when found (`-lfftw3f`); GPL, see `LICENSING.md` |
 | Boost                 | ≥ 1.71      |                                        |
 | FFmpeg / libav        | ≥ 4.x       | HEVC, AC-4, HE-AAC decode              |
 | GStreamer             | ≥ 1.16      | Live A/V playback pipeline             |
@@ -112,7 +112,7 @@ The project is organized into four layers with strict dependency isolation:
 
 ```
 hal/  →  lib/  only
-lib/  →  (FFTW3, Boost headers)  only
+lib/  →  (Boost headers; FFTW3 when found)  only
 blocks/  →  lib/ + gnuradio-runtime  only
 apps/  →  blocks/ + hal/ + av/
 av/  →  (FFmpeg, GStreamer)  only
@@ -156,7 +156,7 @@ RF In (6 MHz channel)
        │
        ▼
 ┌─────────────────┐   lib/ofdm/
-│   FFT Engine    │   FFTW3f back-end; 8K/16K/32K point configurable
+│   FFT Engine    │   FFTW3f or built-in back-end; 8K/16K/32K point configurable
 │                 │   Pilot extraction (scattered + continual + edge)
 └──────┬──────────┘
        │ frequency-domain symbols
@@ -260,7 +260,8 @@ Concrete implementations:
 ### `lib/ofdm/` — OFDM Engine
 
 - `cp_removal` — Strips cyclic prefix; length from L1 configuration.
-- `fft_engine` — FFTW3f wrapper; supports 8192, 16384, 32768 point transforms.
+- `fft_engine` — FFTW3f when available, else a built-in radix-2 FFT
+  (`-DATSC3_USE_FFTW=OFF` forces it); supports 8192, 16384, 32768 point transforms.
   In `FIXED_POINT` mode, uses fixed-point Cooley-Tukey reference implementation
   for numerical equivalence testing against RTL.
 - `pilot_extractor` — Extracts scattered pilots (SP), continual pilots (CP),
@@ -571,5 +572,6 @@ block. Verilator + cocotb testbenches will be added incrementally post-MVP.
 
 ## License
 
-TBD — recommend Apache 2.0 for maximum compatibility with GNU Radio ecosystem
-and eventual FPGA tool integration.
+MPL-2.0 for software, CERN-OHL-W-2.0 for HDL design sources, CC-BY-4.0
+for documentation. See [`LICENSING.md`](LICENSING.md) for the per-path
+mapping and for which builds become GPL by linking GNU Radio, UHD or FFTW.
