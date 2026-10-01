@@ -23,7 +23,7 @@ read_verilog -formal -I. timing_recovery_bare.v
 hierarchy -top timing_recovery_bare
 proc
 flatten
-expose -dff w:\dut.state w:\dut.mu_q16
+expose -dff w:\dut.state w:\dut.mu_q16 w:\dut.buf_wr_en w:\dut.buf_wr_addr w:\dut.buf_wr_data w:\dut.buf_write_idx w:\dut.x_re w:\dut.x_im
 write_verilog gen_timing_recovery_bare.v
 
 # Stage 2: reset the design and re-elaborate from the generated,
