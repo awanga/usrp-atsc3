@@ -27,6 +27,8 @@
 #             samples (~160 frames) ran PDR for 14 hours without a result,
 #             while bmc3 found it in under two minutes.
 #
+# Work directory and log go under FORMAL_BUILD (default hdl/build/formal).
+#
 # Usage: hdl/formal/prove_pdr.sh [--mutant] <job>   (e.g. bootstrap_detector)
 set -euo pipefail
 
@@ -37,14 +39,16 @@ if [[ "${1:-}" == "--mutant" ]]; then
 fi
 job="${1:?usage: prove_pdr.sh [--mutant] <job>}"
 cd "$(dirname "${BASH_SOURCE[0]}")"
-workdir="${job}_prove"
-log="$job.prove_pdr.log"
+build="${FORMAL_BUILD:-../build/formal}"
+mkdir -p "$build"
+workdir="$build/${job}_prove"
+log="$build/$job.prove_pdr.log"
 
 rm -rf "$workdir"
-sby -f "$job.sby" prove > "$log" 2>&1 || true
+sby -f -d "$workdir" "$job.sby" prove >"$log" 2>&1 || true
 
 if ! grep -q '\] aig: finished (returncode=0)' "$log"; then
-    echo "prove_pdr: sby did not produce the AIG model; see hdl/formal/$log" >&2
+    echo "prove_pdr: sby did not produce the AIG model; see $log" >&2
     exit 1
 fi
 
@@ -61,24 +65,22 @@ cex="$(grep -E 'asserted in frame' <<< "$abc_out" || true)"
 if [[ "$mode" == prove ]]; then
     if grep -q 'Property proved' <<< "$abc_out"; then
         echo "prove_pdr: $job PASS (all assertions proved, unbounded)"
-        rm -f "$log"
     elif [[ -n "$cex" ]]; then
         echo "prove_pdr: $job FAIL: $cex" >&2
-        echo "full log: hdl/formal/$log" >&2
+        echo "full log: $log" >&2
         exit 1
     else
         echo "prove_pdr: $job UNDECIDED: PDR hit its ${PDR_TIMEOUT:-1800}s limit" >&2
-        echo "full log: hdl/formal/$log" >&2
+        echo "full log: $log" >&2
         exit 2
     fi
 else
     if [[ -n "$cex" ]]; then
         echo "prove_pdr: $job mutant caught: $cex"
-        rm -f "$log"
     else
         echo "prove_pdr: $job mutant NOT caught within ${BMC_FRAMES:-600} frames /" \
              "${BMC_TIMEOUT:-1800}s -- raise the bounds or strengthen the harness" >&2
-        echo "full log: hdl/formal/$log" >&2
+        echo "full log: $log" >&2
         exit 2
     fi
 fi

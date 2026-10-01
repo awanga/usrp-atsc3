@@ -1,0 +1,23 @@
+# Run via hdl/formal/run_formal.sh udiv_seq. Black-box harness: every
+# property is on ports plus a ghost model, so no flatten+expose stage.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 12
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal udiv_seq.v
+read_verilog -formal udiv_seq_formal.v
+prep -top udiv_seq_formal
+
+[files]
+udiv_seq.v ../rtl/common/udiv_seq.v
+udiv_seq_formal.v
