@@ -47,6 +47,15 @@ BLOCKS = {
     ),
 }
 
+# Integration benches: top module hdl/sim/cocotb/tb/<bench>.v, testbench
+# test_<bench>.py -> (RTL sources relative to RTL, parameters)
+INTEGRATION = {
+    "ofdm_frontend_tb": (
+        ["ofdm/cp_removal.v", "ofdm/fft_engine.v"],
+        {"TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"'},
+    ),
+}
+
 # Verilator's generated C++ wrapper does not take --language, so the
 # 1364-2001 restriction is enforced by hdl/synth/lint.sh, not here.
 BUILD_ARGS = {"verilator": ["-Wall"], "icarus": ["-Wall"]}
@@ -92,4 +101,19 @@ def test_block(block, sim):
         [RTL / d for d in includes],
         parameters,
         f"test_{block}",
+    )
+
+
+@pytest.mark.parametrize("sim", SIMULATORS)
+@pytest.mark.parametrize("bench", list(INTEGRATION))
+def test_integration(bench, sim):
+    sources, parameters = INTEGRATION[bench]
+    tb_dir = HDL_ROOT / "sim" / "cocotb" / "tb"
+    _run(
+        sim,
+        bench,
+        [tb_dir / f"{bench}.v", *(RTL / s for s in sources)],
+        [],
+        parameters,
+        f"test_{bench}",
     )
