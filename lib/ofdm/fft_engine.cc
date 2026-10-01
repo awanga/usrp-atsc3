@@ -1,6 +1,8 @@
 // fft_engine.cc — FFT Engine implementation
 //
-// FFTW3 backend for float mode, Cooley-Tukey for fixed-point mode
+// Float mode: built-in radix-2 Cooley-Tukey, or FFTW3 when built with
+// ATSC3_USE_FFTW (FFTW is GPL-2.0+, so it stays opt-in). Fixed-point mode:
+// Q1.15 radix-2 Cooley-Tukey.
 
 #include "fft_engine.h"
 
@@ -11,7 +13,7 @@
 #include <stdexcept>
 #include <vector>
 
-#ifndef ATSC3_FIXED_POINT
+#if !defined(ATSC3_FIXED_POINT) && defined(ATSC3_USE_FFTW)
 #include <fftw3.h>
 #endif
 
@@ -25,9 +27,95 @@ bool is_valid_fft_size(size_t n) {
     return n == 4096 || n == 8192 || n == 16384 || n == 32768;
 }
 
+[[maybe_unused]] std::vector<size_t> bit_reversal_table(size_t n) {
+    int bits = 0;
+    while ((size_t{1} << bits) < n) {
+        ++bits;
+    }
+    std::vector<size_t> rev(n);
+    for (size_t i = 0; i < n; ++i) {
+        size_t r = 0;
+        for (int b = 0; b < bits; ++b) {
+            r = (r << 1) | ((i >> b) & 1u);
+        }
+        rev[i] = r;
+    }
+    return rev;
+}
+
 }  // namespace
 
 #ifndef ATSC3_FIXED_POINT
+
+//==============================================================================
+// Built-in Backend (float mode, default)
+//==============================================================================
+
+class Radix2FloatEngine : public FftEngine {
+public:
+    explicit Radix2FloatEngine(const FftConfig& config)
+        : size_(static_cast<size_t>(config.size)),
+          direction_(config.direction),
+          normalize_inverse_(config.normalize_inverse) {
+        if (!is_valid_fft_size(size_)) {
+            throw std::invalid_argument("Invalid FFT size");
+        }
+        bit_rev_ = bit_reversal_table(size_);
+        // Twiddles are evaluated in double and rounded once, so their error
+        // does not depend on the index.
+        twiddles_.resize(size_ / 2);
+        double sign = (direction_ == FftDirection::kForward) ? -1.0 : 1.0;
+        for (size_t k = 0; k < size_ / 2; ++k) {
+            double angle = sign * 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(size_);
+            twiddles_[k] =
+                sample_t(static_cast<float>(std::cos(angle)), static_cast<float>(std::sin(angle)));
+        }
+    }
+
+    void process(const sample_t* in, sample_t* out) override {
+        for (size_t i = 0; i < size_; ++i) {
+            out[bit_rev_[i]] = in[i];
+        }
+        for (size_t m = 2; m <= size_; m <<= 1) {
+            size_t half = m >> 1;
+            size_t step = size_ / m;
+            for (size_t k = 0; k < size_; k += m) {
+                for (size_t j = 0; j < half; ++j) {
+                    sample_t t = twiddles_[j * step] * out[k + j + half];
+                    sample_t even = out[k + j];
+                    out[k + j] = even + t;
+                    out[k + j + half] = even - t;
+                }
+            }
+        }
+        if (normalize_inverse_ && direction_ == FftDirection::kInverse) {
+            float scale = 1.0f / static_cast<float>(size_);
+            for (size_t i = 0; i < size_; ++i) {
+                out[i] *= scale;
+            }
+        }
+    }
+
+    size_t get_size() const override {
+        return size_;
+    }
+    FftDirection get_direction() const override {
+        return direction_;
+    }
+    bool is_fftw_backend() const override {
+        return false;
+    }
+
+private:
+    size_t size_;
+    FftDirection direction_;
+    bool normalize_inverse_;
+
+    std::vector<sample_t> twiddles_;
+    std::vector<size_t> bit_rev_;
+};
+
+#ifdef ATSC3_USE_FFTW
 
 //==============================================================================
 // FFTW3 Backend (float mode)
@@ -151,6 +239,22 @@ bool save_fftw_wisdom(const std::string& path) {
     }
     return fftwf_export_wisdom_to_filename(path.c_str()) != 0;
 }
+
+#else  // !ATSC3_USE_FFTW
+
+std::unique_ptr<FftEngine> FftEngine::create(const FftConfig& config) {
+    return std::make_unique<Radix2FloatEngine>(config);
+}
+
+bool load_fftw_wisdom(const std::string& /* path */) {
+    return false;
+}
+
+bool save_fftw_wisdom(const std::string& /* path */) {
+    return false;
+}
+
+#endif  // ATSC3_USE_FFTW
 
 #else  // ATSC3_FIXED_POINT
 

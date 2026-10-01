@@ -116,17 +116,21 @@ gtest_discover_tests(bench_interleaver
         LABELS "benchmark"
 )
 
-add_executable(bench_fftw bench_fftw.cc)
-target_link_libraries(bench_fftw
-    PRIVATE
-        atsc3_lib
-        GTest::gtest
-        GTest::gtest_main
-)
-gtest_discover_tests(bench_fftw
-    PROPERTIES
-        LABELS "benchmark"
-)
+if(ATSC3_FFTW_ACTIVE)
+    add_executable(bench_fftw bench_fftw.cc)
+    target_include_directories(bench_fftw PRIVATE ${FFTW3_INCLUDE_DIRS})
+    target_link_libraries(bench_fftw
+        PRIVATE
+            atsc3_lib
+            ${FFTW3_LIBRARIES}
+            GTest::gtest
+            GTest::gtest_main
+    )
+    gtest_discover_tests(bench_fftw
+        PROPERTIES
+            LABELS "benchmark"
+    )
+endif()
 
 add_executable(bench_signal_chain bench_signal_chain.cc)
 target_link_libraries(bench_signal_chain

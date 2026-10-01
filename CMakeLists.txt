@@ -18,6 +18,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 # Build Options
 # ------------------------------------------------------------------------------
 option(ATSC3_FIXED_POINT "Build with fixed-point (int16_t) sample type" OFF)
+option(ATSC3_USE_FFTW
+       "Float build: use FFTW3 (GPL-2.0+) instead of the built-in FFT" OFF)
 option(ATSC3_ENABLE_ML "Enable ML inference backend (post-MVP)" OFF)
 option(ATSC3_ENABLE_HDL_STUBS "Build HDL stub generation targets (post-MVP)"
        OFF)
@@ -97,13 +99,12 @@ endif()
 # Find Dependencies
 # ------------------------------------------------------------------------------
 
-# FFTW3 (required for OFDM processing)
-find_package(FFTW3)
-if(NOT FFTW3_FOUND)
-  message(
-    WARNING "FFTW3 not found - DSP library will have limited functionality")
-  set(FFTW3_LIBRARIES "")
-  set(FFTW3_INCLUDE_DIRS "")
+# FFTW3: optional float-build FFT backend. It is GPL-2.0+, so a binary built
+# with it is GPL; the default built-in FFT keeps lib/ free of copyleft code.
+set(ATSC3_FFTW_ACTIVE OFF)
+if(ATSC3_USE_FFTW AND NOT ATSC3_FIXED_POINT)
+  find_package(FFTW3 REQUIRED)
+  set(ATSC3_FFTW_ACTIVE ON)
 endif()
 
 # Boost (required for various utilities)
@@ -218,7 +219,7 @@ set(CPACK_PACKAGE_MAINTAINER "ATSC3 Project")
 set(CPACK_PACKAGE_CONTACT "atsc3@example.com")
 
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libfftw3-dev, libboost-system-dev")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libboost-system-dev")
 set(CPACK_DEBIAN_PACKAGE_SECTION "comm")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
@@ -233,6 +234,7 @@ message(STATUS "gr-atsc3 Configuration Summary:")
 message(STATUS "  Version:        ${PROJECT_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Fixed-point:    ${ATSC3_FIXED_POINT}")
+message(STATUS "  FFTW backend:   ${ATSC3_FFTW_ACTIVE}")
 message(STATUS "  SIMD tier:      ${ATSC3_SIMD_TIER}")
 message(STATUS "  GR version:     ${ATSC3_GR_VERSION}")
 message(STATUS "  Channel BW:     ${ATSC3_CHANNEL_BW_HZ} Hz")
