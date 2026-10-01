@@ -9,14 +9,14 @@
 | Tool | Version verified | Install |
 |---|---|---|
 | Verilator | 5.020 (Debian 5.020-1) | `apt install verilator` |
+| Icarus Verilog | 12.0 | `apt install iverilog` |
 | Yosys | 0.33 | `apt install yosys` |
 | SymbiYosys (`sby`) | 0.68 | `apt install sby` (pulled in with yosys on Debian/Ubuntu) |
-| SMT solver | z3 (boolector also available) | `apt install z3` |
+| SMT solver | z3 4.8.12 (cvc5 1.1.2 qualified but slower; see formal_conventions.md) | `apt install z3` |
 | cocotb | **1.9.2**, pinned -- see below | `pip install -r hdl/sim/cocotb/requirements.txt` inside the venv |
 | Python | 3.12.3 | system |
 
-No vendor/proprietary tools anywhere in this list, consistent with
-`CLAUDE.md`'s "no vendor DSP primitives" rule extending to the toolchain.
+No vendor/proprietary tools anywhere in this list.
 
 ### Why cocotb is pinned to 1.9.2, not latest (2.x)
 
@@ -48,39 +48,65 @@ hdl/sim/.venv/bin/pip install -r hdl/sim/cocotb/requirements.txt
 
 `hdl/sim/.venv/` is gitignored (see `.gitignore`); every contributor (and
 CI) creates their own from `requirements.txt`, which pins exact versions
-per `CLAUDE.md`'s dependency policy.
+so the environment is reproducible.
 
 ## Running each stage
 
+Every stage writes logs under the gitignored `hdl/build/`, prints
+PASS/FAIL per unit with a count, and exits nonzero on any failure:
+
 ```bash
-# Lint (Verilog-2001 only, zero warnings gate)
-verilator --lint-only --language 1364-2001 -Wall \
-    +incdir+hdl/rtl/include hdl/rtl/common/axi4s_skid_buffer.v
-# ...or every rtl/ file at once (adds -y rtl/common for shared cores)
-hdl/synth/lint.sh
+hdl/run_all.sh [--mutants]     # everything below, one summary line per stage
 
-# Formal (BMC->k-induction "prove" + a reachability "cover" task)
-cd hdl/formal && sby -f axi4s_skid_buffer.sby
-
-# Formal for datapath-heavy blocks: ABC PDR via a wrapper (SBY 0.68's ABC
-# result parser is incompatible with Yosys 0.33's witness map; see
-# formal_conventions.md)
-hdl/formal/prove_pdr.sh bootstrap_detector
-
-# cocotb simulation via Verilator
-cd hdl/sim/cocotb && ../.venv/bin/python -m pytest test_runner.py -v
+hdl/synth/lint.sh              # Verilator (1364-2001 and 1800-2017) + Icarus -g2001, per file
+hdl/synth/synth.sh [top ...]   # technology-independent Yosys synthesis per top
+hdl/formal/run_formal.sh [job ...]
+hdl/sim/run_sim.sh [-k expr]   # cocotb on Verilator and Icarus; SIM_JOBS, HDL_FULL=1 (nightly sizes)
+hdl/mutants/run_mutants.py [-j N] [name ...]
+hdl/formal/qualify/qualify_solvers.sh
 ```
 
-See `hdl/docs/formal_conventions.md` for the formal harness pattern
-(SVA-lite, flatten+`expose`-based white-box checks, small-parameterization)
-used above and expected for every subsequent block.
+The cocotb benches and the twiddle-ROM regeneration need the fixed-point
+golden CLIs: `cmake --build build-fxp` with `-DATSC3_FIXED_POINT=ON
+-DATSC3_ENABLE_HDL_STUBS=ON`.
 
-## CI wiring
+Generated RTL data:
+- `hdl/rtl/ofdm/fft_twiddles.hex`: `build-fxp/hdl/sim/golden/fft_twiddle_gen > hdl/rtl/ofdm/fft_twiddles.hex`
+  (loaded with `$readmemh`; tools get its absolute path through the
+  `TWIDDLE_HEX` parameter).
+- `hdl/rtl/sync/timing_recovery_coeffs.vh`: from `echo ROM |
+  build-fxp/hdl/sim/golden/timing_recovery_gen`; `test_polyphase_fir.py`
+  fails if it drifts from the running filter design.
 
-Tracked as a follow-up once more than one block exists (a
-single-block CMake target would be premature abstraction); the commands
-above are the ones CI will wrap. `ATSC3_ENABLE_HDL_STUBS=ON` gates the
-existing `hdl/CMakeLists.txt` Verilator discovery; formal and cocotb
-stages are invoked directly (as above) rather than through CMake, since
-neither SymbiYosys nor cocotb's Python runner benefit from CMake's
-C/C++-oriented build-graph model.
+See `hdl/docs/formal_conventions.md` for the formal harness pattern.
+
+## Simulator timing idiom (cocotb)
+
+Read DUT outputs only where every update of the timestep has landed:
+after `await ReadOnly()`, or at the falling edge when inputs are driven
+1 ns after the rising edge. Never read sibling outputs straight after
+`RisingEdge(<a DUT output>)`: Icarus delivers that callback before the
+other non-blocking updates of the timestep, Verilator after, so such a
+read races (this is what made the bootstrap bench fail on Icarus only).
+A disagreement between the two simulators is a race to root-cause, not a
+simulator to pick.
+
+## Formatting and linting
+
+- Python (cocotb benches, mutant runner): the repo's pre-commit hooks,
+  black and flake8 (max line length 100).
+- Shell: shellcheck.
+- Verilog: the lint gate above. Verible is installed but not used: its
+  formatter and linter cannot parse files whose port lists use the
+  `include`d AXI4-S macros, and its default lint rules require
+  SystemVerilog-only syntax (typed parameters, `[N]` unpacked ranges)
+  that is illegal in Verilog-2001.
+
+## CI
+
+Not wired yet: `ci.yml` builds on ubuntu-22.04, whose packaged
+Verilator and Yosys are older than the versions above, and SymbiYosys
+0.68 is installed from source here. An HDL job needs an ubuntu-24.04
+runner (or the CI container) with these exact versions, plus a
+fixed-point build for the golden CLIs; `hdl/run_all.sh` is the command it
+should run.
