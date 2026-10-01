@@ -224,8 +224,8 @@ private:
     // (this class's existing public/internal contract -- the state
     // machine above compares this against config_.detection_threshold,
     // a double); under ATSC3_FIXED_POINT the computation itself is
-    // genuine fixed-point, converted only at this one boundary (Phase
-    // 9.0b rewrite, see frame_sync.cc).
+    // genuine fixed-point, converted only at this one boundary (see
+    // frame_sync.cc).
     double correlate_preamble(const sample_t* symbols, size_t n, size_t offset);
 
     // Event emission

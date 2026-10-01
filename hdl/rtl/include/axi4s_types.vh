@@ -17,19 +17,16 @@
 `define AXI4S_TYPES_VH
 
 //------------------------------------------------------------------------------
-// Sample width. RTL is fixed-point-only (Decision: RTL ports the
-// ATSC3_FIXED_POINT=ON build; see hdl/docs/q_format_notes.md). This is a
+// Sample width. RTL is fixed-point-only: it ports the
+// ATSC3_FIXED_POINT=ON build (see hdl/docs/q_format_notes.md). This is a
 // deliberate RTL-vs-golden-model-doc divergence: most lib/ headers document
 // cf32 in their AXI4-S comments because the float build is the default C++
 // config, but RTL always uses ci16 (Q1.15).
 //------------------------------------------------------------------------------
 
 `define ATSC3_REAL_WIDTH   16                                  // Q1.15, one rail
-// {re[15:0], im[15:0]} (re = upper half, im = lower half) -- matches
-// hdl/stubs/README.md's data-type table and hdl/rtl/include/status_words.vh;
-// this comment previously said the reverse ({im, re}), a stale typo never
-// matched by any of the other three sources, corrected during the HDL
-// port's RTL work.
+// {re[15:0], im[15:0]} (re = upper half, im = lower half), as in
+// hdl/stubs/README.md's data-type table and status_words.vh.
 `define ATSC3_SAMPLE_WIDTH (2 * `ATSC3_REAL_WIDTH)
 
 // LLR width (soft bits from demapper into LDPC)
@@ -69,8 +66,8 @@
 `define AXI4S_FIRE(prefix) ((prefix``_tvalid) && (prefix``_tready))
 
 //------------------------------------------------------------------------------
-// FFT sizes (bootstrap is always 4K regardless of data FFT size --
-// see CLAUDE.md Common Pitfalls)
+// FFT sizes (the bootstrap is always 4K OFDM regardless of the data FFT
+// size)
 //------------------------------------------------------------------------------
 
 `define ATSC3_FFT_4K       4096
@@ -91,8 +88,8 @@
 `define ATSC3_LDPC_LONG  64800
 
 //------------------------------------------------------------------------------
-// Nominal clock (technology-independent target; see hdl/synth metrics,
-// Decision 4 -- not a synthesis constraint on its own)
+// Nominal clock: the technology-independent target that throughput budgets
+// (cycles per sample) are measured against; not a synthesis constraint.
 //------------------------------------------------------------------------------
 
 `define ATSC3_CLK_PERIOD_NS 10  // 100 MHz nominal

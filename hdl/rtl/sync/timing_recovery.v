@@ -25,18 +25,14 @@
 //           loop filter, updating loop_integrator_q15/mu_q16/
 //           timing_error_q15.
 //        c. buf_read_idx advances by samples_per_symbol.
-//   3. mon_valid pulses once per accepted input sample (matching
-//      get_timing_offset()/get_timing_error(), which the C++ updates
-//      unconditionally in check_detection()'s update_loop() -- actually
-//      these are read directly from mu_q16_/timing_error_q15_, which
-//      only change on a boundary+locked update; mon_* simply mirrors
-//      whatever the registers hold after this sample, same as the golden
-//      CLI's "M" line).
+//   3. mon_valid pulses once per accepted input sample, with mon_* holding
+//      mu_q16/timing_error_q15 after that sample (they change only on a
+//      locked boundary) -- what get_timing_offset()/get_timing_error()
+//      return, and the golden CLI's "M" line.
 //
 // Up to four interpolate() calls happen per boundary (emit, curr, mid,
-// prev), each ~70 cycles through the shared polyphase_fir core (see that
-// file's header) -- not pipelined, correctness first (9.17 timing-
-// closure work), the same policy bootstrap_detector.v documents.
+// prev), each 2*NUM_TAPS+1 = 65 cycles through the shared polyphase_fir
+// core -- not pipelined; correctness first, as in bootstrap_detector.v.
 //
 // Config (kp_q15, ki_q15, samples_per_symbol, initial_offset) is
 // validated -- there is nothing to clamp, these are host-supplied
@@ -45,11 +41,10 @@
 // isn't a golden-model behavior to match; the C++ only changes these via
 // the constructor or reset()). kp_q15/ki_q15 are taken as *direct*
 // registers rather than re-derived in RTL from loop_bandwidth_hz/
-// loop_damping/symbol_rate_hz (compute_loop_gains()'s one-time,
-// division-and-multiply-heavy filter design) -- see TASKS.md's 9.2
-// implementation notes for the rationale; this is the RTL-port
-// counterpart of the polyphase coefficient ROM also being computed
-// offline rather than re-derived per cycle. cfg_locked is the one config
+// loop_damping/symbol_rate_hz: compute_loop_gains() is a one-time,
+// division-heavy filter design, so like the polyphase coefficient ROM it
+// is computed offline (the golden CLI reports the gains a config yields)
+// rather than rebuilt in hardware. cfg_locked is the one config
 // input read *live*: set_locked() is an explicitly asynchronous runtime
 // control in the C++ API (training vs. tracking mode), not a
 // reconfigure-only value.
@@ -60,9 +55,9 @@
 // twos-complement pattern as unsigned and doubling it is bit-for-bit
 // identical to the C++'s set_timing_offset()'s
 // "wrapped = mu - floor(mu); mu_q16_ = uint16_t(wrapped * 65536)" for
-// every possible 16-bit input, not just non-negative ones (worked
-// through by hand in the commit history; both paths ultimately compute
-// (v mod 65536) * 2 mod 65536).
+// every possible 16-bit input, not just non-negative ones: both compute
+// (v mod 65536) * 2 mod 65536 (timing_recovery_formal.v checks this
+// against an independently computed reference).
 //
 // Phase selection (0..15 from mu_q16, and mu_q16+0.5 for the TED's
 // mid-point) is just the top 4 bits of mu_q16 (mu_q16[15:12], or
@@ -250,17 +245,10 @@ module timing_recovery #(
     wire signed [47:0] filt_sum = (filt_a + filt_b) >>> 15;
     wire signed [31:0] new_timing_error_q15 = filt_sum[31:0];
 
-    // ST_COMPUTE_ERROR combinational terms
-    // Plain signed subtraction: both operands are already `reg signed`,
-    // so Verilog's context-determined evaluation sign-extends each to
-    // the 17-bit result width before subtracting -- correctly, unlike
-    // an earlier version of this line that zero-extended them by hand
-    // (prepending a literal 1'b0), which silently reinterpreted any
-    // negative x_curr_re/x_prev_re as a large positive value and
-    // corrupted the Gardner TED error on real (signed) samples. Caught
-    // by test_timing_recovery.py's locked-loop scenarios: mu_q16
-    // diverged from the golden model starting at the very first
-    // loop-filter update.
+    // ST_COMPUTE_ERROR combinational terms. Plain signed subtraction:
+    // both operands are `reg signed`, so each is sign-extended to the
+    // 17-bit result (a hand-written zero-extension would turn negative
+    // interpolator outputs into large positive ones).
     wire signed [16:0] diff_re = x_curr_re - x_prev_re;
     wire signed [16:0] diff_im = x_curr_im - x_prev_im;
     wire signed [63:0] error_raw =

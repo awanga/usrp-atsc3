@@ -21,11 +21,11 @@ Source of truth for the RTL control plane's default-reset values and host/L1-seq
 - `int8` — Plain signed 8-bit integer.
 - `bool` — 1-bit register.
 - `enum` — Integer register using the C++ enum's own explicit underlying values (see enum_values).
-- `q1_15` — Signed Q1.15 fixed point, scale 32768, range [-1.0, +1.0), truncated toward zero (not rounded) on conversion -- matches lib/types.h float_to_q15()/q15_to_float() exactly (static_cast<int16_t>(x * 32768) truncates). All reset values below were computed with this exact truncation, not round-to-nearest. +1.0 must be represented as 32767, never 32768 (CLAUDE.md's documented convention) -- note that develop's float_to_q15() does not yet enforce this by saturating; that fix exists only on the unmerged bugfix/hdl-golden-model-fixes branch. No register in this map defaults to exactly 1.0, so the distinction doesn't affect any reset value here, but RTL bit-exactness work depends on that branch being merged first. Same truncation/scale convention as the ci16 datapath (hdl/docs/q_format_notes.md).
+- `q1_15` — Signed Q1.15 fixed point, scale 32768, range [-1.0, +1.0), truncated toward zero (not rounded) on conversion -- matches lib/types.h float_to_q15()/q15_to_float() exactly (static_cast<int16_t>(x * 32768) truncates). All reset values below were computed with this exact truncation, not round-to-nearest. +1.0 is represented as 32767, never 32768: float_to_q15() saturates to [-32767, 32767]. No register in this map defaults to exactly 1.0. Same truncation/scale convention as the ci16 datapath (hdl/docs/q_format_notes.md).
 - `milli_fixed32` — Signed 32-bit integer, value = round(real_value * 1000). Used for dimensionless ratios/rates that can legitimately exceed the q1_15 [-1,1) range or need sub-integer-Hz precision.
-- `angle_tbd` — Format intentionally left undefined. Depends on the CORDIC angle convention, which had not yet been chosen when this register was defined (see hdl/docs/formal_conventions.md and the HDL port plan's Decision 7). Do not implement RTL against this field until that convention is fixed.
+- `angle_tbd` — Format intentionally left undefined. It depends on the CORDIC angle convention, which has since been fixed in lib/dsp/cordic.h (Q1.15 turns-over-pi: int16 covering [-pi, +pi)); adopt that format here when the phase tracker is ported, and do not implement RTL against this field before then.
 
-**Pilot pattern source:** Uses lib/ofdm/pilot_extractor.h's PP1-PP8 {Dx,Dy} table (config::PilotPattern / PilotPattern enum), not config/atsc3_modes.json's separate SP3_2/SP3_4/... representation -- resolving the open question of which of the two inconsistent pilot representations this register map follows. Nothing in lib/ reads atsc3_modes.json's SP*_* list (TASKS.md's claim that it's used is stale, matching pilot_extractor.cc's hardcoded constexpr table).
+**Pilot pattern source:** Uses lib/ofdm/pilot_extractor.h's PP1-PP8 {Dx,Dy} table (config::PilotPattern / PilotPattern enum), not config/atsc3_modes.json's separate SP3_2/SP3_4/... representation -- resolving the open question of which of the two inconsistent pilot representations this register map follows. Nothing in lib/ reads atsc3_modes.json's SP*_* list (pilot_extractor.cc uses its own hardcoded constexpr table).
 
 ## Known default inconsistencies in the golden model
 
@@ -134,12 +134,12 @@ Base address: `0x4000`
 
 | Register | Offset | Format | Reset | Writable by | Notes |
 |---|---|---|---|---|---|
-| `FFT_SIZE` | `0x00` | enum | `k8K` | l1 | Wired from l1_status.FFT_SIZE for data symbols; bootstrap correlation always uses k4K regardless (CLAUDE.md Common Pitfalls) and is not register-controlled. *(`lib/ofdm/fft_engine.h:FftConfig::size`)* |
+| `FFT_SIZE` | `0x00` | enum | `k8K` | l1 | Wired from l1_status.FFT_SIZE for data symbols; bootstrap correlation always uses k4K regardless and is not register-controlled. *(`lib/ofdm/fft_engine.h:FftConfig::size`)* |
 | `DIRECTION` | `0x04` | enum | `kForward` | const | Receiver is forward-FFT-only in RTL scope; inverse direction is a C++-only capability not ported (no transmit path in this receiver). *(`lib/ofdm/fft_engine.h:FftConfig::direction`)* |
 
 **Excluded fields** (present in the C++ config struct, deliberately not a register):
 
-- `wisdom_path` — FFTW-specific plan-caching path; C++-only, no RTL equivalent (RTL's memory-based radix-2 DIT has no planning phase, Decision 2).
+- `wisdom_path` — FFTW-specific plan-caching path; C++-only, no RTL equivalent (RTL's memory-based radix-2 DIT has no planning phase).
 - `use_patient_plan` — Same as wisdom_path -- FFTW planning knob, not applicable to RTL.
 - `normalize_inverse` — Only meaningful for inverse FFT, which is out of RTL scope (see DIRECTION above).
 

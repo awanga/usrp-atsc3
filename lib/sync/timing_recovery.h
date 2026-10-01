@@ -240,7 +240,7 @@ public:
     // re-deriving them from loop_bandwidth_hz/loop_damping/
     // symbol_rate_hz in RTL (which would need a divider plus several
     // wide multiplies purely to reproduce a value that changes only on
-    // reconfiguration) -- see TASKS.md's 9.2 implementation notes. These
+    // reconfiguration). These
     // accessors let the golden CLI report the values a given config
     // actually produces, so a cocotb test can configure the RTL with the
     // identical numbers.

@@ -1,7 +1,6 @@
 # Q-Format and Input Backoff Contract
 
-> See the HDL port plan, Decision 6. This is the
-> explicit statement of what "full scale" means at the RTL IQ input, since
+> The explicit statement of what "full scale" means at the RTL IQ input, since
 > AGC (`hal/src/agc.cc`) is excluded from RTL scope and its output is
 > nowhere else specified for hardware consumers.
 
@@ -11,7 +10,7 @@
 *computes* a gain value; nothing in `hal/` applies that gain digitally to
 the IQ stream. The gain is applied by `IQSource::set_gain()` calling into
 UHD/hardware, upstream of everything RTL will ever see. That makes AGC
-correctly out of RTL scope (per Decision 6) -- but it also means the RTL
+correctly out of RTL scope -- but it also means the RTL
 input contract inherits an assumption from `AgcController` that is never
 written down anywhere a hardware consumer would read it. This document is
 that missing contract.
