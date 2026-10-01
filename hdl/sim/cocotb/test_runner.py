@@ -1,133 +1,93 @@
-"""pytest entry point: builds each RTL block with Verilator and runs its
-cocotb testbench. This is the file pytest collects; the actual `@cocotb.test`
-coroutines live in the test_<block>.py modules alongside it and only run
-inside the simulator process the runner launches.
+"""pytest entry point: builds each RTL block with Verilator and with Icarus
+and runs its cocotb testbench on both. This is the file pytest collects;
+the actual `@cocotb.test` coroutines live in the test_<block>.py modules
+alongside it and only run inside the simulator process the runner
+launches.
 
 Run: hdl/sim/.venv/bin/python -m pytest hdl/sim/cocotb/test_runner.py -v
+
+HDL_RTL_DIR overrides the RTL tree; HDL_SIM_BUILD overrides the build
+directory (default hdl/build/sim).
 """
 
+import os
 import pathlib
+import xml.etree.ElementTree as ET
 
+import pytest
 from cocotb.runner import get_runner
 
 HDL_ROOT = pathlib.Path(__file__).resolve().parents[2]
-RTL_INCLUDE = HDL_ROOT / "rtl" / "include"
-RTL_COMMON = HDL_ROOT / "rtl" / "common"
-RTL_SYNC = HDL_ROOT / "rtl" / "sync"
-RTL_OFDM = HDL_ROOT / "rtl" / "ofdm"
-SIM_BUILD = HDL_ROOT / "sim" / "cocotb" / "sim_build"
+RTL = pathlib.Path(os.environ.get("HDL_RTL_DIR", HDL_ROOT / "rtl"))
+SIM_BUILD = pathlib.Path(os.environ.get("HDL_SIM_BUILD", HDL_ROOT / "build" / "sim"))
+SIMULATORS = ["verilator", "icarus"]
+
+# toplevel -> (sources relative to RTL, extra include dirs relative to RTL,
+#              parameters); the testbench is test_<toplevel>.py
+BLOCKS = {
+    "axi4s_skid_buffer": (["common/axi4s_skid_buffer.v"], [], {"DATA_WIDTH": 8}),
+    "cordic": (["common/cordic.v"], [], {}),
+    "bootstrap_detector": (
+        ["sync/bootstrap_detector.v", "common/cordic.v", "common/udiv_seq.v"],
+        [],
+        {},
+    ),
+    "timing_recovery": (
+        ["sync/timing_recovery.v", "sync/polyphase_fir.v"],
+        ["sync"],
+        {},
+    ),
+    "cp_removal": (["ofdm/cp_removal.v"], [], {}),
+    "fft_engine": (
+        ["ofdm/fft_engine.v"],
+        [],
+        {"TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"'},
+    ),
+}
+
+# Verilator's generated C++ wrapper does not take --language, so the
+# 1364-2001 restriction is enforced by hdl/synth/lint.sh, not here.
+BUILD_ARGS = {"verilator": ["-Wall"], "icarus": ["-Wall"]}
 
 
-def test_axi4s_skid_buffer():
-    runner = get_runner("verilator")
+def _check_results(results_xml):
+    """cocotb's own check only fails on failed tests; also fail when the
+    module ran no tests at all (e.g. a renamed or mis-imported module)."""
+    cases = ET.parse(results_xml).getroot().iter("testcase")
+    ran = [c for c in cases if c.find("skipped") is None]
+    assert ran, f"{results_xml}: no cocotb tests ran"
+
+
+def _run(sim, toplevel, sources, includes, parameters, test_module):
+    build_dir = SIM_BUILD / sim / toplevel
+    runner = get_runner(sim)
     runner.build(
-        verilog_sources=[RTL_COMMON / "axi4s_skid_buffer.v"],
-        includes=[RTL_INCLUDE],
-        hdl_toplevel="axi4s_skid_buffer",
-        parameters={"DATA_WIDTH": 8},
-        build_dir=SIM_BUILD / "axi4s_skid_buffer",
+        verilog_sources=sources,
+        includes=[RTL / "include", *includes],
+        hdl_toplevel=toplevel,
+        parameters=parameters,
+        build_dir=build_dir,
         always=True,
-        # 1364-2001 is a language-mode constraint for lint (see the lint
-        # gate); Verilator's simulation frontend doesn't take a matching
-        # --language flag alongside cocotb's own generated wrapper, so
-        # that check runs separately (see hdl/synth/lint.sh), not here.
-        build_args=["-Wall"],
+        build_args=BUILD_ARGS[sim],
+        timescale=("1ns", "1ps"),
     )
-    runner.test(
-        hdl_toplevel="axi4s_skid_buffer",
-        test_module="test_axi4s_skid_buffer",
-        build_dir=SIM_BUILD / "axi4s_skid_buffer",
+    results = runner.test(
+        hdl_toplevel=toplevel,
+        test_module=test_module,
+        build_dir=build_dir,
     )
+    _check_results(results)
 
 
-def test_cordic():
-    runner = get_runner("verilator")
-    runner.build(
-        verilog_sources=[RTL_COMMON / "cordic.v"],
-        includes=[RTL_INCLUDE],
-        hdl_toplevel="cordic",
-        build_dir=SIM_BUILD / "cordic",
-        always=True,
-        build_args=["-Wall"],
-    )
-    runner.test(
-        hdl_toplevel="cordic",
-        test_module="test_cordic",
-        build_dir=SIM_BUILD / "cordic",
-    )
-
-
-def test_bootstrap_detector():
-    runner = get_runner("verilator")
-    runner.build(
-        verilog_sources=[
-            RTL_SYNC / "bootstrap_detector.v",
-            RTL_COMMON / "cordic.v",
-            RTL_COMMON / "udiv_seq.v",
-        ],
-        includes=[RTL_INCLUDE],
-        hdl_toplevel="bootstrap_detector",
-        build_dir=SIM_BUILD / "bootstrap_detector",
-        always=True,
-        build_args=["-Wall"],
-    )
-    runner.test(
-        hdl_toplevel="bootstrap_detector",
-        test_module="test_bootstrap_detector",
-        build_dir=SIM_BUILD / "bootstrap_detector",
-    )
-
-
-def test_timing_recovery():
-    runner = get_runner("verilator")
-    runner.build(
-        verilog_sources=[
-            RTL_SYNC / "timing_recovery.v",
-            RTL_SYNC / "polyphase_fir.v",
-        ],
-        includes=[RTL_INCLUDE, RTL_SYNC],
-        hdl_toplevel="timing_recovery",
-        build_dir=SIM_BUILD / "timing_recovery",
-        always=True,
-        build_args=["-Wall"],
-    )
-    runner.test(
-        hdl_toplevel="timing_recovery",
-        test_module="test_timing_recovery",
-        build_dir=SIM_BUILD / "timing_recovery",
-    )
-
-
-def test_fft_engine():
-    runner = get_runner("verilator")
-    runner.build(
-        verilog_sources=[RTL_OFDM / "fft_engine.v"],
-        includes=[RTL_INCLUDE],
-        hdl_toplevel="fft_engine",
-        parameters={"TWIDDLE_HEX": f'"{RTL_OFDM / "fft_twiddles.hex"}"'},
-        build_dir=SIM_BUILD / "fft_engine",
-        always=True,
-        build_args=["-Wall"],
-    )
-    runner.test(
-        hdl_toplevel="fft_engine",
-        test_module="test_fft_engine",
-        build_dir=SIM_BUILD / "fft_engine",
-    )
-
-
-def test_cp_removal():
-    runner = get_runner("verilator")
-    runner.build(
-        verilog_sources=[RTL_OFDM / "cp_removal.v"],
-        includes=[RTL_INCLUDE],
-        hdl_toplevel="cp_removal",
-        build_dir=SIM_BUILD / "cp_removal",
-        always=True,
-        build_args=["-Wall"],
-    )
-    runner.test(
-        hdl_toplevel="cp_removal",
-        test_module="test_cp_removal",
-        build_dir=SIM_BUILD / "cp_removal",
+@pytest.mark.parametrize("sim", SIMULATORS)
+@pytest.mark.parametrize("block", list(BLOCKS))
+def test_block(block, sim):
+    sources, includes, parameters = BLOCKS[block]
+    _run(
+        sim,
+        block,
+        [RTL / s for s in sources],
+        [RTL / d for d in includes],
+        parameters,
+        f"test_{block}",
     )

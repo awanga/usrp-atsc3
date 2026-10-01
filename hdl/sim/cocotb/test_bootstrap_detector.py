@@ -29,7 +29,7 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import FallingEdge, RisingEdge, with_timeout
+from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge, with_timeout
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BOOTSTRAP_GEN = REPO_ROOT / "build-fxp" / "hdl" / "sim" / "golden" / "bootstrap_gen"
@@ -145,19 +145,31 @@ async def drive(dut, samples, rnd):
         dut.s_axis_tvalid.value = 0
 
 
+async def settled(trigger):
+    """Wait for trigger, then for the end of that timestep.
+
+    A value-change callback on one register can fire before the
+    simulator has applied the non-blocking updates of its siblings
+    (Icarus does this; Verilator does not), so sampling anything right
+    after RisingEdge(<dut output>) races. ReadOnly() waits until every
+    update of the timestep has landed."""
+    await trigger
+    await ReadOnly()
+
+
 async def collect_monitor(dut, out):
     while True:
-        await RisingEdge(dut.mon_valid)
+        await settled(RisingEdge(dut.mon_valid))
         out.append((int(dut.mon_metric.value), dut.mon_cfo_hz.value.signed_integer))
 
 
 async def collect_detections(dut, out, rnd):
     while True:
-        await RisingEdge(dut.m_axis_tvalid)
+        await settled(RisingEdge(dut.m_axis_tvalid))
         word = int(dut.m_axis_tdata.value)
         assert dut.m_axis_tlast.value == 1, "status word must carry TLAST"
         for _ in range(rnd.randint(0, 6)):  # backpressure
-            await RisingEdge(dut.clk)
+            await settled(RisingEdge(dut.clk))
             assert dut.m_axis_tvalid.value == 1, "m_axis_tvalid dropped before handshake"
             assert int(dut.m_axis_tdata.value) == word, "m_axis_tdata changed while stalled"
             assert dut.s_axis_tready.value == 0, "input accepted while a detection is pending"

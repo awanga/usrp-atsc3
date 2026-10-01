@@ -70,6 +70,7 @@ hdl/sim/cocotb/__pycache__/
 hdl/sim/cocotb/.pytest_cache/
 hdl/formal/*/
 hdl/formal/*.prove_pdr.log
+hdl/build/
 
 # OS files
 .DS_Store
