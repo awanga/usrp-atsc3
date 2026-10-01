@@ -3,7 +3,7 @@
 
 #pragma once
 
-// gr-atsc3 Core Type Definitions
+// OpenATSC3 Core Type Definitions
 // ATSC3_SAMPLE_T typedef switching on ATSC3_FIXED_POINT
 
 #include <complex>

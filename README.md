@@ -1,4 +1,4 @@
-# gr-atsc3 — ATSC 3.0 Software-Defined Receiver
+# OpenATSC3 — ATSC 3.0 Software-Defined Receiver
 
 [![CI](https://github.com/awanga/usrp-atsc3/actions/workflows/ci.yml/badge.svg)](https://github.com/awanga/usrp-atsc3/actions/workflows/ci.yml)
 
@@ -356,8 +356,8 @@ sudo apt-get install -y \
     python3-dev python3-numpy
 
 # 2. Clone and configure
-git clone https://github.com/<org>/gr-atsc3.git
-cd gr-atsc3
+git clone https://github.com/<org>/OpenATSC3.git
+cd OpenATSC3
 mkdir build && cd build
 
 # 3. Configure
@@ -503,7 +503,7 @@ RUN apt-get install -y gnuradio uhd-host libfftw3-dev ...
 ```
 
 Used locally via `make docker-build` and by GitHub Actions via
-`docker://ghcr.io/<org>/gr-atsc3-ci:latest`.
+`docker://ghcr.io/<org>/openatsc3-ci:latest`.
 
 ---
 

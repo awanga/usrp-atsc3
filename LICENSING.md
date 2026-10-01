@@ -1,6 +1,6 @@
 # Licensing
 
-gr-atsc3 is free software under weak-copyleft licenses: anyone may use,
+OpenATSC3 is free software under weak-copyleft licenses: anyone may use,
 embed and ship it, commercially or not, but modified versions of these
 files must be distributed with their source under the same license.
 

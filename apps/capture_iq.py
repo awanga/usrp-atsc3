@@ -101,7 +101,7 @@ def create_sigmf_meta(
             "core:sample_rate": sample_rate,
             "core:version": "1.0.0",
             "core:description": f"ATSC 3.0 capture from USRP N2x0 + TVRX",
-            "core:author": "gr-atsc3 capture_iq.py",
+            "core:author": "OpenATSC3 capture_iq.py",
             "core:recorder": "UHD",
             "atsc3:channel": channel,
         },

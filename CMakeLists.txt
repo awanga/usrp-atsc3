@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(
-  gr-atsc3
+  OpenATSC3
   VERSION 1.0.0
   DESCRIPTION "GNU Radio OOT module for ATSC 3.0 physical-layer receiver"
   LANGUAGES CXX)
@@ -228,7 +228,7 @@ endif()
 # ------------------------------------------------------------------------------
 # CPack Configuration for .deb packaging
 # ------------------------------------------------------------------------------
-set(CPACK_PACKAGE_NAME "gr-atsc3")
+set(CPACK_PACKAGE_NAME "openatsc3")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
 set(CPACK_PACKAGE_MAINTAINER "ATSC3 Project")
@@ -249,7 +249,7 @@ include(CPack)
 # Summary
 # ------------------------------------------------------------------------------
 message(STATUS "")
-message(STATUS "gr-atsc3 Configuration Summary:")
+message(STATUS "OpenATSC3 Configuration Summary:")
 message(STATUS "  Version:        ${PROJECT_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Fixed-point:    ${ATSC3_FIXED_POINT}")

@@ -1,6 +1,6 @@
 # ATSC 3.0 Compliance Status
 
-This document tracks gr-atsc3 compliance with ATSC A/322:2023 (Physical Layer Protocol).
+This document tracks OpenATSC3 compliance with ATSC A/322:2023 (Physical Layer Protocol).
 
 ## Compliance Summary
 

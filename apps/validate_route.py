@@ -21,7 +21,7 @@ Usage:
 Requirements:
     - numpy
     - scipy (for signal processing)
-    - gr-atsc3 module (for ALP/ROUTE parsing)
+    - OpenATSC3 module (for ALP/ROUTE parsing)
 """
 
 import argparse

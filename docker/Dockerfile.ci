@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: MPL-2.0
 # SPDX-FileCopyrightText: 2026 Alfred Wanga
 #
-# Dockerfile.ci — CI Build Environment for gr-atsc3
+# Dockerfile.ci — CI Build Environment for OpenATSC3
 #
 # Ubuntu 22.04 base with pinned package versions for reproducible builds.
 #
 # Usage:
-#   docker build -t gr-atsc3-ci -f docker/Dockerfile.ci .
-#   docker run --rm -v $(pwd):/workspace gr-atsc3-ci
+#   docker build -t openatsc3-ci -f docker/Dockerfile.ci .
+#   docker run --rm -v $(pwd):/workspace openatsc3-ci
 
 FROM ubuntu:22.04
 
 LABEL maintainer="ATSC3 Project"
-LABEL description="CI build environment for gr-atsc3"
+LABEL description="CI build environment for OpenATSC3"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

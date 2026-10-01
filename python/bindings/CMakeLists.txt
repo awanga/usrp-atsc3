@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # SPDX-FileCopyrightText: 2026 Alfred Wanga
 #
-# python/bindings/ - pybind11 module for gr-atsc3
+# python/bindings/ - pybind11 module for OpenATSC3
 
 set(BINDING_SOURCES
     python_bindings.cc

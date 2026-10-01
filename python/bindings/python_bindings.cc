@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 Alfred Wanga
 //
-// python_bindings.cc — Main pybind11 module for gr-atsc3
+// python_bindings.cc — Main pybind11 module for OpenATSC3
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -26,7 +26,7 @@ void bind_service_guide(py::module_& m);
 
 PYBIND11_MODULE(atsc3_python, m) {
     m.doc() = R"doc(
-gr-atsc3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
+OpenATSC3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
 
 This module provides blocks for receiving ATSC 3.0 broadcast signals:
 - bootstrap_detect: Bootstrap signal detection and coarse CFO estimation

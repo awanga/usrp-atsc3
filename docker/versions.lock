@@ -1,4 +1,4 @@
-# versions.lock — Package version manifest for gr-atsc3 CI environment
+# versions.lock — Package version manifest for OpenATSC3 CI environment
 #
 # This file documents the pinned versions used in Dockerfile.ci
 # Update versions here, then update Dockerfile.ci to match
