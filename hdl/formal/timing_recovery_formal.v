@@ -1,57 +1,42 @@
-// timing_recovery_formal.v — Formal harness top for timing_recovery
+// timing_recovery_formal.v — Formal harness for timing_recovery
 //
-// Verification-only. Not synthesized, not part of rtl/. Instantiates the
-// flatten+expose-generated timing_recovery_bare (produced earlier in
-// timing_recovery.sby's [script] -- see that file, timing_recovery_bare.v,
-// and hdl/docs/formal_conventions.md for the two-stage flatten+expose
-// flow this replaces a `bind`-based checker with).
+// Main property (data integrity vs a ghost model, input path): every
+// accepted input beat is written exactly once, unmodified, to ring-buffer
+// slot (accepted count mod 128) -- the slot the interpolator later
+// addresses relative to -- and the reset-time clear sweep writes only
+// zeros. The interpolated output values themselves (polyphase FIR,
+// Gardner TED, loop filter) are not proved: there is no tractable
+// independent formal oracle for them, so they are checked bit-exact
+// against lib/sync/timing_recovery.cc in test_timing_recovery.py and
+// test_polyphase_fir.py.
 //
-// Scoped to exactly TASKS.md's 9.2 formal ask -- "phase accumulator wrap
-// behavior, AXI4-S protocol properties" -- not an exhaustive proof of
-// the whole 15-state control FSM or the polyphase FIR's arithmetic
-// (cocotb's job, against the real golden model, at full width; see
-// test_timing_recovery.py).
+// Supplementary:
+//   - FSM legality.
+//   - mu_q16's reset value equals (cfg_initial_offset_q15 reinterpreted
+//     as unsigned) * 2 mod 65536, computed here independently of the
+//     RTL's bit-slice -- the derivation timing_recovery.v's header gives
+//     for matching the C++'s wrap of the initial offset.
+//   - s_axis_tready / m_axis_tvalid pinned to their controlling FSM
+//     states (ST_IDLE / ST_OUTPUT); the purely temporal forms are true
+//     but not inductive on their own.
+//   - AXI4-S output stability while stalled; reset clears the handshake
+//     outputs.
 //
-// Properties:
-//   - FSM legality: \dut.state (exposed) is always one of the 15 defined
-//     encodings (0..14), never the 1-bit-vector's other possible values.
-//   - Phase accumulator wrap, reset-time derivation: mu_q16's reset
-//     value is computed in timing_recovery.v as a single bit-slice trick
-//     ({cfg_initial_offset_q15[14:0], 1'b0}), justified in that file's
-//     header as bit-exact to the C++'s "reinterpret Q1.15 as unsigned,
-//     multiply by 2, wrap mod 65536" for every possible 16-bit input.
-//     This harness checks that claim against an *independently*
-//     computed reference (an explicit wider add, truncated), not just
-//     re-reading the DUT's own formula -- so it is a genuine
-//     cross-check, not a self-consistency tautology.
-//   - s_axis_tready / m_axis_tvalid each pinned to their exact
-//     controlling FSM state (ST_IDLE / ST_OUTPUT). This is the form
-//     k-induction actually needs to close: a purely temporal statement
-//     of "tready never high right after an accept" or "tvalid stays
-//     high while stalled" is true but not itself inductive, since
-//     without an FSM-state anchor k-induction is free to consider an
-//     unreachable predecessor (e.g. m_axis_tvalid=1 while state is
-//     ST_CLEAR, which nothing in the RTL would ever clear, "vacuously"
-//     satisfying naive stability). Pinning both signals to their state
-//     first, then deriving stability/no-double-accept from that, closes
-//     the proof; both weaker forms were tried first and failed
-//     induction (not vacuously -- z3 found the ST_CLEAR-with-tvalid-set
-//     counterexample directly).
-//   - Standard AXI4-S output stability on m_axis while stalled
-//     (mirroring axi4s_skid_buffer_formal.v/cp_removal_formal.v).
+// Assumptions, each encoding a caller contract:
+//   - AXI4-S producer rule: an offered beat is held until accepted (only
+//     the output-stability check depends on it).
+// Configuration inputs are otherwise free every cycle: they are latched
+// at reset (cfg_locked is read live by design).
 //
-// Non-vacuity: as a sanity check (not part of the checked-in flow),
-// reverting mu_q16's reset derivation to a plain pass-through of
-// cfg_initial_offset_q15 (dropping the x2 wraparound) fails `prove`'s
-// BMC base case immediately (step 2) on the phase-accumulator-wrap
-// cross-check, confirming that property is genuinely load-bearing.
+// Multipliers are cut (cutpoint), sound because no property depends on a
+// product's value. Depth 20 covers the input path (accept -> write is two
+// cycles), but the first emitted symbol needs the 128-cycle clear sweep
+// plus 32 samples, past practical BMC depth, so output-side events are
+// not covered here; non-vacuity of the proved properties comes from the
+// committed mutants in hdl/mutants. White-box probes come from the
+// flatten+expose flow; see hdl/docs/formal_conventions.md.
 //
-// Unlike bootstrap_detector.sby, plain `smtbmc z3` (mode prove, not
-// PDR) closes this in a few seconds even with the polyphase FIR's and
-// loop filter's multiplies cut -- there was no need to reach for
-// prove_pdr.sh/ABC PDR here.
-//
-// Run: cd hdl/formal && sby -f timing_recovery.sby
+// Run: hdl/formal/run_formal.sh timing_recovery
 
 `include "axi4s_types.vh"
 
@@ -85,6 +70,11 @@ module timing_recovery_formal (
     // timing_recovery_bare -- see that file's header.
     wire [3:0]  state_probe;
     wire [15:0] mu_q16_probe;
+    wire        buf_wr_en_probe;
+    wire [6:0]  buf_wr_addr_probe;
+    wire [31:0] buf_wr_data_probe;
+    wire [6:0]  buf_write_idx_probe;
+    wire [15:0] x_re_probe, x_im_probe;
 
     timing_recovery_bare dut_top (
         .clk                    (clk),
@@ -105,8 +95,14 @@ module timing_recovery_formal (
         .mon_valid              (mon_valid),
         .mon_mu_q16             (mon_mu_q16),
         .mon_timing_error_q15   (mon_timing_error_q15),
-        .\dut.state  (state_probe),
-        .\dut.mu_q16 (mu_q16_probe)
+        .\dut.state         (state_probe),
+        .\dut.mu_q16        (mu_q16_probe),
+        .\dut.buf_wr_en     (buf_wr_en_probe),
+        .\dut.buf_wr_addr   (buf_wr_addr_probe),
+        .\dut.buf_wr_data   (buf_wr_data_probe),
+        .\dut.buf_write_idx (buf_write_idx_probe),
+        .\dut.x_re          (x_re_probe),
+        .\dut.x_im          (x_im_probe)
     );
 
     reg past_valid;
@@ -147,6 +143,48 @@ module timing_recovery_formal (
             assume (s_axis_tvalid);
             assume (s_axis_tdata == prev_s_tdata);
             assume (s_axis_tlast == prev_s_tlast);
+        end
+    end
+
+    //--------------------------------------------------------------------
+    // Ghost model: input path data integrity. Every accepted beat is
+    // written once, unmodified, to ring-buffer slot (accepted count mod
+    // 128) -- the slot the interpolator later addresses relative to.
+    //--------------------------------------------------------------------
+    localparam [3:0] ST_CLEAR = 4'd0, ST_IDLE = 4'd1, ST_WRITE = 4'd2, ST_CHECK = 4'd3;
+
+    wire       in_fire     = s_axis_tvalid && s_axis_tready;
+    wire       sample_wr   = buf_wr_en_probe && state_probe == ST_CHECK;
+    reg        g_pending;
+    reg [31:0] g_data;
+    reg [6:0]  g_widx;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            g_pending <= 1'b0;
+            g_widx    <= 7'd0;
+        end else begin
+            if (in_fire) begin
+                g_pending <= 1'b1;
+                g_data    <= s_axis_tdata;
+            end else if (sample_wr) begin
+                g_pending <= 1'b0;
+                g_widx    <= g_widx + 7'd1;
+            end
+        end
+    end
+
+    always @(*) begin
+        if (past_valid && !rst) begin
+            if (sample_wr) begin
+                assert (g_pending);
+                assert (buf_wr_addr_probe == g_widx);
+                assert (buf_wr_data_probe == g_data);
+            end
+            if (buf_wr_en_probe && !sample_wr) assert (buf_wr_data_probe == 32'd0);  // clear sweep
+            assert (g_pending == (state_probe == ST_WRITE || sample_wr));
+            if (state_probe == ST_WRITE) assert ({x_re_probe, x_im_probe} == g_data);
+            assert (buf_write_idx_probe == (sample_wr ? g_widx + 7'd1 : g_widx));
         end
     end
 
