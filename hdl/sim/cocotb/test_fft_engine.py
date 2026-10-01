@@ -54,8 +54,11 @@ def run_golden(fft_size, samples):
         )
     lines = [f"C {fft_size}"] + [f"{re} {im}" for re, im in samples]
     proc = subprocess.run(
-        [str(FFT_ENGINE_GEN)], input="\n".join(lines) + "\n",
-        capture_output=True, text=True, check=True,
+        [str(FFT_ENGINE_GEN)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
     )
     out = []
     for line in proc.stdout.splitlines():
@@ -107,7 +110,9 @@ async def collect_output(dut, expected):
     while idx < len(expected):
         await RisingEdge(dut.clk)
         if dut.m_axis_tvalid.value != 1:
-            assert stalled is None, f"output {idx}: TVALID dropped before the beat was accepted"
+            assert (
+                stalled is None
+            ), f"output {idx}: TVALID dropped before the beat was accepted"
             continue
         word = (int(dut.m_axis_tdata.value), int(dut.m_axis_tlast.value))
         if stalled is not None:
@@ -118,13 +123,23 @@ async def collect_output(dut, expected):
         stalled = None
         got = unpack32(word[0])
         exp_re, exp_im, exp_last = expected[idx]
-        assert got == (exp_re, exp_im), f"output {idx}: expected {(exp_re, exp_im)}, got {got}"
+        assert got == (
+            exp_re,
+            exp_im,
+        ), f"output {idx}: expected {(exp_re, exp_im)}, got {got}"
         assert word[1] == int(exp_last), f"output {idx}: tlast expected {int(exp_last)}"
         idx += 1
 
 
-async def run_stream(dut, fft_size, transforms, rnd=None, backpressure=False, cfg_size=None,
-                     expect_invalid=0):
+async def run_stream(
+    dut,
+    fft_size,
+    transforms,
+    rnd=None,
+    backpressure=False,
+    cfg_size=None,
+    expect_invalid=0,
+):
     """Back-to-back transforms through one reset; rnd adds input gaps."""
     expected = []
     for samples in transforms:
@@ -135,7 +150,8 @@ async def run_stream(dut, fft_size, transforms, rnd=None, backpressure=False, cf
     await reset_dut(dut, cfg_size or fft_size, expect_invalid)
     bp_task = cocotb.start_soon(drive_backpressure(dut, rnd)) if backpressure else None
     drive_task = cocotb.start_soon(
-        drive_input(dut, [x for samples in transforms for x in samples], rnd))
+        drive_input(dut, [x for samples in transforms for x in samples], rnd)
+    )
     await collect_output(dut, expected)
     await drive_task
     if bp_task is not None:
@@ -165,8 +181,13 @@ async def back_to_back_8k_with_stalls(dut):
     last pending beat, and every stalled beat must hold."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0xF77123)
-    await run_stream(dut, 8192, [random_samples(rnd, 8192), random_samples(rnd, 8192)],
-                     rnd=rnd, backpressure=True)
+    await run_stream(
+        dut,
+        8192,
+        [random_samples(rnd, 8192), random_samples(rnd, 8192)],
+        rnd=rnd,
+        backpressure=True,
+    )
 
 
 @cocotb.test(timeout_time=300, timeout_unit="ms")
@@ -189,7 +210,9 @@ async def random_32k(dut):
 async def undefined_size_falls_back_to_8k(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0xBAD5)
-    await run_stream(dut, 8192, [random_samples(rnd, 8192)], cfg_size=12000, expect_invalid=1)
+    await run_stream(
+        dut, 8192, [random_samples(rnd, 8192)], cfg_size=12000, expect_invalid=1
+    )
 
 
 @cocotb.test(timeout_time=300, timeout_unit="ms")

@@ -34,7 +34,9 @@ from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-TIMING_RECOVERY_GEN = REPO_ROOT / "build-fxp" / "hdl" / "sim" / "golden" / "timing_recovery_gen"
+TIMING_RECOVERY_GEN = (
+    REPO_ROOT / "build-fxp" / "hdl" / "sim" / "golden" / "timing_recovery_gen"
+)
 
 DEFAULT_FS = 6_250_000
 DEFAULT_SYMBOL_RATE_MILLIHZ = 718750
@@ -62,8 +64,17 @@ def unpack32(word):
     return _to_signed((word >> 16) & 0xFFFF, 16), _to_signed(word & 0xFFFF, 16)
 
 
-def run_golden(sample_rate_hz, symbol_rate_millihz, loop_bw_hz, loop_damping_milli,
-               sps, initial_offset_q15, locked_at_start, samples, lock_changes=None):
+def run_golden(
+    sample_rate_hz,
+    symbol_rate_millihz,
+    loop_bw_hz,
+    loop_damping_milli,
+    sps,
+    initial_offset_q15,
+    locked_at_start,
+    samples,
+    lock_changes=None,
+):
     """lock_changes: {sample index: locked}, applied before that sample."""
     lock_changes = lock_changes or {}
     if not TIMING_RECOVERY_GEN.exists():
@@ -72,24 +83,29 @@ def run_golden(sample_rate_hz, symbol_rate_millihz, loop_bw_hz, loop_damping_mil
             "cmake --build build-fxp --target timing_recovery_gen "
             "(requires -DATSC3_FIXED_POINT=ON -DATSC3_ENABLE_HDL_STUBS=ON)"
         )
-    cfg_line = (f"C {sample_rate_hz} {symbol_rate_millihz} {loop_bw_hz} "
-                f"{loop_damping_milli} {sps} {initial_offset_q15} {int(locked_at_start)}")
+    cfg_line = (
+        f"C {sample_rate_hz} {symbol_rate_millihz} {loop_bw_hz} "
+        f"{loop_damping_milli} {sps} {initial_offset_q15} {int(locked_at_start)}"
+    )
     lines = [cfg_line]
     for i, (re, im) in enumerate(samples):
         if i in lock_changes:
             lines.append(f"L {int(lock_changes[i])}")
         lines.append(f"{re} {im}")
     proc = subprocess.run(
-        [str(TIMING_RECOVERY_GEN)], input="\n".join(lines) + "\n",
-        capture_output=True, text=True, check=True,
+        [str(TIMING_RECOVERY_GEN)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
     )
     out = proc.stdout.splitlines()
     assert out[0].startswith("G "), f"expected G line first, got: {out[0]!r}"
     _, kp_q15, ki_q15 = out[0].split()
     kp_q15, ki_q15 = int(kp_q15), int(ki_q15)
 
-    monitors = []   # one per input sample: (mu_q16, timing_error_q15)
-    symbols = []    # emitted (re, im, mu_q16), in order
+    monitors = []  # one per input sample: (mu_q16, timing_error_q15)
+    symbols = []  # emitted (re, im, mu_q16), in order
     for line in out[1:]:
         if line.startswith("M "):
             _, mu_q16, err_q15 = line.split()
@@ -164,22 +180,46 @@ async def monitor(dut, mons, syms):
         if dut.m_axis_tvalid.value == 1 and dut.m_axis_tready.value == 1:
             syms.append(unpack32(int(dut.m_axis_tdata.value)))
         if dut.mon_valid.value == 1:
-            mons.append((int(dut.mon_mu_q16.value),
-                         _to_signed(int(dut.mon_timing_error_q15.value), 64)))
+            mons.append(
+                (
+                    int(dut.mon_mu_q16.value),
+                    _to_signed(int(dut.mon_timing_error_q15.value), 64),
+                )
+            )
 
 
-async def run_scenario(dut, samples, seed, sps=DEFAULT_SPS, initial_offset_q15=0, locked=True,
-                       loop_bw_hz=DEFAULT_LOOP_BW_HZ, loop_damping_milli=DEFAULT_LOOP_DAMPING_MILLI,
-                       lock_changes=None, gaps=False, stall_output=False, expect_mu_motion=False):
+async def run_scenario(
+    dut,
+    samples,
+    seed,
+    sps=DEFAULT_SPS,
+    initial_offset_q15=0,
+    locked=True,
+    loop_bw_hz=DEFAULT_LOOP_BW_HZ,
+    loop_damping_milli=DEFAULT_LOOP_DAMPING_MILLI,
+    lock_changes=None,
+    gaps=False,
+    stall_output=False,
+    expect_mu_motion=False,
+):
     lock_changes = lock_changes or {}
     kp_q15, ki_q15, monitors, symbols = run_golden(
-        DEFAULT_FS, DEFAULT_SYMBOL_RATE_MILLIHZ, loop_bw_hz, loop_damping_milli,
-        sps, initial_offset_q15, locked, samples, lock_changes,
+        DEFAULT_FS,
+        DEFAULT_SYMBOL_RATE_MILLIHZ,
+        loop_bw_hz,
+        loop_damping_milli,
+        sps,
+        initial_offset_q15,
+        locked,
+        samples,
+        lock_changes,
     )
     assert len(monitors) == len(samples)
     assert symbols, "stimulus emitted no golden symbols -- scenario proves nothing"
     if expect_mu_motion:
-        assert len({mu for mu, _ in monitors}) > 4, "loop never moved mu -- raise loop bandwidth"
+        assert (
+            len({mu for mu, _ in monitors}) > 4
+        ), "loop never moved mu -- raise loop bandwidth"
 
     await reset_dut(dut, kp_q15, ki_q15, sps, initial_offset_q15, locked)
     rnd = random.Random(seed)
@@ -196,15 +236,23 @@ async def run_scenario(dut, samples, seed, sps=DEFAULT_SPS, initial_offset_q15=0
         bp_task.kill()
 
     for i, (got, exp) in enumerate(zip(mons, monitors)):
-        assert got == exp, f"sample {i}: (mu_q16, timing_error_q15) expected {exp}, got {got}"
-    assert len(mons) == len(monitors), f"{len(mons)} monitor updates for {len(monitors)} samples"
+        assert (
+            got == exp
+        ), f"sample {i}: (mu_q16, timing_error_q15) expected {exp}, got {got}"
+    assert len(mons) == len(
+        monitors
+    ), f"{len(mons)} monitor updates for {len(monitors)} samples"
     for k, (got, exp) in enumerate(zip(syms, symbols)):
         assert got == exp[:2], f"symbol {k}: expected {exp[:2]}, got {got}"
-    assert len(syms) == len(symbols), f"RTL emitted {len(syms)} symbols, golden {len(symbols)}"
+    assert len(syms) == len(
+        symbols
+    ), f"RTL emitted {len(syms)} symbols, golden {len(symbols)}"
 
 
 def noise(rnd, n, sigma=8000):
-    return [(_clamp16(rnd.gauss(0, sigma)), _clamp16(rnd.gauss(0, sigma))) for _ in range(n)]
+    return [
+        (_clamp16(rnd.gauss(0, sigma)), _clamp16(rnd.gauss(0, sigma))) for _ in range(n)
+    ]
 
 
 @cocotb.test(timeout_time=50, timeout_unit="ms")
@@ -214,8 +262,15 @@ async def acquisition_and_tracking(dut):
     backpressure."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x71171)
-    await run_scenario(dut, noise(rnd, 600), 1, loop_bw_hz=50000, gaps=True,
-                       stall_output=True, expect_mu_motion=True)
+    await run_scenario(
+        dut,
+        noise(rnd, 600),
+        1,
+        loop_bw_hz=50000,
+        gaps=True,
+        stall_output=True,
+        expect_mu_motion=True,
+    )
 
 
 @cocotb.test(timeout_time=20, timeout_unit="ms")
@@ -245,8 +300,14 @@ async def lock_toggled_mid_stream(dut):
     and reacquisition) and stay bit-exact through both transitions."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x10C4)
-    await run_scenario(dut, noise(rnd, 300), 4, loop_bw_hz=50000,
-                       lock_changes={100: False, 200: True}, expect_mu_motion=True)
+    await run_scenario(
+        dut,
+        noise(rnd, 300),
+        4,
+        loop_bw_hz=50000,
+        lock_changes={100: False, 200: True},
+        expect_mu_motion=True,
+    )
 
 
 @cocotb.test(timeout_time=50, timeout_unit="ms")
@@ -256,8 +317,9 @@ async def other_oversampling_ratios(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x5B5)
     for sps in (3, 4):
-        await run_scenario(dut, noise(rnd, 240), 5 + sps, sps=sps, loop_bw_hz=50000,
-                           stall_output=True)
+        await run_scenario(
+            dut, noise(rnd, 240), 5 + sps, sps=sps, loop_bw_hz=50000, stall_output=True
+        )
 
 
 @cocotb.test(timeout_time=50, timeout_unit="ms")
@@ -267,8 +329,16 @@ async def reset_mid_stream(dut):
     golden run (buffer cleared, loop state and counters reset)."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x7E5E7)
-    kp_q15, ki_q15, _, _ = run_golden(DEFAULT_FS, DEFAULT_SYMBOL_RATE_MILLIHZ, 50000,
-                                      DEFAULT_LOOP_DAMPING_MILLI, DEFAULT_SPS, 0, True, [])
+    kp_q15, ki_q15, _, _ = run_golden(
+        DEFAULT_FS,
+        DEFAULT_SYMBOL_RATE_MILLIHZ,
+        50000,
+        DEFAULT_LOOP_DAMPING_MILLI,
+        DEFAULT_SPS,
+        0,
+        True,
+        [],
+    )
     await reset_dut(dut, kp_q15, ki_q15, DEFAULT_SPS, 0, True)
     first = cocotb.start_soon(drive(dut, noise(rnd, 120), rnd, False, {}))
     for _ in range(rnd.randint(3000, 6000)):

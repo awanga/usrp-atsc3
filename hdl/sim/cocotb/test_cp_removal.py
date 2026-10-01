@@ -48,10 +48,15 @@ def run_golden(fft_size, cp_fraction_numerator, samples):
             "cmake --build build-fxp --target cp_removal_gen "
             "(requires -DATSC3_FIXED_POINT=ON -DATSC3_ENABLE_HDL_STUBS=ON)"
         )
-    lines = [f"C {fft_size} {cp_fraction_numerator}"] + [f"{re} {im}" for re, im in samples]
+    lines = [f"C {fft_size} {cp_fraction_numerator}"] + [
+        f"{re} {im}" for re, im in samples
+    ]
     proc = subprocess.run(
-        [str(CP_REMOVAL_GEN)], input="\n".join(lines) + "\n",
-        capture_output=True, text=True, check=True,
+        [str(CP_REMOVAL_GEN)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
     )
     symbols = []
     current = None
@@ -132,10 +137,12 @@ async def collect_output(dut, expected, done_event):
             got = unpack(int(dut.m_axis_tdata.value))
             got_last = int(dut.m_axis_tlast.value)
             exp_data, exp_last = expected[idx]
-            assert got == exp_data, f"beat {idx}: tdata mismatch, expected {exp_data}, got {got}"
-            assert got_last == int(exp_last), (
-                f"beat {idx}: tlast mismatch, expected {int(exp_last)}, got {got_last}"
-            )
+            assert (
+                got == exp_data
+            ), f"beat {idx}: tdata mismatch, expected {exp_data}, got {got}"
+            assert got_last == int(
+                exp_last
+            ), f"beat {idx}: tlast mismatch, expected {int(exp_last)}, got {got_last}"
             idx += 1
     done_event.set()
 
@@ -147,8 +154,17 @@ async def count_output(dut, counter):
             counter[0] += 1
 
 
-async def run_scenario(dut, fft_size, cp_fraction_numerator, samples, rnd, gaps=False,
-                       backpressure=False, golden_cfg=None, expect_flags=(0, 0)):
+async def run_scenario(
+    dut,
+    fft_size,
+    cp_fraction_numerator,
+    samples,
+    rnd,
+    gaps=False,
+    backpressure=False,
+    golden_cfg=None,
+    expect_flags=(0, 0),
+):
     """golden_cfg: the (fft_size, numerator) the golden model should use,
     when the RTL is given an out-of-range config it must clamp to that."""
     await reset_dut(dut, fft_size, cp_fraction_numerator)
@@ -179,11 +195,14 @@ async def run_scenario(dut, fft_size, cp_fraction_numerator, samples, rnd, gaps=
     for _ in range(4):
         await RisingEdge(dut.clk)
     count_task.kill()
-    assert fired[0] == len(expected), (
-        f"{fired[0]} output beats, expected {len(expected)} (extra beats from the CP tail?)")
+    assert fired[0] == len(
+        expected
+    ), f"{fired[0]} output beats, expected {len(expected)} (extra beats from the CP tail?)"
 
-    assert (int(dut.cfg_fft_size_invalid.value), int(dut.cfg_cp_numerator_clamped.value)) == \
-        expect_flags
+    assert (
+        int(dut.cfg_fft_size_invalid.value),
+        int(dut.cfg_cp_numerator_clamped.value),
+    ) == expect_flags
 
 
 @cocotb.test(timeout_time=200, timeout_unit="ms")
@@ -195,8 +214,10 @@ async def all_cp_fractions_8k(dut):
 
     for numerator in CP_FRACTIONS:
         symbol_len = FFT_8K + numerator  # exact for FFT_8K (scale == 1)
-        samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-                   for _ in range(symbol_len + 8)]
+        samples = [
+            (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+            for _ in range(symbol_len + 8)
+        ]
         await run_scenario(dut, FFT_8K, numerator, samples, rnd)
 
 
@@ -210,8 +231,10 @@ async def fft_16k_scaling(dut):
     for numerator in (512, 2048):
         cp_length = numerator * 2
         symbol_len = FFT_16K + cp_length
-        samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-                   for _ in range(symbol_len + 8)]
+        samples = [
+            (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+            for _ in range(symbol_len + 8)
+        ]
         await run_scenario(dut, FFT_16K, numerator, samples, rnd)
 
 
@@ -224,8 +247,10 @@ async def multi_symbol_continuity(dut):
 
     numerator = 1024
     symbol_len = FFT_8K + numerator
-    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-               for _ in range(3 * symbol_len)]
+    samples = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        for _ in range(3 * symbol_len)
+    ]
     await run_scenario(dut, FFT_8K, numerator, samples, rnd)
 
 
@@ -238,9 +263,13 @@ async def randomized_backpressure(dut):
 
     numerator = 512
     symbol_len = FFT_8K + numerator
-    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-               for _ in range(2 * symbol_len)]
-    await run_scenario(dut, FFT_8K, numerator, samples, rnd, gaps=True, backpressure=True)
+    samples = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        for _ in range(2 * symbol_len)
+    ]
+    await run_scenario(
+        dut, FFT_8K, numerator, samples, rnd, gaps=True, backpressure=True
+    )
 
 
 @cocotb.test(timeout_time=200, timeout_unit="ms")
@@ -250,8 +279,10 @@ async def fft_32k_scaling(dut):
     rnd = random.Random(0x32C0)
     numerator = 4096
     symbol_len = FFT_32K + 4 * numerator
-    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-               for _ in range(symbol_len + 8)]
+    samples = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        for _ in range(symbol_len + 8)
+    ]
     await run_scenario(dut, FFT_32K, numerator, samples, rnd)
 
 
@@ -263,10 +294,13 @@ async def out_of_range_config_is_clamped(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0xC1A3)
     symbol_len = FFT_8K + 4096
-    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-               for _ in range(symbol_len + 8)]
-    await run_scenario(dut, 12345, 5000, samples, rnd, golden_cfg=(FFT_8K, 4096),
-                       expect_flags=(1, 1))
+    samples = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        for _ in range(symbol_len + 8)
+    ]
+    await run_scenario(
+        dut, 12345, 5000, samples, rnd, golden_cfg=(FFT_8K, 4096), expect_flags=(1, 1)
+    )
 
 
 @cocotb.test(timeout_time=200, timeout_unit="ms")
@@ -277,13 +311,17 @@ async def reset_mid_symbol(dut):
     rnd = random.Random(0x5E7)
     await reset_dut(dut, FFT_8K, 1024)
     dut.m_axis_tready.value = 1
-    partial = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767)) for _ in range(5000)]
+    partial = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767)) for _ in range(5000)
+    ]
     first = cocotb.start_soon(drive_input(dut, partial, rnd, False))
     for _ in range(3000):
         await RisingEdge(dut.clk)
     assert not first.done()
     first.kill()
     symbol_len = FFT_8K + 1024
-    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
-               for _ in range(symbol_len + 8)]
+    samples = [
+        (rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        for _ in range(symbol_len + 8)
+    ]
     await run_scenario(dut, FFT_8K, 1024, samples, rnd)
