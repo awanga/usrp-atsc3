@@ -1,19 +1,26 @@
-// axi4s_skid_buffer_formal.v — Formal harness top for axi4s_skid_buffer
+// axi4s_skid_buffer_formal.v — Formal harness for axi4s_skid_buffer
 //
-// Verification-only. Not synthesized, not part of rtl/. Instantiates the
-// flatten+expose-generated axi4s_skid_buffer_bare (produced earlier in
-// axi4s_skid_buffer.sby's [script] -- see that file and
-// axi4s_skid_buffer_bare.v's header for why this two-stage flow replaces
-// the earlier `bind`-based checker: `bind` and plain hierarchical dotted
-// references both silently fail to connect in this Yosys build, so the
-// exposed skid_valid/skid_tdata/skid_tlast probes here are the only
-// verified-working way to reach the DUT's internal state.
+// Main property (data integrity vs a ghost model): beats leave in the
+// order they were accepted, each exactly once, with TDATA/TLAST
+// unchanged. Ghost counters number accepted input beats and fired output
+// beats; the solver picks an arbitrary index K (anyconst), the ghost
+// records beat K's data when it is accepted, and output beat K must carry
+// it. The occupancy invariant (accepted - fired == m_axis_tvalid +
+// skid_valid, never more than 2) and the position of beat K inside the
+// two storage slots are asserted too, which is what makes k-induction
+// close. Supplementary: AXI4-S output stability, registered s_axis_tready,
+// reset clears both slots, skid capture/drain.
 //
-// Generates free (solver-chosen) stimulus on every input each cycle and
-// asserts both black-box (port-only) and white-box (exposed-internal-state)
-// protocol properties.
+// Assumptions: only that the first cycle is a reset. Every input is
+// otherwise free each cycle -- the module must not lose or duplicate an
+// accepted beat even if the producer drops TVALID without a handshake.
 //
-// Run: cd hdl/formal && sby -f axi4s_skid_buffer.sby
+// DATA_WIDTH is shrunk to 4; the module does no arithmetic on TDATA.
+// Depth 20 is far past the deepest event (both slots full, then drained:
+// 4 cycles). The flatten+expose flow reaches skid_valid/skid_tdata/
+// skid_tlast; see hdl/docs/formal_conventions.md.
+//
+// Run: hdl/formal/run_formal.sh axi4s_skid_buffer
 
 `include "axi4s_types.vh"
 
@@ -105,6 +112,53 @@ module axi4s_skid_buffer_formal #(
     end
 
     //--------------------------------------------------------------------
+    // Ghost model: data integrity and ordering
+    //--------------------------------------------------------------------
+    (* anyconst *) reg [3:0] ghost_k;
+    reg  [3:0]            in_cnt, out_cnt;
+    reg                   ghost_armed;
+    reg  [DATA_WIDTH-1:0] ghost_data;
+    reg                   ghost_last;
+    wire                  in_fire  = s_axis_tvalid && s_axis_tready;
+    wire                  out_fire = m_axis_tvalid && m_axis_tready;
+    wire [3:0]            occupancy = in_cnt - out_cnt;
+    wire [3:0]            k_pos     = ghost_k - out_cnt;  // 0 = output register, 1 = skid
+
+    always @(posedge clk) begin
+        if (rst) begin
+            in_cnt      <= 4'd0;
+            out_cnt     <= 4'd0;
+            ghost_armed <= 1'b0;
+        end else begin
+            if (in_fire) in_cnt <= in_cnt + 4'd1;
+            if (out_fire) out_cnt <= out_cnt + 4'd1;
+            if (in_fire && in_cnt == ghost_k) begin
+                ghost_armed <= 1'b1;
+                ghost_data  <= s_axis_tdata;
+                ghost_last  <= s_axis_tlast;
+            end else if (out_fire && out_cnt == ghost_k) begin
+                ghost_armed <= 1'b0;
+            end
+        end
+    end
+
+    always @(*) begin
+        if (past_valid && !rst) begin
+            assert (occupancy == {3'd0, m_axis_tvalid} + {3'd0, skid_valid_probe});
+            assert (!skid_valid_probe || m_axis_tvalid);  // skid only behind a full output
+            assert (ghost_armed == (k_pos < occupancy));
+            if (ghost_armed && k_pos == 4'd0) begin
+                assert (m_axis_tdata == ghost_data);
+                assert (m_axis_tlast == ghost_last);
+            end
+            if (ghost_armed && k_pos == 4'd1) begin
+                assert (skid_tdata_probe == ghost_data);
+                assert (skid_tlast_probe == ghost_last);
+            end
+        end
+    end
+
+    //--------------------------------------------------------------------
     // Black-box property: AXI4-S output stability. Once TVALID is high
     // and not accepted, it must stay high next cycle with TDATA/TLAST
     // unchanged. Uses only DUT ports, no exposed internal state.
@@ -162,6 +216,8 @@ module axi4s_skid_buffer_formal #(
     always @(posedge clk) begin
         if (past_valid) begin
             cover (m_axis_tvalid && skid_valid_probe);
+            // Beat K delivered from the skid path after a stall.
+            cover (ghost_armed && out_fire && out_cnt == ghost_k && prev_skid_valid);
         end
     end
 
