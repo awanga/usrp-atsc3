@@ -183,7 +183,8 @@ async def collect_detections(dut, out, rnd):
                     _field(word, DET_METRIC)))
 
 
-async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=None):
+async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=None,
+                       start_clock=True):
     golden_mon, golden_det = run_golden(cfg, samples)
     if check_golden:
         check_golden(golden_mon)
@@ -193,7 +194,8 @@ async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=
         assert golden_det, "stimulus produced no golden detections"
     dut._log.info("golden detections (index, cfo_hz, metric): %s", golden_det)
 
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    if start_clock:
+        cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut, cfg)
 
     rnd = random.Random(seed)
@@ -216,7 +218,7 @@ async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=
     assert det == golden_det, f"detections differ:\n  rtl    {det}\n  golden {golden_det}"
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def two_bootstraps_default_config(dut):
     """Register-reset config; two bootstraps at opposite CFOs, then silence
     (drives R to its floor while P decays -- the metric-saturation path)."""
@@ -239,7 +241,7 @@ async def two_bootstraps_default_config(dut):
     await run_scenario(dut, (fs, DEFAULT_THRESHOLD_Q15, 64), samples, 11, True)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def raw_angle_odd_window(dut):
     """Fs = 2^27 makes cfo_hz == the raw CORDIC angle, exposing it bit-for-bit;
     window 5 exercises a non-power-of-two average divide. Ends with
@@ -256,7 +258,7 @@ async def raw_angle_odd_window(dut):
     await run_scenario(dut, (fs, 16384, 5), samples, 22, True)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def energy_floor_boundary(dut):
     """A repeated (correlated) pattern fading slowly: the metric stays well
     above 0 while R sweeps down through the near-silence floor (2^16), where
@@ -283,7 +285,7 @@ async def energy_floor_boundary(dut):
                        gated_while_correlated)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def zero_window_clamps_to_one(dut):
     """averaging_window = 0 behaves as 1 (the golden model's own clamp) and
     does not raise cfg_window_clamped, which is reserved for the RTL-only
@@ -297,7 +299,7 @@ async def zero_window_clamps_to_one(dut):
     assert dut.cfg_window_clamped.value == 0
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def oversized_window_is_flagged(dut):
     """A window beyond the RTL history RAM depth is clamped and flagged --
     the one config where the RTL knowingly diverges from the C++."""
@@ -306,3 +308,23 @@ async def oversized_window_is_flagged(dut):
     assert dut.cfg_window_clamped.value == 1
     await reset_dut(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, MAX_WIN))
     assert dut.cfg_window_clamped.value == 0
+
+
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
+async def reset_mid_bootstrap(dut):
+    """A reset part-way through a bootstrap (correlator, history and
+    detection state all mid-flight) restores the power-on state: the next
+    stream matches a fresh golden run, detection included."""
+    rnd = random.Random(0x5E7B)
+    cfg = (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 64)
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut, cfg)
+    first = cocotb.start_soon(drive(dut, noise(rnd, 300, 600.0)
+                                    + bootstrap(rnd, 500.0, DEFAULT_FS, 6000.0, 600.0), rnd))
+    for _ in range(170 * 2500):  # ~170 cycles/sample: stop inside the bootstrap
+        await RisingEdge(dut.clk)
+    assert not first.done(), "first stream finished before the reset"
+    first.kill()
+    samples = (noise(rnd, 300, 600.0) + bootstrap(rnd, -700.0, DEFAULT_FS, 6000.0, 600.0)
+               + noise(rnd, 600, 600.0))
+    await run_scenario(dut, cfg, samples, 12, True, start_clock=False)
