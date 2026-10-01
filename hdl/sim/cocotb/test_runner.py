@@ -102,8 +102,9 @@ def test_fft_engine():
     runner = get_runner("verilator")
     runner.build(
         verilog_sources=[RTL_OFDM / "fft_engine.v"],
-        includes=[RTL_INCLUDE, RTL_OFDM],
+        includes=[RTL_INCLUDE],
         hdl_toplevel="fft_engine",
+        parameters={"TWIDDLE_HEX": f'"{RTL_OFDM / "fft_twiddles.hex"}"'},
         build_dir=SIM_BUILD / "fft_engine",
         always=True,
         build_args=["-Wall"],
