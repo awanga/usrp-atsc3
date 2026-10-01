@@ -9,9 +9,11 @@ cp_removal.v's header comment); both emit the identical value sequence
 and framing, just at different latency, so the comparison is against that
 value/TLAST sequence, not cycle-exact timing.
 
-Covers all 11 CpFraction values at FFT_8K (the TASKS.md requirement),
-FFT_16K to exercise the numerator*scale multiply, multi-symbol
-continuity, and randomized backpressure on both sides of the interface.
+Covers all 11 CpFraction values at FFT_8K, FFT_16K and FFT_32K to
+exercise the numerator*scale multiply, multi-symbol continuity,
+randomized backpressure on both sides of the interface, out-of-range
+config clamping and a reset mid-symbol. Every scenario also counts output
+beats, so a beat leaking out of the next symbol's CP fails.
 
 Run via test_runner.py (pytest), not directly.
 """
@@ -32,6 +34,7 @@ CP_FRACTIONS = [192, 384, 512, 768, 1024, 1536, 2048, 2432, 3072, 3648, 4096]
 
 FFT_8K = 8192
 FFT_16K = 16384
+FFT_32K = 32768
 
 
 def _clamp16(v):
@@ -137,10 +140,20 @@ async def collect_output(dut, expected, done_event):
     done_event.set()
 
 
-async def run_scenario(dut, fft_size, cp_fraction_numerator, samples, rnd, gaps=False, backpressure=False):
+async def count_output(dut, counter):
+    while True:
+        await RisingEdge(dut.clk)
+        if dut.m_axis_tvalid.value == 1 and dut.m_axis_tready.value == 1:
+            counter[0] += 1
+
+
+async def run_scenario(dut, fft_size, cp_fraction_numerator, samples, rnd, gaps=False,
+                       backpressure=False, golden_cfg=None, expect_flags=(0, 0)):
+    """golden_cfg: the (fft_size, numerator) the golden model should use,
+    when the RTL is given an out-of-range config it must clamp to that."""
     await reset_dut(dut, fft_size, cp_fraction_numerator)
 
-    golden = run_golden(fft_size, cp_fraction_numerator, samples)
+    golden = run_golden(*(golden_cfg or (fft_size, cp_fraction_numerator)), samples)
     expected = expected_stream(golden)
     assert expected, "golden model emitted no symbols -- test input too short"
 
@@ -150,27 +163,33 @@ async def run_scenario(dut, fft_size, cp_fraction_numerator, samples, rnd, gaps=
         bp_task = cocotb.start_soon(drive_backpressure(dut, rnd, done_event))
     else:
         dut.m_axis_tready.value = 1
+    fired = [0]
+    count_task = cocotb.start_soon(count_output(dut, fired))
 
     # samples may run longer than what's needed to satisfy `expected` (a
     # deliberate idle/next-CP tail in some scenarios), so collect_output
     # can return while drive_input is still mid-stream. Awaiting both
-    # tasks to full completion here, not just collect_output, keeps a
-    # leftover coroutine from one scenario from racing the next
-    # scenario's reset_dut()/stimulus on the shared dut handles.
+    # tasks to full completion here keeps a leftover coroutine from one
+    # scenario from racing the next scenario's reset_dut()/stimulus.
     drive_task = cocotb.start_soon(drive_input(dut, samples, rnd, gaps))
     await collect_output(dut, expected, done_event)
     await drive_task
     if bp_task is not None:
         await bp_task
+    for _ in range(4):
+        await RisingEdge(dut.clk)
+    count_task.kill()
+    assert fired[0] == len(expected), (
+        f"{fired[0]} output beats, expected {len(expected)} (extra beats from the CP tail?)")
 
-    assert dut.cfg_fft_size_invalid.value == 0
-    assert dut.cfg_cp_numerator_clamped.value == 0
+    assert (int(dut.cfg_fft_size_invalid.value), int(dut.cfg_cp_numerator_clamped.value)) == \
+        expect_flags
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=200, timeout_unit="ms")
 async def all_cp_fractions_8k(dut):
     """All 11 defined CpFraction values at FFT_8K, one full symbol each
-    plus a short idle tail -- exactly the TASKS.md requirement."""
+    plus a short idle tail."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0xCB0192)
 
@@ -181,7 +200,7 @@ async def all_cp_fractions_8k(dut):
         await run_scenario(dut, FFT_8K, numerator, samples, rnd)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=200, timeout_unit="ms")
 async def fft_16k_scaling(dut):
     """FFT_16K: cp_length = numerator * (fft_size >> 13) = numerator * 2,
     exercising the multiply the FFT_8K case can't (scale == 1 there)."""
@@ -196,7 +215,7 @@ async def fft_16k_scaling(dut):
         await run_scenario(dut, FFT_16K, numerator, samples, rnd)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=200, timeout_unit="ms")
 async def multi_symbol_continuity(dut):
     """Three consecutive symbols back to back at the default CpFraction,
     checking the counter restarts cleanly at each TLAST."""
@@ -210,7 +229,7 @@ async def multi_symbol_continuity(dut):
     await run_scenario(dut, FFT_8K, numerator, samples, rnd)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=200, timeout_unit="ms")
 async def randomized_backpressure(dut):
     """Random input gaps and random output stalls across two symbols --
     the black-box counterpart to the formal no-drop/framing proofs."""
@@ -222,3 +241,49 @@ async def randomized_backpressure(dut):
     samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
                for _ in range(2 * symbol_len)]
     await run_scenario(dut, FFT_8K, numerator, samples, rnd, gaps=True, backpressure=True)
+
+
+@cocotb.test(timeout_time=200, timeout_unit="ms")
+async def fft_32k_scaling(dut):
+    """FFT_32K: the largest symbol (scale 4), near the counter's bound."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    rnd = random.Random(0x32C0)
+    numerator = 4096
+    symbol_len = FFT_32K + 4 * numerator
+    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+               for _ in range(symbol_len + 8)]
+    await run_scenario(dut, FFT_32K, numerator, samples, rnd)
+
+
+@cocotb.test(timeout_time=200, timeout_unit="ms")
+async def out_of_range_config_is_clamped(dut):
+    """An undefined FFT size falls back to 8K and a CP numerator above
+    4096 clamps to 4096, each raising its sticky flag; the stream then
+    matches the golden model run at the clamped values."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    rnd = random.Random(0xC1A3)
+    symbol_len = FFT_8K + 4096
+    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+               for _ in range(symbol_len + 8)]
+    await run_scenario(dut, 12345, 5000, samples, rnd, golden_cfg=(FFT_8K, 4096),
+                       expect_flags=(1, 1))
+
+
+@cocotb.test(timeout_time=200, timeout_unit="ms")
+async def reset_mid_symbol(dut):
+    """A reset part-way through a symbol restarts framing from the next
+    sample: the following stream matches a fresh golden run."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    rnd = random.Random(0x5E7)
+    await reset_dut(dut, FFT_8K, 1024)
+    dut.m_axis_tready.value = 1
+    partial = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767)) for _ in range(5000)]
+    first = cocotb.start_soon(drive_input(dut, partial, rnd, False))
+    for _ in range(3000):
+        await RisingEdge(dut.clk)
+    assert not first.done()
+    first.kill()
+    symbol_len = FFT_8K + 1024
+    samples = [(rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+               for _ in range(symbol_len + 8)]
+    await run_scenario(dut, FFT_8K, 1024, samples, rnd)

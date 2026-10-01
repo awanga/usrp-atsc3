@@ -1,51 +1,32 @@
-// cp_removal_formal.v — Formal harness top for cp_removal
+// cp_removal_formal.v — Formal harness for cp_removal
 //
-// Verification-only. Not synthesized, not part of rtl/. Instantiates the
-// flatten+expose-generated cp_removal_bare (produced earlier in
-// cp_removal.sby's [script] -- see that file, cp_removal_bare.v, and
-// hdl/docs/formal_conventions.md for why this two-stage flow is used
-// instead of `bind` or a hierarchical dotted reference).
+// Main property (data integrity vs a ghost model): the output stream is
+// exactly the input stream with the first cp_length beats of every
+// symbol removed -- each output beat is the input beat accepted on the
+// same cycle, unmodified (TDATA passes straight through), every non-CP
+// input beat is emitted, no CP beat is, and TLAST marks exactly the
+// fft_size-th output beat of each symbol. A ghost counter numbers output
+// beats within the symbol and is pinned to the DUT's position counter so
+// k-induction closes. Supplementary: the position counter never exceeds
+// the longest defined symbol, config clamping and its flags, reset, and
+// AXI4-S output stability.
 //
-// cfg_fft_size/cfg_cp_fraction_numerator are free but held STABLE while
-// !rst (see cp_removal.v's header on why config is latched-at-reset, not
-// read live): a real system only ever reconfigures by resetting the
-// block, and the counter-bound property below isn't even true without
-// this assumption (a live config could shrink symbol_len below the
-// current cnt with no clock edge in between). Everything else is fully
-// free every cycle, the standard SymbiYosys stimulus idiom.
+// Assumptions, each encoding a caller contract:
+//   - cfg_* are stable while not in reset (cp_removal.v's header:
+//     configuration is latched at reset; reconfiguration is by reset).
+//     Without it the counter bound is not even true.
+//   - AXI4-S producer rule: an offered beat is held until accepted. Only
+//     the output-stability check depends on it.
 //
-// Properties, all in terms of the exposed \dut.cnt / \dut.fft_size_r /
-// \dut.cp_numerator_r plus the port-level signals, with cp_length/
-// symbol_len/in_cp recomputed here from the same trivial formula
-// cp_removal.v uses (an independent restatement, not a re-read of the
-// DUT's own wires) so the proof isn't just checking self-consistency:
-//   - fft_size_r is always one of {8K, 16K, 32K}; cp_numerator_r <= 4096
-//     (clamp correctness).
-//   - cfg_fft_size_invalid / cfg_cp_numerator_clamped exactly reflect
-//     whether the config presented the cycle before latching (i.e. the
-//     cycle before the most recent reset) was out of range.
-//   - cnt < symbol_len always, and cnt <= MAX_SYMBOL_LEN - 1 always --
-//     the TASKS.md "counter never exceeds the max defined length"
-//     requirement, restated as two steps (the second follows from the
-//     first plus symbol_len's own bound, but is asserted directly too).
-//   - s_axis_tready / m_axis_tvalid / m_axis_tdata / m_axis_tlast match
-//     the documented combinational rule.
-//   - Output stability while stalled (assuming a compliant producer),
-//     mirroring axi4s_skid_buffer_formal.v's black-box property.
-//   - Reset clears cnt.
+// Bounds: the deepest event, a completed symbol, needs at least
+// 8192 + 192 accepted beats, far past any BMC depth; it is not covered
+// here. Non-vacuity of the framing and counter properties comes from
+// committed mutants (hdl/mutants: counter never wraps, TLAST one beat
+// early, one extra CP beat dropped), and test_cp_removal.py exercises
+// whole symbols at every CP fraction. White-box probes come from the
+// flatten+expose flow; see hdl/docs/formal_conventions.md.
 //
-// Non-vacuity: the `cover` task reaches every listed property except the
-// deliberately-excluded "completed a whole symbol" case (see the
-// [tasks] cover block's comment). As a further sanity check (not part of
-// the checked-in flow), removing the wraparound in cp_removal.v's
-// cnt-update ("cnt <= cnt + 1" unconditionally, dropping the
-// in_last-triggered reset to 0) still passes `prove`'s BMC base case at
-// depth 20 -- the counter hasn't run far enough to overflow yet -- but
-// correctly fails k-induction on the cnt <= MAX_SYMBOL_LEN - 1 property,
-// confirming both that the invariant is genuinely load-bearing and that
-// `mode prove` (BMC + induction), not bare `mode bmc`, is required here.
-//
-// Run: cd hdl/formal && sby -f cp_removal.sby
+// Run: hdl/formal/run_formal.sh cp_removal
 
 `include "axi4s_types.vh"
 
@@ -197,7 +178,7 @@ module cp_removal_formal (
     end
 
     //--------------------------------------------------------------------
-    // Counter bound -- the TASKS.md requirement -- and framing,
+    // Counter bound and framing,
     // recomputed independently from the exposed registers rather than
     // re-reading the DUT's own cp_length/symbol_len/in_cp wires.
     //--------------------------------------------------------------------
@@ -218,6 +199,32 @@ module cp_removal_formal (
             assert (m_axis_tdata == s_axis_tdata);
             assert (m_axis_tlast == (!in_cp_chk && s_axis_tvalid &&
                                       (cnt_probe == symbol_len_chk - 1'b1)));
+        end
+    end
+
+    //--------------------------------------------------------------------
+    // Ghost model: output beat numbering within the symbol
+    //--------------------------------------------------------------------
+    reg  [CNT_WIDTH-1:0] ghost_out_idx;
+    wire                 out_fire = m_axis_tvalid && m_axis_tready;
+    wire                 in_fire  = s_axis_tvalid && s_axis_tready;
+    always @(posedge clk) begin
+        if (rst)
+            ghost_out_idx <= {CNT_WIDTH{1'b0}};
+        else if (out_fire)
+            ghost_out_idx <= m_axis_tlast ? {CNT_WIDTH{1'b0}} : ghost_out_idx + 1'b1;
+    end
+
+    always @(*) begin
+        if (past_valid && !rst) begin
+            // Pinned to the position counter: no output beats yet while
+            // in the CP, then one per position.
+            assert (ghost_out_idx == (in_cp_chk ? {CNT_WIDTH{1'b0}} : cnt_probe - cp_length_chk));
+            assert (out_fire == (in_fire && !in_cp_chk));
+            if (out_fire) begin
+                assert (m_axis_tdata == s_axis_tdata);
+                assert (m_axis_tlast == (ghost_out_idx == fft_size_r_probe - 1'b1));
+            end
         end
     end
 
