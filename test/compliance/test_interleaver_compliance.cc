@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_interleaver_compliance.cc — ATSC 3.0 Interleaver Compliance Tests
 //
 // Verifies bit-exact round-trip for cell, frequency, and time interleavers

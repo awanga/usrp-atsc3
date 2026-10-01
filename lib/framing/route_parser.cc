@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // route_parser.cc — ROUTE/DASH Parser implementation
 //
 // Parses ATSC 3.0 ROUTE signaling for service discovery

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // iq_source.cc — Common IQSource utilities
 
 #include "iq_source.h"

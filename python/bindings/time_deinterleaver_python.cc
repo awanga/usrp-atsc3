@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // time_deinterleaver_python.cc — pybind11 bindings for time_deinterleaver block
 
 #include "atsc3_time_deinterleaver.h"

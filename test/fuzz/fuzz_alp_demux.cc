@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fuzz_alp_demux.cc — libFuzzer harness for ALP demultiplexer
 //
 // Fuzzes the ALP packet parser with arbitrary byte sequences to find:

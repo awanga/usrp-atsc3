@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_end_to_end.cc — End-to-end integration test for Phase 5
 //
 // Tests the complete ATSC 3.0 receiver pipeline from IQ capture through

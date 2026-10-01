@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_service_guide_impl.cc — Service Guide implementation
 
 #include "atsc3_service_guide_impl.h"

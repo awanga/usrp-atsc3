@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_bootstrap_detect_impl.h — Implementation header
 
 #ifndef INCLUDED_ATSC3_BOOTSTRAP_DETECT_IMPL_H

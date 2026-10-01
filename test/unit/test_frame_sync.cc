@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_frame_sync.cc — Unit tests for lib/sync/frame_sync.h
 //
 // Tests frame synchronization state machine and boundary detection

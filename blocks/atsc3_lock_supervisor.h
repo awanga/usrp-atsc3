@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_lock_supervisor.h — GNU Radio ATSC 3.0 Lock Supervisor Block
 //
 // Monitors lock status from sync blocks and orchestrates reset sequence

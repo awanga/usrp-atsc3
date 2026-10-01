@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # gr-atsc3 Python bindings
 #
 # ATSC 3.0 physical-layer receiver blocks for GNU Radio

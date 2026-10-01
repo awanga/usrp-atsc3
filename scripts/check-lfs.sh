@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 # Check that large capture files are tracked by git-lfs
 
 # Get staged capture files

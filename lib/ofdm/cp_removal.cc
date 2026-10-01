@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cp_removal.cc — Cyclic Prefix Removal implementation
 //
 // Strips CP from OFDM symbols, outputting FFT-length windows

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # python/ - Python bindings for gr-atsc3
 
 if(NOT Gnuradio_FOUND)

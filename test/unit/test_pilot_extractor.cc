@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_pilot_extractor.cc — Unit tests for lib/ofdm/pilot_extractor.h
 //
 // Tests pilot pattern extraction for all patterns PP1-PP8

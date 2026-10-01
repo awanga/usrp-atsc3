@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_freq_deinterleaver.cc — Unit tests for lib/ofdm/freq_deinterleaver.h
 //
 // Tests frequency de-interleaving and permutation validity

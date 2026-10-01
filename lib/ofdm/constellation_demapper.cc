@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // constellation_demapper.cc — ATSC 3.0 QAM symbol to soft LLR conversion
 //
 // Optimized demapper using direct slicer computation for uniform QAM.

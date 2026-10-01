@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bench_signal_chain.cc — End-to-end ATSC 3.0 signal chain performance benchmark
 //
 // Profiles the complete receive chain to identify bottlenecks:

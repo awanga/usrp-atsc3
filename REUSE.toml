@@ -1,0 +1,18 @@
+# Licensing of files that cannot carry an SPDX header (see LICENSING.md).
+version = 1
+
+[[annotations]]
+path = ["**.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Alfred Wanga"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+    ".clang-format", ".cppcheck", ".flake8", ".gitattributes", ".gitignore",
+    ".markdownlint.json", "VERSION", "REUSE.toml", "apps/*.grc", "config/**",
+    "docker/versions.lock", "**/.gitkeep", "test/captures/**", "test/fuzz/corpus/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Alfred Wanga"
+SPDX-License-Identifier = "MPL-2.0"

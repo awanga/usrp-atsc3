@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # test/hw/ - Hardware tests
 # Tests that require physical USRP hardware
 # Run with: ctest -L hw

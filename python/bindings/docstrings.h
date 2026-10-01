@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // docstrings.h — Python docstrings for gr-atsc3 blocks
 #pragma once
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # test/compliance/ - ATSC 3.0 Compliance Tests
 # Conformance tests against ATSC A/322 specification
 #

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_ldpc_matrix.cc — Unit tests for ATSC 3.0 LDPC H matrix generation
 //
 // Tests H matrix dimensions, sparsity, and structure per ATSC A/322 Section 9.

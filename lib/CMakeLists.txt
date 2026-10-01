@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/ - Core DSP Library
 # Pure C++17 + Boost (+ FFTW3 with ATSC3_USE_FFTW). No GR/UHD headers allowed.
 

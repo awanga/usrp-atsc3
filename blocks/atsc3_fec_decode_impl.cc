@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_fec_decode_impl.cc — FEC Decoder implementation
 
 #include "atsc3_fec_decode_impl.h"

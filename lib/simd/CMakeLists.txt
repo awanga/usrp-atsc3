@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/simd/CMakeLists.txt — SIMD support library
 #
 # Provides CPU feature detection and SIMD-optimized kernels.

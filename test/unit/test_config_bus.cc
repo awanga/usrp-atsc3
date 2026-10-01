@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_config_bus.cc — Unit tests for lib/config/config_bus.h
 //
 // Tests ConfigBus pub/sub functionality

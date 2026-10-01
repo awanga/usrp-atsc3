@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // channel_eq_python.cc — pybind11 bindings for channel_eq block
 
 #include "atsc3_channel_eq.h"

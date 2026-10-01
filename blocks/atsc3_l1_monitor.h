@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_l1_monitor.h — GNU Radio ATSC 3.0 L1 Monitor Block
 //
 // Message-only block for monitoring L1 signaling

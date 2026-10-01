@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bootstrap_detect_python.cc — pybind11 bindings for bootstrap_detect block
 
 #include "atsc3_bootstrap_detect.h"

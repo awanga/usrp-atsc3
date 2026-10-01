@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_extractor.cc — ATSC 3.0 OFDM pilot symbol extraction
 //
 // Extracts scattered pilots (SP), continual pilots (CP), and edge pilots

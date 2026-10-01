@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cell_deinterleaver.cc — ATSC 3.0 cell-level de-interleaving
 //
 // Reverses cell interleaving to recover original ordering.

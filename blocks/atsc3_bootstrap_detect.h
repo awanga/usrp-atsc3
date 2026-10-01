@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_bootstrap_detect.h — GNU Radio ATSC 3.0 Bootstrap Detector Block
 //
 // AXI4-S: TDATA=cf32 TVALID TREADY TLAST(frame)

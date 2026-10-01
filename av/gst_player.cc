@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // gst_player.cc — GStreamer Player implementation
 //
 // ATSC 3.0 A/V playback pipeline using GStreamer

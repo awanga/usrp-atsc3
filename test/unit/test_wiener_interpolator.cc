@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_wiener_interpolator.cc — Unit tests for lib/channel/wiener_interpolator.h
 //
 // Tests 2D Wiener interpolation for channel estimation

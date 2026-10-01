@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # hal/ - Hardware Abstraction Layer
 # IQSource interface + UHDSource / FileSource / NullSource implementations
 

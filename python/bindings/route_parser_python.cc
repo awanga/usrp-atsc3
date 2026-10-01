@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // route_parser_python.cc — pybind11 bindings for route_parser block
 
 #include "atsc3_route_parser.h"

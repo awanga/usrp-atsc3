@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cpu_features.cc — Runtime CPU feature detection
 //
 // Uses CPUID instruction on x86_64 to detect SIMD capabilities.

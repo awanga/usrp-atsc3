@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // snr_estimator.cc — SNR Estimation implementation
 
 #include "snr_estimator.h"

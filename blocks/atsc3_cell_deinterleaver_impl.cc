@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_cell_deinterleaver_impl.cc — Cell De-interleaver implementation
 
 #include "atsc3_cell_deinterleaver_impl.h"

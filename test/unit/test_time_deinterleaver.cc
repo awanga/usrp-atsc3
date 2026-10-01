@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_time_deinterleaver.cc — Unit tests for lib/ofdm/time_deinterleaver.h
 //
 // Tests convolutional time de-interleaving and settling behavior

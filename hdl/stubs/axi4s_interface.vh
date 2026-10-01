@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // axi4s_interface.vh — AXI4-Stream Interface Definitions for gr-atsc3
 //
 // Common macros and parameters for AXI4-Stream interfaces.

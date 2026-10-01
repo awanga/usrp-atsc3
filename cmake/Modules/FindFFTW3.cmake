@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # FindFFTW3.cmake
 # ----------------
 # Find the FFTW3 library (single and/or double precision)

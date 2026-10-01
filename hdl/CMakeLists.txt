@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # hdl/ - RTL port stubs and AXI4-S interface definitions (post-MVP)
 # No vendor DSP primitives (DSP48, Xilinx/Altera IP). Generic RTL only.
 

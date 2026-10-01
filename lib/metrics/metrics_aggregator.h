@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // metrics_aggregator.h — Combined Signal Quality Metrics
 //
 // Aggregates all metrics into JSON output format

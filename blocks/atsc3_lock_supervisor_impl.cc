@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_lock_supervisor_impl.cc — Lock Supervisor implementation
 
 #include "atsc3_lock_supervisor_impl.h"

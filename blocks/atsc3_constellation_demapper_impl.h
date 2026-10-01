@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_constellation_demapper_impl.h — Implementation header
 
 #ifndef INCLUDED_ATSC3_CONSTELLATION_DEMAPPER_IMPL_H

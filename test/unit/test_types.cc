@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_types.cc — Unit tests for lib/types.h
 //
 // Verifies ATSC3_SAMPLE_T compiles correctly in both float and fixed-point

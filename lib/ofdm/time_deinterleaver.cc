@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // time_deinterleaver.cc — ATSC 3.0 convolutional time de-interleaving
 //
 // Reverses convolutional time interleaving using delay lines.

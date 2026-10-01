@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # pre-commit configuration for gr-atsc3
 # Install: pip install pre-commit && pre-commit install
 

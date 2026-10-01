@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # av/ - Audio/Video processing FFmpeg HEVC/AC-4 decode + GStreamer playback
 
 # Find FFmpeg using pkg-config

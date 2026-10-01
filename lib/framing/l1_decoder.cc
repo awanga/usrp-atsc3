@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // l1_decoder.cc — ATSC 3.0 L1 preamble decoding
 //
 // Extracts L1-Pre and L1-Post signaling to configure receiver chain.

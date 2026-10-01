@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 """
 capture_iq.py — ATSC 3.0 IQ Capture Utility for USRP N2x0 + TVRX
 

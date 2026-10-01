@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fec_decode_python.cc — pybind11 bindings for fec_decode block
 
 #include "atsc3_fec_decode.h"

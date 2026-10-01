@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_fec_decode.h — GNU Radio ATSC 3.0 FEC Decoder Block
 //
 // AXI4-S: TDATA=int8(LLR) TVALID TREADY TLAST(codeword)

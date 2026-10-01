@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // wiener_interpolator.cc — 2D Wiener channel estimate interpolation
 //
 // Implements optimal MMSE Wiener filtering for interpolating channel

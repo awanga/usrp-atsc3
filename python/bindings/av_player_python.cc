@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // av_player_python.cc — pybind11 bindings for av_player block
 
 #include "atsc3_av_player.h"

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_fft_engine.cc — Unit tests for lib/ofdm/fft_engine.h
 //
 // Tests FFT correctness, the float (built-in or FFTW) and fixed-point

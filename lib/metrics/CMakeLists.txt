@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/metrics/ - Signal quality metrics
 # SNR estimation, MER calculation, BER/FER tracking, signal strength
 

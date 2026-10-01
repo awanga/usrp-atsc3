@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // service_catalog.cc — Service Catalog implementation
 //
 // Maintains broadcast service list from ATSC 3.0 signaling

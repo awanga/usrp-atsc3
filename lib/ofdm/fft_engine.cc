@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_engine.cc — FFT Engine implementation
 //
 // Float mode: built-in radix-2 Cooley-Tukey, or FFTW3 when built with

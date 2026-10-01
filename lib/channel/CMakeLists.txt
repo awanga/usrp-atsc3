@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/channel/ - Channel estimation and equalization
 # LS estimation, Wiener filtering, FDE equalizer
 

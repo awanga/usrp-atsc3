@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bench_fftw.cc — Performance benchmark for FFTW plan modes
 //
 // Compares FFTW_ESTIMATE, FFTW_MEASURE, and FFTW_PATIENT planning modes

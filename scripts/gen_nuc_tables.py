@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 """Generate lib/ofdm/nuc_tables.h from the ATSC A/322 PDF (Annex C).
 
 The non-uniform constellation (NUC) position vectors and the 1D-NUC bit

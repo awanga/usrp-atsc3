@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # test/unit/ - Unit tests
 # One .cc file per lib/ or hal/ class, using GoogleTest
 

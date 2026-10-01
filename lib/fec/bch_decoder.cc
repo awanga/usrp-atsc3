@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bch_decoder.cc — ATSC 3.0 BCH decoding using Berlekamp-Massey algorithm
 //
 // Implements algebraic BCH decoding over GF(2^16) with t=12 error correction.
