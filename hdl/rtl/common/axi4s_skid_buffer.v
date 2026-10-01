@@ -28,7 +28,7 @@ module axi4s_skid_buffer #(
     reg                  skid_valid;
 
     // Purely registered: no combinational dependency on m_axis_tready.
-    assign s_axis_tready = !skid_valid;
+    always @(*) s_axis_tready = !skid_valid;
 
     always @(posedge clk) begin
         if (rst) begin

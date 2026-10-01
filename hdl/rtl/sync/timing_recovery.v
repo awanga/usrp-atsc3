@@ -110,7 +110,7 @@ module timing_recovery #(
     reg                       buf_wr_en;
     reg  [BUF_ADDR_WIDTH-1:0] buf_wr_addr;
     reg  [31:0]               buf_wr_data;
-    reg  [BUF_ADDR_WIDTH-1:0] fir_mem_addr;
+    wire [BUF_ADDR_WIDTH-1:0] fir_mem_addr;
     wire signed [15:0]        fir_mem_data_re = buf_mem[fir_mem_addr][31:16];
     wire signed [15:0]        fir_mem_data_im = buf_mem[fir_mem_addr][15:0];
 
