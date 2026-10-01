@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 id: atsc3_time_deinterleaver
 label: ATSC 3.0 Time De-interleaver
 category: '[ATSC 3.0]'

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 #pragma once
 
 // IQSource Factory — Create IQSource instances for different backends

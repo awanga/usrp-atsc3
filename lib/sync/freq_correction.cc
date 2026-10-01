@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_correction.cc — Frequency Correction implementation
 //
 // CFO compensation using coarse (bootstrap) and fine (pilot) estimates

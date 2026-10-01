@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 #pragma once
 
 // FFT Engine — OFDM FFT/IFFT processing
@@ -10,8 +13,9 @@
 // Supports:
 //   - 8192, 16384, 32768 point transforms (ATSC 3.0 data symbols)
 //   - 4096 point transform (bootstrap)
-//   - FFTW3 backend (float mode) with wisdom caching
-//   - Cooley-Tukey reference (fixed-point mode, no FFTW dependency)
+//   - Float mode: FFTW3 with wisdom caching when available at build time,
+//     otherwise built-in radix-2 Cooley-Tukey (ATSC3_USE_FFTW=OFF forces it)
+//   - Fixed-point mode: Q1.15 radix-2 Cooley-Tukey
 
 #include "types.h"
 
@@ -90,7 +94,7 @@ public:
     // Get direction
     virtual FftDirection get_direction() const = 0;
 
-    // Check if using FFTW backend
+    // Check if using FFTW backend (float build that found FFTW3)
     virtual bool is_fftw_backend() const = 0;
 
 protected:
@@ -98,11 +102,13 @@ protected:
 };
 
 // Load FFTW wisdom from file
-// Returns true if wisdom was loaded successfully
+// Returns true if wisdom was loaded successfully; always false without the
+// FFTW backend
 bool load_fftw_wisdom(const std::string& path);
 
 // Save FFTW wisdom to file
-// Returns true if wisdom was saved successfully
+// Returns true if wisdom was saved successfully; always false without the
+// FFTW backend
 bool save_fftw_wisdom(const std::string& path);
 
 }  // namespace ofdm

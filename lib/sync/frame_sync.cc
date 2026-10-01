@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync.cc — Frame synchronization implementation
 //
 // Superframe and subframe boundary tracking using preamble correlation

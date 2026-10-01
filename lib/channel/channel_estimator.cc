@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // channel_estimator.cc — ATSC 3.0 OFDM channel estimation
 //
 // Computes channel frequency response H(f) from pilot observations

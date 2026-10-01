@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_channel_eq_impl.h — Implementation header
 
 #ifndef INCLUDED_ATSC3_CHANNEL_EQ_IMPL_H

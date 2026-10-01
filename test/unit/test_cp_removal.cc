@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_cp_removal.cc — Unit tests for lib/ofdm/cp_removal.h
 //
 // Tests cyclic prefix stripping for all defined CP fractions

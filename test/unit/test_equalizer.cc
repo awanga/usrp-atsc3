@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_equalizer.cc — Unit tests for lib/channel/equalizer.h
 //
 // Tests ZF and MMSE equalization, phase tracking, and EVM computation

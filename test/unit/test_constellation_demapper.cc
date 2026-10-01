@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_constellation_demapper.cc — Unit tests for lib/ofdm/constellation_demapper.h
 //
 // Tests constellation demapping, LLR computation, and NUC support

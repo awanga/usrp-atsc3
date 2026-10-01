@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_deinterleaver.cc — ATSC 3.0 frequency-domain de-interleaving
 //
 // Reverses frequency interleaving to recover original carrier ordering.

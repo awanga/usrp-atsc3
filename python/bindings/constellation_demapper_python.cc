@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // constellation_demapper_python.cc — pybind11 bindings for constellation_demapper block
 
 #include "atsc3_constellation_demapper.h"

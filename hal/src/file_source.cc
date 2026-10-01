@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // file_source.cc — FileSource implementation
 //
 // Reads IQ samples from a file containing interleaved complex<float32> data.

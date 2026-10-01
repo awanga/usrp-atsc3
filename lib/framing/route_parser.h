@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 #pragma once
 
 // ROUTE/DASH Parser — ATSC 3.0 Content Delivery

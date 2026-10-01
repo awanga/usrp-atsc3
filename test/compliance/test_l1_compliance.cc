@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_l1_compliance.cc — ATSC 3.0 L1 Signaling Compliance Tests
 //
 // Verifies L1-Pre and L1-Post CRC checks and field parsing for all valid

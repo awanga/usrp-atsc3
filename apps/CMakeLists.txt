@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # apps/ - Applications
 # atsc3_rx.grc, scanner.py, metrics_server.py
 

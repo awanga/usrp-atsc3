@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // ofdm_demod_python.cc — pybind11 bindings for ofdm_demod block
 
 #include "atsc3_ofdm_demod.h"

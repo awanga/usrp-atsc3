@@ -1,5 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/ - Core DSP Library
-# Pure C++17 + FFTW3 + Boost only. No GR/UHD headers allowed.
+# Pure C++17 + Boost (+ FFTW3 when found; see ATSC3_USE_FFTW). No GR/UHD headers allowed.
 
 # Add subdirectory CMake files (sets SYNC_SOURCES, OFDM_SOURCES, etc.)
 add_subdirectory(simd)
@@ -48,19 +51,20 @@ target_include_directories(atsc3_lib
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/metrics>
         $<INSTALL_INTERFACE:include/atsc3>
     PRIVATE
-        $<$<NOT:$<BOOL:${ATSC3_FIXED_POINT}>>:${FFTW3_INCLUDE_DIRS}>
+        $<$<BOOL:${ATSC3_FFTW_ACTIVE}>:${FFTW3_INCLUDE_DIRS}>
 )
 
 target_link_libraries(atsc3_lib
     PUBLIC
         Boost::system
     PRIVATE
-        $<$<NOT:$<BOOL:${ATSC3_FIXED_POINT}>>:${FFTW3_LIBRARIES}>
+        $<$<BOOL:${ATSC3_FFTW_ACTIVE}>:${FFTW3_LIBRARIES}>
 )
 
 target_compile_definitions(atsc3_lib
     PUBLIC
         $<$<BOOL:${ATSC3_FIXED_POINT}>:ATSC3_FIXED_POINT=1>
+        $<$<BOOL:${ATSC3_FFTW_ACTIVE}>:ATSC3_USE_FFTW=1>
 )
 
 target_compile_features(atsc3_lib PUBLIC cxx_std_17)

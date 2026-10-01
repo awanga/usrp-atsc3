@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // audio_decoder.cc — Audio Decoder implementation
 //
 // FFmpeg-based AC-4/AAC decoder for ATSC 3.0 audio

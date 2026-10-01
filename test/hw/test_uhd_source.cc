@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_uhd_source.cc — Hardware tests for UHDSource
 //
 // These tests require a physical USRP N2x0 connected at addr=192.168.10.2

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_route_parser_impl.cc — ROUTE Parser implementation
 
 #include "atsc3_route_parser_impl.h"

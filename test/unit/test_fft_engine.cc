@@ -1,6 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_fft_engine.cc — Unit tests for lib/ofdm/fft_engine.h
 //
-// Tests FFT correctness, FFTW/fixed-point backends, and wisdom caching
+// Tests FFT correctness, the float (built-in or FFTW) and fixed-point
+// backends, and wisdom caching
 
 #include "fft_engine.h"
 
@@ -8,6 +12,7 @@
 #include <complex>
 #include <gtest/gtest.h>
 #include <numeric>
+#include <random>
 #include <vector>
 
 namespace atsc3 {
@@ -281,10 +286,10 @@ TEST(FftEngineTest, BackendType) {
 
     auto engine = FftEngine::create(config);
 
-#ifdef ATSC3_FIXED_POINT
-    EXPECT_FALSE(engine->is_fftw_backend());
-#else
+#if !defined(ATSC3_FIXED_POINT) && defined(ATSC3_USE_FFTW)
     EXPECT_TRUE(engine->is_fftw_backend());
+#else
+    EXPECT_FALSE(engine->is_fftw_backend());
 #endif
 }
 
@@ -347,6 +352,80 @@ TEST(FftEngineTest, WisdomFunctions) {
 }
 
 #ifndef ATSC3_FIXED_POINT
+// Direct O(N) evaluation of one DFT bin in double precision: an independent
+// model of the transform, used on a sample of bins at every size.
+std::complex<double> direct_dft_bin(const std::vector<std::complex<float>>& x, size_t k,
+                                    double sign) {
+    size_t n = x.size();
+    std::complex<double> acc(0.0, 0.0);
+    for (size_t i = 0; i < n; ++i) {
+        double angle = sign * 2.0 * kPi * static_cast<double>((k * i) % n) / static_cast<double>(n);
+        acc += std::complex<double>(x[i]) * std::complex<double>(std::cos(angle), std::sin(angle));
+    }
+    return acc;
+}
+
+TEST(FftEngineTest, FloatMatchesDirectDft) {
+    std::mt19937 rng(0xF17);
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    for (FftSize size : {FftSize::k4K, FftSize::k8K, FftSize::k16K, FftSize::k32K}) {
+        for (FftDirection dir : {FftDirection::kForward, FftDirection::kInverse}) {
+            FftConfig config;
+            config.size = size;
+            config.direction = dir;
+            config.normalize_inverse = false;
+            auto engine = FftEngine::create(config);
+            size_t n = engine->get_size();
+
+            std::vector<std::complex<float>> in(n);
+            for (auto& v : in) {
+                v = std::complex<float>(gauss(rng), gauss(rng));
+            }
+            std::vector<std::complex<float>> out(n);
+            engine->process(in.data(), out.data());
+
+            std::vector<size_t> bins = {0, 1, n / 2, n - 1};
+            std::uniform_int_distribution<size_t> pick(0, n - 1);
+            for (int i = 0; i < 60; ++i) {
+                bins.push_back(pick(rng));
+            }
+            // Unit-variance input gives bins of magnitude ~sqrt(N); allow
+            // float rounding growth of about log2(N) ulps on that scale.
+            double tol = 1e-6 * std::sqrt(static_cast<double>(n)) * std::log2(n) * 4.0;
+            double sign = (dir == FftDirection::kForward) ? -1.0 : 1.0;
+            for (size_t k : bins) {
+                std::complex<double> want = direct_dft_bin(in, k, sign);
+                EXPECT_LT(std::abs(std::complex<double>(out[k]) - want), tol)
+                    << "N=" << n << " dir=" << static_cast<int>(dir) << " bin " << k;
+            }
+        }
+    }
+}
+
+TEST(FftEngineTest, FloatRoundTripNormalized) {
+    std::mt19937 rng(0xF18);
+    std::uniform_real_distribution<float> uni(-1.0f, 1.0f);
+    for (FftSize size : {FftSize::k4K, FftSize::k32K}) {
+        FftConfig fwd_cfg;
+        fwd_cfg.size = size;
+        FftConfig inv_cfg = fwd_cfg;
+        inv_cfg.direction = FftDirection::kInverse;
+        auto fwd = FftEngine::create(fwd_cfg);
+        auto inv = FftEngine::create(inv_cfg);
+        size_t n = fwd->get_size();
+
+        std::vector<std::complex<float>> x(n), spec(n), back(n);
+        for (auto& v : x) {
+            v = std::complex<float>(uni(rng), uni(rng));
+        }
+        fwd->process(x.data(), spec.data());
+        inv->process(spec.data(), back.data());
+        for (size_t i = 0; i < n; ++i) {
+            ASSERT_LT(std::abs(back[i] - x[i]), 1e-5f) << "N=" << n << " sample " << i;
+        }
+    }
+}
+
 // Float-mode specific test: verify FFTW produces correct results for known input
 TEST(FftEngineTest, FftwKnownResult) {
     FftConfig config;

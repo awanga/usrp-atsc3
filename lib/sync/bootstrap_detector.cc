@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bootstrap_detector.cc — Bootstrap Detector implementation
 //
 // Schmidl-Cox autocorrelation for ATSC 3.0 bootstrap detection

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // l1_monitor_python.cc — pybind11 bindings for l1_monitor block
 
 #include "atsc3_l1_monitor.h"

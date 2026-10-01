@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # test/integration/ - Integration tests Tests that may require IQ captures from
 # test/captures/ (git-lfs)
 

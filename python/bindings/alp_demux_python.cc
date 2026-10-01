@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // alp_demux_python.cc — pybind11 bindings for alp_demux block
 
 #include "atsc3_alp_demux.h"

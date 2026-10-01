@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_alp_demux_impl.h — Implementation header
 
 #ifndef INCLUDED_ATSC3_ALP_DEMUX_IMPL_H

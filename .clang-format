@@ -1,5 +1,5 @@
 ---
-# gr-atsc3 clang-format configuration
+# OpenATSC3 clang-format configuration
 # Based on Google style with Linux kernel influences per CLAUDE.md
 
 Language: Cpp

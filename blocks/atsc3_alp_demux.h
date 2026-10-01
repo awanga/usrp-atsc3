@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_alp_demux.h — GNU Radio ATSC 3.0 ALP Demultiplexer Block
 //
 // AXI4-S: TDATA=uint8 TVALID TREADY TLAST(packet) TID(plp_id)

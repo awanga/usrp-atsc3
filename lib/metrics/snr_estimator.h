@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // snr_estimator.h — SNR Estimation from pilot residuals
 //
 // Decision-directed SNR estimation using scattered pilots

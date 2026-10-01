@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_bootstrap_variants.cc — ATSC 3.0 Bootstrap Variant Compliance Tests
 //
 // Verifies bootstrap detection against all variant combinations per ATSC A/322 §5.2

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // hevc_decoder.cc — HEVC Decoder implementation
 //
 // FFmpeg-based H.265/HEVC decoder for ATSC 3.0 video

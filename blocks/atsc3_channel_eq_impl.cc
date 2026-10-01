@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_channel_eq_impl.cc — Channel Equalizer implementation
 
 #include "atsc3_channel_eq_impl.h"

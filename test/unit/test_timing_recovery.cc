@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_timing_recovery.cc — Unit tests for lib/sync/timing_recovery.h
 //
 // Tests polyphase interpolator, Gardner TED, and timing recovery loop

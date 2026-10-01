@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_alp_demux_impl.cc — ALP Demultiplexer implementation
 
 #include "atsc3_alp_demux_impl.h"

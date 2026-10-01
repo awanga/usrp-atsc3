@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 id: atsc3_route_parser
 label: ATSC 3.0 ROUTE Parser
 category: '[ATSC 3.0]'

@@ -1,11 +1,14 @@
-# Doxyfile for gr-atsc3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# Doxyfile for OpenATSC3
 # Generated for MVP v0.1.0
 
 #---------------------------------------------------------------------------
 # Project related configuration options
 #---------------------------------------------------------------------------
 
-PROJECT_NAME           = "gr-atsc3"
+PROJECT_NAME           = "OpenATSC3"
 PROJECT_NUMBER         = "0.1.0-mvp"
 PROJECT_BRIEF          = "ATSC 3.0 Software-Defined Receiver for GNU Radio"
 PROJECT_LOGO           =

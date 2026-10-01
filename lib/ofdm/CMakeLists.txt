@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/ofdm/ - OFDM processing
 # FFT engine, CP removal, subcarrier mapping
 

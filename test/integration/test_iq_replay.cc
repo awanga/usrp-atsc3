@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_iq_replay.cc — IQ capture replay integration test
 //
 // Tests ATSC 3.0 receiver signal chain components with real IQ captures.

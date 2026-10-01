@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // signal_strength.h — Signal Strength Measurement
 //
 // dBm calculation from HAL RSSI + AGC gain correction

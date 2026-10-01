@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # blocks/ - GNU Radio OOT blocks
 # Thin wrappers that delegate immediately to lib/. No DSP logic here.
 

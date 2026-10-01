@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 #pragma once
 
 // Channel Estimator — ATSC 3.0 OFDM channel estimation

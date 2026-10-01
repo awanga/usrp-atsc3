@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // alp_demux.cc — ALP Demultiplexer implementation
 //
 // ATSC A/330 Link-Layer Protocol packet parsing and IP reassembly

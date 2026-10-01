@@ -1,6 +1,6 @@
 options:
   parameters:
-    author: gr-atsc3
+    author: OpenATSC3
     catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_ofdm_demod_impl.cc — OFDM Demodulator implementation
 
 #include "atsc3_ofdm_demod_impl.h"

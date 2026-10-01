@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 #pragma once
 
 // HEVC Decoder — FFmpeg-based H.265/HEVC video decoder

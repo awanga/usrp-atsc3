@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_service_selector.h — GNU Radio ATSC 3.0 Service Selector Block
 //
 // AXI4-S: TDATA=uint8_t TVALID TREADY TLAST(packet)

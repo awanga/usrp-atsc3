@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // ldpc_decoder.cc — ATSC 3.0 LDPC decoding using min-sum algorithm
 //
 // Implements belief propagation for ATSC 3.0 LDPC codes.

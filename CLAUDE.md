@@ -1,4 +1,4 @@
-# CLAUDE.md — gr-atsc3 Agent Context
+# CLAUDE.md — OpenATSC3 Agent Context
 
 > Full project spec: `README.md` | Active task plan: `TASKS.md`
 

@@ -1,9 +1,22 @@
 # Changelog
 
-All notable changes to gr-atsc3 will be documented in this file.
+All notable changes to OpenATSC3 (formerly gr-atsc3) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+
+- Project renamed from gr-atsc3 to OpenATSC3 (Debian package `openatsc3`),
+  to avoid confusion with the existing GNU Radio module of that name.
+- Licensed under MPL-2.0 (software), CERN-OHL-W-2.0 (HDL design sources)
+  and CC-BY-4.0 (documentation); see `LICENSING.md`.
+- Float FFT uses FFTW3 when found and a built-in radix-2 FFT otherwise
+  (`-DATSC3_USE_FFTW=AUTO|ON|OFF`).
+- NUC constellation tables are generated from ATSC A/322 Annex C
+  (`scripts/gen_nuc_tables.py`); values unchanged.
 
 ## [1.0.0] - 2026-08-07
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_ldpc_waterfall.cc — ATSC 3.0 LDPC Waterfall Compliance Tests
 //
 // Verifies BER vs Eb/N0 waterfall curves match ATSC A/322 Section 12

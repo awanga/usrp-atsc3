@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // agc.cc — AGC Controller implementation
 //
 // Power-feedback AGC with configurable attack/release time constants.

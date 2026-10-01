@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // service_selector_python.cc — pybind11 bindings for service_selector block
 
 #include "atsc3_service_selector.h"

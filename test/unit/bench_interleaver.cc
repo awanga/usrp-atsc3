@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bench_interleaver.cc — Performance benchmark for ATSC 3.0 de-interleavers
 //
 // Measures cycles/cell and throughput MB/s for cell, frequency, and time

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_bootstrap_detect_impl.cc — Bootstrap Detector implementation
 
 #include "atsc3_bootstrap_detect_impl.h"

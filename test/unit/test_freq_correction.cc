@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_freq_correction.cc — Unit tests for lib/sync/freq_correction.h
 //
 // Tests CFO correction and pilot phase tracking

@@ -1,7 +1,7 @@
 # HDL Stubs — AXI4-Stream Interface Templates
 
 This directory contains RTL port-map templates for FPGA implementation of the
-gr-atsc3 signal processing chain. These stubs define the AXI4-Stream interfaces
+OpenATSC3 signal processing chain. These stubs define the AXI4-Stream interfaces
 that mirror the C++ `lib/` classes.
 
 ## Design Constraints

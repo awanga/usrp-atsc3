@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 """
 test_capture_bootstrap.py — Unit tests for capture_iq.py bootstrap detection
 

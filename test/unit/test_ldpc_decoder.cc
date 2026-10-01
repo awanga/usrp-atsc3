@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_ldpc_decoder.cc — Unit tests for lib/fec/ldpc_decoder.h
 //
 // Tests LDPC decoding, convergence, and performance

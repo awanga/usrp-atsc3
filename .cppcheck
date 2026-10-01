@@ -1,4 +1,4 @@
-# cppcheck suppressions file for gr-atsc3
+# cppcheck suppressions file for OpenATSC3
 # Usage: cppcheck --suppressions-list=.cppcheck ...
 
 # Suppress warnings about missing include files (handled by CMake)

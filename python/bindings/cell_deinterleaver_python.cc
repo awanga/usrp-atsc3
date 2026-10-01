@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cell_deinterleaver_python.cc — pybind11 bindings for cell_deinterleaver block
 
 #include "atsc3_cell_deinterleaver.h"

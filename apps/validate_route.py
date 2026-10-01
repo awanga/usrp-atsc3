@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 """
 validate_route.py — ATSC 3.0 ROUTE/ALP Validation Utility
 
@@ -19,7 +21,7 @@ Usage:
 Requirements:
     - numpy
     - scipy (for signal processing)
-    - gr-atsc3 module (for ALP/ROUTE parsing)
+    - OpenATSC3 module (for ALP/ROUTE parsing)
 """
 
 import argparse

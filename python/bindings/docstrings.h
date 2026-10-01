@@ -1,4 +1,7 @@
-// docstrings.h — Python docstrings for gr-atsc3 blocks
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
+// docstrings.h — Python docstrings for OpenATSC3 blocks
 #pragma once
 
 // bootstrap_detect docstrings

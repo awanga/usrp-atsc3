@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_channel_eq.h — GNU Radio ATSC 3.0 Channel Equalizer Block
 //
 // AXI4-S: TDATA=cf32 TVALID TREADY TLAST(symbol)

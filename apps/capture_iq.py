@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
 """
 capture_iq.py — ATSC 3.0 IQ Capture Utility for USRP N2x0 + TVRX
 
@@ -99,7 +101,7 @@ def create_sigmf_meta(
             "core:sample_rate": sample_rate,
             "core:version": "1.0.0",
             "core:description": f"ATSC 3.0 capture from USRP N2x0 + TVRX",
-            "core:author": "gr-atsc3 capture_iq.py",
+            "core:author": "OpenATSC3 capture_iq.py",
             "core:recorder": "UHD",
             "atsc3:channel": channel,
         },

@@ -1,7 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+
 cmake_minimum_required(VERSION 3.16)
 
 project(
-  gr-atsc3
+  OpenATSC3
   VERSION 1.0.0
   DESCRIPTION "GNU Radio OOT module for ATSC 3.0 physical-layer receiver"
   LANGUAGES CXX)
@@ -18,6 +21,11 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 # Build Options
 # ------------------------------------------------------------------------------
 option(ATSC3_FIXED_POINT "Build with fixed-point (int16_t) sample type" OFF)
+set(ATSC3_USE_FFTW
+    AUTO
+    CACHE STRING
+          "Float build FFT backend: AUTO (FFTW3 if found), ON (require), OFF (built-in)")
+set_property(CACHE ATSC3_USE_FFTW PROPERTY STRINGS AUTO ON OFF)
 option(ATSC3_ENABLE_ML "Enable ML inference backend (post-MVP)" OFF)
 option(ATSC3_ENABLE_HDL_STUBS "Build HDL stub generation targets (post-MVP)"
        OFF)
@@ -97,13 +105,22 @@ endif()
 # Find Dependencies
 # ------------------------------------------------------------------------------
 
-# FFTW3 (required for OFDM processing)
-find_package(FFTW3)
-if(NOT FFTW3_FOUND)
-  message(
-    WARNING "FFTW3 not found - DSP library will have limited functionality")
-  set(FFTW3_LIBRARIES "")
-  set(FFTW3_INCLUDE_DIRS "")
+# FFTW3: preferred float-build FFT backend (faster than the built-in one).
+# It is GPL-2.0+, so a binary linking it is GPL; -DATSC3_USE_FFTW=OFF builds
+# lib/ with the built-in FFT and no copyleft dependency.
+set(ATSC3_FFTW_ACTIVE OFF)
+if(NOT ATSC3_FIXED_POINT)
+  if(ATSC3_USE_FFTW STREQUAL "AUTO")
+    find_package(FFTW3)
+    if(FFTW3_FOUND)
+      set(ATSC3_FFTW_ACTIVE ON)
+    else()
+      message(STATUS "FFTW3 not found: using the built-in FFT")
+    endif()
+  elseif(ATSC3_USE_FFTW)
+    find_package(FFTW3 REQUIRED)
+    set(ATSC3_FFTW_ACTIVE ON)
+  endif()
 endif()
 
 # Boost (required for various utilities)
@@ -211,14 +228,17 @@ endif()
 # ------------------------------------------------------------------------------
 # CPack Configuration for .deb packaging
 # ------------------------------------------------------------------------------
-set(CPACK_PACKAGE_NAME "gr-atsc3")
+set(CPACK_PACKAGE_NAME "openatsc3")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
 set(CPACK_PACKAGE_MAINTAINER "ATSC3 Project")
 set(CPACK_PACKAGE_CONTACT "atsc3@example.com")
 
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libfftw3-dev, libboost-system-dev")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libboost-system-dev")
+if(ATSC3_FFTW_ACTIVE)
+  string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", libfftw3-dev")
+endif()
 set(CPACK_DEBIAN_PACKAGE_SECTION "comm")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
@@ -229,10 +249,11 @@ include(CPack)
 # Summary
 # ------------------------------------------------------------------------------
 message(STATUS "")
-message(STATUS "gr-atsc3 Configuration Summary:")
+message(STATUS "OpenATSC3 Configuration Summary:")
 message(STATUS "  Version:        ${PROJECT_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Fixed-point:    ${ATSC3_FIXED_POINT}")
+message(STATUS "  FFTW backend:   ${ATSC3_FFTW_ACTIVE}")
 message(STATUS "  SIMD tier:      ${ATSC3_SIMD_TIER}")
 message(STATUS "  GR version:     ${ATSC3_GR_VERSION}")
 message(STATUS "  Channel BW:     ${ATSC3_CHANNEL_BW_HZ} Hz")

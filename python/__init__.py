@@ -1,9 +1,12 @@
-# gr-atsc3 Python bindings
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# OpenATSC3 Python bindings
 #
 # ATSC 3.0 physical-layer receiver blocks for GNU Radio
 
 """
-gr-atsc3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
+OpenATSC3: GNU Radio OOT module for ATSC 3.0 physical-layer receiver
 
 This module provides the following blocks:
 - bootstrap_detect: ATSC 3.0 bootstrap detector

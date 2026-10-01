@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // mode_config.cc — ATSC 3.0 mode table loading from JSON
 
 #include "mode_config.h"

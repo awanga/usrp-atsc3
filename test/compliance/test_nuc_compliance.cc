@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_nuc_compliance.cc — ATSC 3.0 NUC Constellation Compliance Tests
 //
 // Verifies Non-Uniform Constellation (NUC) tables match ATSC A/322 Section 7.5.

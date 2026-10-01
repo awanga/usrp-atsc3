@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_bch_decoder.cc — Unit tests for lib/fec/bch_decoder.h
 //
 // Tests BCH decoding, error correction, and edge cases

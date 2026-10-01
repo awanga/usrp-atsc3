@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_constellation_demapper.h — GNU Radio ATSC 3.0 Constellation Demapper Block
 //
 // AXI4-S: TDATA=cf32 in, int8_t LLR out TVALID TREADY TLAST(codeword)

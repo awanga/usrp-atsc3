@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // uhd_source.cc — UHDSource implementation
 //
 // Acquires IQ samples from USRP hardware via UHD API.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // null_source.cc — NullSource implementation
 //
 // Returns zeros for all reads. Useful for testing downstream DSP code

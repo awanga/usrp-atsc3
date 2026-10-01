@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_av_player_impl.cc — A/V Player implementation
 
 #include "atsc3_av_player_impl.h"

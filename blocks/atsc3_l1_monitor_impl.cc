@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_l1_monitor_impl.cc — L1 Monitor implementation
 
 #include "atsc3_l1_monitor_impl.h"

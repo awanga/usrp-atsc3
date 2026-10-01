@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // ldpc_matrix.cc — ATSC 3.0 LDPC H matrix generation
 //
 // Implements quasi-cyclic LDPC matrix construction per ATSC A/322 Section 9.

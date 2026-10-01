@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // atsc3_service_guide.h — GNU Radio ATSC 3.0 Service Guide Block
 //
 // Message-only block for displaying service catalog

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_channel_estimator.cc — Unit tests for lib/channel/channel_estimator.h
 //
 // Tests LS channel estimation, interpolation, and SNR estimation

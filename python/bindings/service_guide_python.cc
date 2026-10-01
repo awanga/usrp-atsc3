@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // service_guide_python.cc — pybind11 bindings for service_guide block
 
 #include "atsc3_service_guide.h"
