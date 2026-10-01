@@ -58,7 +58,9 @@ def _clamp16(v):
 
 
 def noise(rnd, n, sigma):
-    return [(_clamp16(rnd.gauss(0, sigma)), _clamp16(rnd.gauss(0, sigma))) for _ in range(n)]
+    return [
+        (_clamp16(rnd.gauss(0, sigma)), _clamp16(rnd.gauss(0, sigma))) for _ in range(n)
+    ]
 
 
 def bootstrap(rnd, cfo_hz, fs, amplitude, noise_sigma):
@@ -67,8 +69,12 @@ def bootstrap(rnd, cfo_hz, fs, amplitude, noise_sigma):
     out = []
     for n, s in enumerate(half + half):
         v = s * amplitude * cmath.exp(2j * math.pi * cfo_hz * n / fs)
-        out.append((_clamp16(v.real + rnd.gauss(0, noise_sigma)),
-                    _clamp16(v.imag + rnd.gauss(0, noise_sigma))))
+        out.append(
+            (
+                _clamp16(v.real + rnd.gauss(0, noise_sigma)),
+                _clamp16(v.imag + rnd.gauss(0, noise_sigma)),
+            )
+        )
     return out
 
 
@@ -96,8 +102,13 @@ def run_golden(cfg, samples):
         )
     fs, thr, win = cfg
     lines = [f"C {fs} {thr} {win}"] + [f"{re} {im}" for re, im in samples]
-    proc = subprocess.run([str(BOOTSTRAP_GEN)], input="\n".join(lines) + "\n",
-                          capture_output=True, text=True, check=True)
+    proc = subprocess.run(
+        [str(BOOTSTRAP_GEN)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     mon, det = [], []
     for line in proc.stdout.splitlines():
         tag, *vals = line.split()
@@ -107,8 +118,9 @@ def run_golden(cfg, samples):
             det.append(tuple(int(v) for v in vals))
         else:
             raise ValueError(f"bad golden line: {line}")
-    assert len(mon) == len(samples), (
-        f"golden CLI returned {len(mon)} monitor lines for {len(samples)} samples")
+    assert len(mon) == len(
+        samples
+    ), f"golden CLI returned {len(mon)} monitor lines for {len(samples)} samples"
     return mon, det
 
 
@@ -170,21 +182,32 @@ async def collect_detections(dut, out, rnd):
         assert dut.m_axis_tlast.value == 1, "status word must carry TLAST"
         for _ in range(rnd.randint(0, 6)):  # backpressure
             await settled(RisingEdge(dut.clk))
-            assert dut.m_axis_tvalid.value == 1, "m_axis_tvalid dropped before handshake"
-            assert int(dut.m_axis_tdata.value) == word, "m_axis_tdata changed while stalled"
-            assert dut.s_axis_tready.value == 0, "input accepted while a detection is pending"
+            assert (
+                dut.m_axis_tvalid.value == 1
+            ), "m_axis_tvalid dropped before handshake"
+            assert (
+                int(dut.m_axis_tdata.value) == word
+            ), "m_axis_tdata changed while stalled"
+            assert (
+                dut.s_axis_tready.value == 0
+            ), "input accepted while a detection is pending"
         await FallingEdge(dut.clk)
         dut.m_axis_tready.value = 1
         await RisingEdge(dut.clk)  # handshake edge
         dut.m_axis_tready.value = 0
         assert word & 1, "detected bit not set"
-        out.append((_field(word, DET_SAMPLE_INDEX),
-                    _field(word, DET_CFO_HZ, signed=True),
-                    _field(word, DET_METRIC)))
+        out.append(
+            (
+                _field(word, DET_SAMPLE_INDEX),
+                _field(word, DET_CFO_HZ, signed=True),
+                _field(word, DET_METRIC),
+            )
+        )
 
 
-async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=None,
-                       start_clock=True):
+async def run_scenario(
+    dut, cfg, samples, seed, expect_detections, check_golden=None, start_clock=True
+):
     golden_mon, golden_det = run_golden(cfg, samples)
     if check_golden:
         check_golden(golden_mon)
@@ -210,12 +233,16 @@ async def run_scenario(dut, cfg, samples, seed, expect_detections, check_golden=
     for _ in range(400):
         await RisingEdge(dut.clk)
 
-    assert len(mon) == len(golden_mon), (
-        f"monitor produced {len(mon)} samples, golden {len(golden_mon)}")
+    assert len(mon) == len(
+        golden_mon
+    ), f"monitor produced {len(mon)} samples, golden {len(golden_mon)}"
     for i, (got, exp) in enumerate(zip(mon, golden_mon)):
-        assert got == exp, (
-            f"sample {i + 1}: (smoothed_metric, cfo_hz) expected {exp}, got {got}")
-    assert det == golden_det, f"detections differ:\n  rtl    {det}\n  golden {golden_det}"
+        assert (
+            got == exp
+        ), f"sample {i + 1}: (smoothed_metric, cfo_hz) expected {exp}, got {got}"
+    assert (
+        det == golden_det
+    ), f"detections differ:\n  rtl    {det}\n  golden {golden_det}"
 
 
 @cocotb.test(timeout_time=2000, timeout_unit="ms")
@@ -225,17 +252,21 @@ async def two_bootstraps_default_config(dut):
     rnd = random.Random(0xB0075)
     fs = DEFAULT_FS
     amp, sigma = 6000.0, 600.0  # ~20 dB SNR
-    samples = (noise(rnd, 300, sigma)
-               + bootstrap(rnd, 800.0, fs, amp, sigma)
-               + noise(rnd, 1500, sigma)
-               + bootstrap(rnd, -1200.0, fs, amp, sigma)
-               + [(0, 0)] * 2500)
+    samples = (
+        noise(rnd, 300, sigma)
+        + bootstrap(rnd, 800.0, fs, amp, sigma)
+        + noise(rnd, 1500, sigma)
+        + bootstrap(rnd, -1200.0, fs, amp, sigma)
+        + [(0, 0)] * 2500
+    )
     ends = (300 + 2 * HALF_SYMBOL, 300 + 4 * HALF_SYMBOL + 1500)
 
     # Sanity on the golden model itself: neither noise-to-signal edge
     # fires, and each bootstrap fires exactly once, at its end.
     _, golden_det = run_golden((fs, DEFAULT_THRESHOLD_Q15, 64), samples)
-    assert len(golden_det) == 2, f"expected one detection per bootstrap, got {golden_det}"
+    assert (
+        len(golden_det) == 2
+    ), f"expected one detection per bootstrap, got {golden_det}"
     for (index, _, _), end in zip(golden_det, ends):
         assert abs(index - end) <= 200, f"detection at {index}, bootstrap ends at {end}"
     await run_scenario(dut, (fs, DEFAULT_THRESHOLD_Q15, 64), samples, 11, True)
@@ -249,12 +280,14 @@ async def raw_angle_odd_window(dut):
     rnd = random.Random(0x5A5A)
     fs = 1 << 27
     amp, sigma = 9000.0, 300.0
-    samples = (noise(rnd, 100, sigma)
-               # unambiguous range at Fs = 2^27 is +-Fs/(2L) = +-32768 Hz;
-               # 20 kHz is a phase of ~0.61*pi
-               + bootstrap(rnd, 20000.0, fs, amp, sigma)
-               + full_scale_burst(rnd, 300)
-               + [(0, 0)] * 1200)
+    samples = (
+        noise(rnd, 100, sigma)
+        # unambiguous range at Fs = 2^27 is +-Fs/(2L) = +-32768 Hz;
+        # 20 kHz is a phase of ~0.61*pi
+        + bootstrap(rnd, 20000.0, fs, amp, sigma)
+        + full_scale_burst(rnd, 300)
+        + [(0, 0)] * 1200
+    )
     await run_scenario(dut, (fs, 16384, 5), samples, 22, True)
 
 
@@ -275,14 +308,21 @@ async def energy_floor_boundary(dut):
     def gated_while_correlated(golden_mon):
         metrics = [m for m, _ in golden_mon]
         last_nonzero = max(i for i, m in enumerate(metrics) if m)
-        assert metrics[last_nonzero] > 8192, (
-            "metric had already decayed before the energy floor gated it")
-        assert all(m == 0 for m in metrics[last_nonzero + 1:]), "metric reappeared"
+        assert (
+            metrics[last_nonzero] > 8192
+        ), "metric had already decayed before the energy floor gated it"
+        assert all(m == 0 for m in metrics[last_nonzero + 1 :]), "metric reappeared"
 
     # No detection expected: the fade makes the halves unequal in amplitude
     # (x[n-L] is ~2.3x x[n]), which caps the metric near 0.55.
-    await run_scenario(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 1), samples, 44, False,
-                       gated_while_correlated)
+    await run_scenario(
+        dut,
+        (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 1),
+        samples,
+        44,
+        False,
+        gated_while_correlated,
+    )
 
 
 @cocotb.test(timeout_time=2000, timeout_unit="ms")
@@ -293,8 +333,11 @@ async def zero_window_clamps_to_one(dut):
     rnd = random.Random(0x0)
     # Trailing noise: the detector reports on the falling edge after the
     # end of the repeated structure, so it needs samples past it.
-    samples = (noise(rnd, 200, 500.0) + bootstrap(rnd, -400.0, DEFAULT_FS, 7000.0, 500.0)
-               + noise(rnd, 600, 500.0))
+    samples = (
+        noise(rnd, 200, 500.0)
+        + bootstrap(rnd, -400.0, DEFAULT_FS, 7000.0, 500.0)
+        + noise(rnd, 600, 500.0)
+    )
     await run_scenario(dut, (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 0), samples, 33, True)
     assert dut.cfg_window_clamped.value == 0
 
@@ -319,12 +362,20 @@ async def reset_mid_bootstrap(dut):
     cfg = (DEFAULT_FS, DEFAULT_THRESHOLD_Q15, 64)
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut, cfg)
-    first = cocotb.start_soon(drive(dut, noise(rnd, 300, 600.0)
-                                    + bootstrap(rnd, 500.0, DEFAULT_FS, 6000.0, 600.0), rnd))
+    first = cocotb.start_soon(
+        drive(
+            dut,
+            noise(rnd, 300, 600.0) + bootstrap(rnd, 500.0, DEFAULT_FS, 6000.0, 600.0),
+            rnd,
+        )
+    )
     for _ in range(170 * 2500):  # ~170 cycles/sample: stop inside the bootstrap
         await RisingEdge(dut.clk)
     assert not first.done(), "first stream finished before the reset"
     first.kill()
-    samples = (noise(rnd, 300, 600.0) + bootstrap(rnd, -700.0, DEFAULT_FS, 6000.0, 600.0)
-               + noise(rnd, 600, 600.0))
+    samples = (
+        noise(rnd, 300, 600.0)
+        + bootstrap(rnd, -700.0, DEFAULT_FS, 6000.0, 600.0)
+        + noise(rnd, 600, 600.0)
+    )
     await run_scenario(dut, cfg, samples, 12, True, start_clock=False)

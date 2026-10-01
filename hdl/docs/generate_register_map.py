@@ -46,14 +46,18 @@ def render_register_table(registers, out):
         note_cell = notes
         if c_source:
             note_cell = f"{notes} *(`{c_source}`)*" if notes else f"*(`{c_source}`)*"
-        out.append(f"| `{name}` | `{offset}` | {fmt} | {reset} | {writable} | {note_cell} |")
+        out.append(
+            f"| `{name}` | `{offset}` | {fmt} | {reset} | {writable} | {note_cell} |"
+        )
     out.append("")
 
 
 def render_excluded(excluded, out):
     if not excluded:
         return
-    out.append("**Excluded fields** (present in the C++ config struct, deliberately not a register):")
+    out.append(
+        "**Excluded fields** (present in the C++ config struct, deliberately not a register):"
+    )
     out.append("")
     for e in excluded:
         out.append(f"- `{e['field']}` — {e['reason']}")

@@ -47,14 +47,25 @@ def generate_stimulus(rnd):
 
     # Vector mode boundaries: the degenerate origin, each axis, and each
     # quadrant corner.
-    for x, y in ((0, 0), (32767, 0), (-32768, 0), (0, 32767), (0, -32768),
-                 (32767, 32767), (-32768, 32767), (32767, -32768), (-32768, -32768)):
+    for x, y in (
+        (0, 0),
+        (32767, 0),
+        (-32768, 0),
+        (0, 32767),
+        (0, -32768),
+        (32767, 32767),
+        (-32768, 32767),
+        (32767, -32768),
+        (-32768, -32768),
+    ):
         cases.append((CORDIC_MODE_VECTOR, x, y))
 
     for _ in range(60):
         cases.append((CORDIC_MODE_ROTATE, rnd.randint(-32768, 32767), 0))
     for _ in range(60):
-        cases.append((CORDIC_MODE_VECTOR, rnd.randint(-32768, 32767), rnd.randint(-32768, 32767)))
+        cases.append(
+            (CORDIC_MODE_VECTOR, rnd.randint(-32768, 32767), rnd.randint(-32768, 32767))
+        )
 
     return cases
 
@@ -87,9 +98,9 @@ def run_golden(cases):
     for line in proc.stdout.strip().splitlines():
         out_a, out_b = line.split()
         results.append((int(out_a), int(out_b)))
-    assert len(results) == len(cases), (
-        f"golden CLI returned {len(results)} results for {len(cases)} stimulus lines"
-    )
+    assert len(results) == len(
+        cases
+    ), f"golden CLI returned {len(results)} results for {len(cases)} stimulus lines"
     return results
 
 
@@ -132,9 +143,13 @@ async def bit_exact_vs_golden_model(dut):
     await reset_dut(dut)
 
     checks = 0
-    for idx, ((mode, in_a, in_b), (exp_out_a, exp_out_b)) in enumerate(zip(cases, golden)):
+    for idx, ((mode, in_a, in_b), (exp_out_a, exp_out_b)) in enumerate(
+        zip(cases, golden)
+    ):
         what = f"case {idx} (mode={mode}, in_a={in_a}, in_b={in_b})"
-        latency = 2 if (mode == CORDIC_MODE_VECTOR and in_a == 0 and in_b == 0) else LATENCY
+        latency = (
+            2 if (mode == CORDIC_MODE_VECTOR and in_a == 0 and in_b == 0) else LATENCY
+        )
         assert dut.busy.value == 0, f"{what}: DUT unexpectedly busy before start"
         held = (int(dut.out_a.value), int(dut.out_b.value))
 
@@ -149,9 +164,13 @@ async def bit_exact_vs_golden_model(dut):
         for cycle in range(1, latency):
             await edge(dut)
             assert dut.busy.value == 1, f"{what}: busy low {cycle} cycle(s) after start"
-            assert dut.done.value == 0, f"{what}: done after {cycle} cycle(s), expected {latency}"
-            assert (int(dut.out_a.value), int(dut.out_b.value)) == held, (
-                f"{what}: outputs changed before done")
+            assert (
+                dut.done.value == 0
+            ), f"{what}: done after {cycle} cycle(s), expected {latency}"
+            assert (
+                int(dut.out_a.value),
+                int(dut.out_b.value),
+            ) == held, f"{what}: outputs changed before done"
             await drive_point()
             dut.start.value = 0
         await edge(dut)
@@ -160,8 +179,12 @@ async def bit_exact_vs_golden_model(dut):
 
         got_out_a = _q15(int(dut.out_a.value))
         got_out_b = int(dut.out_b.value.signed_integer)
-        assert got_out_a == exp_out_a, f"{what}: out_a expected {exp_out_a}, got {got_out_a}"
-        assert got_out_b == exp_out_b, f"{what}: out_b expected {exp_out_b}, got {got_out_b}"
+        assert (
+            got_out_a == exp_out_a
+        ), f"{what}: out_a expected {exp_out_a}, got {got_out_a}"
+        assert (
+            got_out_b == exp_out_b
+        ), f"{what}: out_b expected {exp_out_b}, got {got_out_b}"
         checks += 1
         await drive_point()
     assert checks == len(cases) > 0

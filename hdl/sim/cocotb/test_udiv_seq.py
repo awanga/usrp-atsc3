@@ -71,8 +71,12 @@ async def divide(dut, a, b):
     for cycle in range(1, WIDTH + 1):
         await edge(dut)
         assert dut.busy.value == 1, f"{a}/{b}: busy low {cycle} cycle(s) after start"
-        assert dut.done.value == 0, f"{a}/{b}: done after {cycle} cycle(s), expected {WIDTH + 1}"
-        assert int(dut.quotient.value) == held, f"{a}/{b}: previous quotient not held while busy"
+        assert (
+            dut.done.value == 0
+        ), f"{a}/{b}: done after {cycle} cycle(s), expected {WIDTH + 1}"
+        assert (
+            int(dut.quotient.value) == held
+        ), f"{a}/{b}: previous quotient not held while busy"
     await edge(dut)
     assert dut.done.value == 1, f"{a}/{b}: no done {WIDTH + 1} cycles after start"
     assert dut.busy.value == 0
@@ -85,10 +89,22 @@ async def divide(dut, a, b):
 async def edge_and_random_operands(dut):
     random.seed(0xD1)
     await start_clock_and_reset(dut)
-    cases = [(0, 1), (1, 1), (MASK, 1), (MASK, MASK), (MASK - 1, MASK), (1, MASK),
-             (12345, 0), (0, 0), (1 << (WIDTH - 1), 3), (MASK, 2)]
-    cases += [(random.getrandbits(WIDTH), random.getrandbits(random.randint(1, WIDTH)) or 1)
-              for _ in range(300)]
+    cases = [
+        (0, 1),
+        (1, 1),
+        (MASK, 1),
+        (MASK, MASK),
+        (MASK - 1, MASK),
+        (1, MASK),
+        (12345, 0),
+        (0, 0),
+        (1 << (WIDTH - 1), 3),
+        (MASK, 2),
+    ]
+    cases += [
+        (random.getrandbits(WIDTH), random.getrandbits(random.randint(1, WIDTH)) or 1)
+        for _ in range(300)
+    ]
     checks = 0
     for a, b in cases:
         await drive_point()

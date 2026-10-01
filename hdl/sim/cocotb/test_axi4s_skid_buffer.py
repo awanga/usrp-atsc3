@@ -70,12 +70,12 @@ async def collect_output(dut, expected, done_event):
             got_data = int(dut.m_axis_tdata.value)
             got_last = int(dut.m_axis_tlast.value)
             exp_data, exp_last = expected[idx]
-            assert got_data == exp_data, (
-                f"beat {idx}: tdata mismatch, expected {exp_data}, got {got_data}"
-            )
-            assert got_last == int(exp_last), (
-                f"beat {idx}: tlast mismatch, expected {int(exp_last)}, got {got_last}"
-            )
+            assert (
+                got_data == exp_data
+            ), f"beat {idx}: tdata mismatch, expected {exp_data}, got {got_data}"
+            assert got_last == int(
+                exp_last
+            ), f"beat {idx}: tlast mismatch, expected {int(exp_last)}, got {got_last}"
             idx += 1
     done_event.set()
 
@@ -121,12 +121,18 @@ async def full_throughput_no_stalls(dut):
         await RisingEdge(dut.clk)
         await ReadOnly()
         if cycle < len(beats):
-            assert dut.s_axis_tready.value == 1, "must accept every cycle at full throughput"
+            assert (
+                dut.s_axis_tready.value == 1
+            ), "must accept every cycle at full throughput"
         if dut.m_axis_tvalid.value == 1:
             # Registered output: the beat accepted on this edge is visible now.
-            assert cycle < len(beats), f"output beat after the stream ended (cycle {cycle})"
+            assert cycle < len(
+                beats
+            ), f"output beat after the stream ended (cycle {cycle})"
             got.append((int(dut.m_axis_tdata.value), bool(dut.m_axis_tlast.value)))
-            assert got[-1] == beats[cycle], f"cycle {cycle}: got {got[-1]}, expected {beats[cycle]}"
+            assert (
+                got[-1] == beats[cycle]
+            ), f"cycle {cycle}: got {got[-1]}, expected {beats[cycle]}"
         await Timer(1, "ns")
 
     assert got == beats, f"{len(got)} of {len(beats)} beats delivered"

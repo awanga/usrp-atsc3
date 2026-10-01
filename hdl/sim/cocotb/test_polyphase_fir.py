@@ -31,11 +31,18 @@ LATENCY = 2 * NUM_TAPS + 1
 
 
 def run_golden(buf, queries):
-    assert GEN.exists(), f"{GEN} missing: cmake --build build-fxp --target timing_recovery_gen"
+    assert (
+        GEN.exists()
+    ), f"{GEN} missing: cmake --build build-fxp --target timing_recovery_gen"
     lines = ["I", "B " + " ".join(f"{re} {im}" for re, im in buf)]
     lines += [f"Q {p} {b}" for p, b in queries]
-    out = subprocess.run([str(GEN)], input="\n".join(lines) + "\n", capture_output=True,
-                         text=True, check=True).stdout.split("\n")
+    out = subprocess.run(
+        [str(GEN)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\n")
     res = [tuple(int(v) for v in ln.split()[1:]) for ln in out if ln.startswith("R ")]
     assert len(res) == len(queries)
     return res
@@ -119,7 +126,9 @@ async def run_calls(dut, buf, queries, seed):
     await setup(dut, buf)
     checks = 0
     for (phase, base_idx), exp in zip(queries, golden):
-        got = await interpolate(dut, phase, base_idx, poke_start_midway=random.random() < 0.3)
+        got = await interpolate(
+            dut, phase, base_idx, poke_start_midway=random.random() < 0.3
+        )
         assert got == exp, f"phase {phase} base {base_idx}: got {got}, expected {exp}"
         checks += 1
         await drive_point()
@@ -131,7 +140,10 @@ async def every_phase_and_wrap(dut):
     """Every phase at base indices that make the 32-tap window wrap the
     ring buffer, on realistic-amplitude random samples."""
     rnd = random.Random(0xF1)
-    buf = [(rnd.randint(-16000, 16000), rnd.randint(-16000, 16000)) for _ in range(BUF_SIZE)]
+    buf = [
+        (rnd.randint(-16000, 16000), rnd.randint(-16000, 16000))
+        for _ in range(BUF_SIZE)
+    ]
     queries = [(p, b) for p in range(NUM_PHASES) for b in (0, 1, 31, 32, 64, 127)]
     await run_calls(dut, buf, queries, 1)
 
@@ -141,7 +153,9 @@ async def full_scale_saturation(dut):
     """Near-full-scale alternating samples drive the dot product past
     +-1.0, exercising the output saturation and the rounding bias on large
     accumulators."""
-    buf = [((32767, -32767) if (i // 3) % 2 else (-32767, 32767)) for i in range(BUF_SIZE)]
+    buf = [
+        ((32767, -32767) if (i // 3) % 2 else (-32767, 32767)) for i in range(BUF_SIZE)
+    ]
     rnd = random.Random(0xF2)
     queries = [(rnd.randrange(NUM_PHASES), rnd.randrange(BUF_SIZE)) for _ in range(40)]
     await run_calls(dut, buf, queries, 2)
