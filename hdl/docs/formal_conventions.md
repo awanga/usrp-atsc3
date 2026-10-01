@@ -5,6 +5,34 @@
 > before any algorithmic block's formal harness was written. Follow this
 > pattern for every subsequent block's formal work.
 
+## What each harness must contain
+
+- **A main property that checks data integrity against a ghost model**,
+  not just flag and range bounds: harness-side registers that record
+  what the DUT accepted (operands at a start edge, a beat at a
+  solver-chosen index K via `(* anyconst *)`, a count of accepted beats)
+  and assertions that the DUT delivers exactly that. See
+  `axi4s_skid_buffer_formal.v` (beat K leaves once, in order,
+  unmodified) or `udiv_seq_formal.v` (quotient == a / b, exact latency).
+  Where the data itself has no tractable formal oracle (FFT, CORDIC,
+  correlator values), the ghost covers the data path that does (load
+  addressing, input buffering, sample counting) and the header says what
+  is left to cocotb and why.
+- **Assumptions that each cite the caller contract they encode** (e.g.
+  "configuration is latched at reset; reconfiguration is by reset", or
+  the AXI4-S producer hold rule). An assumption with no contract behind
+  it is a hole in the proof.
+- **A cover for the key event**, or, when that event is deeper than any
+  practical BMC depth (a completed 8K symbol, the 128-cycle clear sweep),
+  a header note saying so and naming the committed mutants that show the
+  properties are load-bearing instead.
+- **A header** stating the depth versus the deepest event, what was
+  shrunk, and what is cut.
+
+All blocks so far are single-clock. A single shared clock proves protocol
+and data integrity, not metastability; a clock-domain crossing needs its
+own harness and a note saying exactly that.
+
 ## SVA-lite, not full SVA
 
 `rtl/` modules are IEEE 1364-2001 Verilog and stay that way -- no
@@ -132,11 +160,22 @@ nothing.
 
 ## Solver
 
-`z3` (also available: `boolector`, but it dies with a broken pipe on
-larger models here). `yices-smt2` is **not** installed in this
-environment -- don't default `.sby` engine lines to bare `smtbmc` (which
-tries yices first and fails with "not found in path"); always name a
-solver explicitly: `smtbmc z3`.
+Qualified with `hdl/formal/qualify/qualify_solvers.sh` (a trivial
+passing and a trivial failing harness per engine, 60 s each; a crash, a
+missing status or a timeout disqualifies):
+
+| Engine | Result |
+|---|---|
+| `smtbmc z3` | qualified; default for every smtbmc harness |
+| `smtbmc cvc5` | qualified, but timed out (900 s) on cordic, cp_removal and fft_engine where z3 takes 6-340 s |
+| `smtbmc boolector` | unusable (broken pipe, no status) |
+| `smtbmc yices`, `smtbmc bitwuzla` | not installed |
+| sby `abc pdr` / `abc bmc3` | unusable through sby (`KeyError: 'asserts'`, see below) |
+| ABC `pdr` / `bmc3` on the sby-built AIG | qualified; this is `prove_pdr.sh` |
+
+Always name the solver in the `.sby` engine line (`smtbmc z3`); bare
+`smtbmc` tries yices first. Re-run the qualification after any toolchain
+change.
 
 ## Datapath-heavy blocks: cut multipliers, prove with PDR
 
@@ -159,11 +198,10 @@ not finish a depth-2 BMC there. Two measures, both used by
   succeeded before running PDR itself.
 
 Neither ABC PDR nor `smtbmc` gives a practical `cover` task on these
-models, so non-vacuity has to come from **RTL mutants** instead: inject a
-bug each key assertion should catch, confirm it fails at a plausible
-depth with `prove_pdr.sh --mutant <job>` (bounded `bmc3`), restore, and
-record the result in the harness header (see
-`bootstrap_detector_formal.v`). Don't hunt mutants with PDR: it is a
+models, so non-vacuity has to come from **RTL mutants** instead, which
+are committed in `hdl/mutants/manifest.py` and rerun with
+`hdl/mutants/run_mutants.py` (a `bmc:<job>` checker runs
+`prove_pdr.sh --mutant <job>`, bounded `bmc3`). Don't hunt mutants with PDR: it is a
 proof engine and stalls on deep counterexamples -- a bootstrap detector
 mutant needing ~160 frames (two samples through the dividers) ran PDR for
 14 hours without a verdict, while `bmc3` found it in under two minutes.
@@ -189,10 +227,21 @@ read_verilog -formal -I. axi4s_skid_buffer.v
 axi4s_skid_buffer.v ../rtl/common/axi4s_skid_buffer.v
 ```
 
-## Work directories
+## Running, and work directories
 
-`sby` creates a directory per task (named `<sby-basename>_<task>/`, e.g.
-`axi4s_skid_buffer_prove/`) containing the full proof database and any
-counterexample traces. These are gitignored (`hdl/formal/*/` in
-`.gitignore`) -- regenerate by re-running `sby -f <file>.sby`, don't
-commit them.
+`hdl/formal/run_formal.sh [job ...]` runs every harness under a per-job
+time limit and prints PASS/FAIL per job. Work directories and logs go to
+`hdl/build/formal/` (gitignored); nothing is written next to the
+`.sby` files.
+
+## Mutants
+
+Every harness has at least one committed mutant
+(`hdl/mutants/manifest.py`): a one-line RTL change its properties must
+reject. `run_mutants.py` applies each to a private copy of `hdl/rtl/`
+and reports KILLED / SURVIVED / STALE / ERROR per checker. A formal
+checker can also report "KILLED (induction only)": the mutant makes
+k-induction stop closing but BMC finds no counterexample within the
+harness depth because the bug sits behind deeper events. That still
+shows the properties depend on the mutated logic, and is labelled so a
+reader knows no trace was produced.
