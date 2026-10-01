@@ -24,8 +24,14 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 ## Status
 
 - Branch `feature/hdl-port-foundations` (local commits not yet pushed).
-- `lib/`: float and fixed-point builds 655/655 ctest (11 capture tests
-  skipped: fixtures not in LFS, see Open).
+- `lib/`: float and fixed-point builds 655/655 ctest, including the 11
+  capture-replay tests on the synthetic fixtures (committed 2026-10-01,
+  LFS objects not yet pushed).
+- Licensing: branch `feature/licensing` (worktree `../usrp-atsc3-licensing`,
+  off `develop`, unpushed): NUC tables generated from A/322
+  (`scripts/gen_nuc_tables.py`), built-in float FFT with FFTW preferred
+  when found (`ATSC3_USE_FFTW=AUTO|ON|OFF`), MPL-2.0 / CERN-OHL-W-2.0
+  (RTL) / CC-BY-4.0 (docs), SPDX headers, `LICENSING.md`, `REUSE.toml`.
 - RTL done to the bar above: `axi4s_skid_buffer`, `udiv_seq`, `cordic`,
   `bootstrap_detector` (9.1), `polyphase_fir` + `timing_recovery` (9.2),
   `cp_removal` (9.3), `fft_engine` (9.4); integration bench
@@ -57,9 +63,20 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
   SymbiYosys 0.68 is a source install here. Needs an ubuntu-24.04 job
   (or the CI container) pinned to `hdl/docs/toolchain.md` versions.
-- Capture fixtures: regenerated synthetic captures cannot be pushed from
-  this environment (no route to lfs.github.com); see
-  `test/captures/README.md`. 11 capture-replay tests skip until then.
+- Capture fixtures: pushing them uploads ~100 MB of LFS objects
+  (`lfs.github.com` reachable again 2026-10-01; not yet attempted).
+- Licensing follow-up, awaiting approval: README edits drafted in the
+  licensing worktree (uncommitted) and `test/captures/README.md` (patch
+  in session scratchpad: fixtures now committed). After `feature/licensing`
+  merges and this branch rebases: SPDX headers on this branch's new files
+  (`hdl/rtl/**` CERN-OHL-W-2.0, rest MPL-2.0) and replace the
+  nuc_tables license notes in `hdl/docs/placeholder_status.md` and
+  `config/hdl_register_map.json`. No `reuse lint` yet (pip install stalled).
+- `develop` itself: fixed-point test build fails (`test_metrics.cc`
+  narrowing, fixed here in 747ec8e); fixed-point NUC/demapper tests (8)
+  fail; capture tests fail on stale LFS pointers. All fixed on this branch.
+- GNU Radio and UHD are not installed here: `blocks/` and the UHD source
+  are never built or tested locally.
 - `config/hdl_register_map.json`: `angle_tbd` register format should
   adopt CORDIC's Q1.15 turns-over-pi when the phase tracker is ported.
 - `docs/compliance.md` is stale (calls the frequency deinterleaver
@@ -68,11 +85,11 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   vectorization partial; end-to-end playback from a real capture never
   run.
 - ML multipath mitigation milestone not started (HISTORY.md archive).
-- No `LICENSE` yet; dependency licenses (copyleft marked *):
-  GNU Radio* GPL-3.0, UHD* GPL-3.0, FFTW3* GPL-2.0+, FFmpeg*
-  LGPL-2.1+ (GPL if built with GPL parts), GStreamer* LGPL-2.1+,
-  `lib/ofdm/nuc_tables.h`* GPL-3.0 (from gr-atsc3), Boost BSL-1.0,
-  GoogleTest BSD-3-Clause, pybind11 BSD-3-Clause, ONNX Runtime MIT
-  (optional ML). HDL tools (not linked): cocotb BSD-3-Clause, pytest
-  MIT, Verilator LGPL-3.0/Artistic-2.0, Icarus GPL-2.0*, Yosys ISC,
-  SymbiYosys ISC, z3 MIT, cvc5 BSD-3-Clause.
+- Dependency licenses (copyleft *): GNU Radio* GPL-3.0, UHD* GPL-3.0,
+  FFTW3* GPL-2.0+ (optional), FFmpeg* LGPL-2.1+, GStreamer* LGPL-2.1+,
+  Boost BSL-1.0, GoogleTest/pybind11 BSD-3-Clause, ONNX Runtime MIT;
+  dev tools: pypdf BSD-3-Clause (NUC generator), cocotb BSD-3-Clause,
+  pytest MIT, Verilator LGPL-3.0/Artistic-2.0, Icarus GPL-2.0*, Yosys/SBY
+  ISC, z3 MIT, cvc5 BSD-3-Clause. All compatible with MPL-2.0 as used.
+- Project name "gr-atsc3" is also the name of an existing GPL-3.0 GNU
+  Radio module (drmpeg/gr-atsc3); consider renaming before release.
