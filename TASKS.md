@@ -65,9 +65,7 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   (or the CI container) pinned to `hdl/docs/toolchain.md` versions.
 - Capture fixtures: pushing them uploads ~100 MB of LFS objects
   (`lfs.github.com` reachable again 2026-10-01; not yet attempted).
-- Licensing follow-up, awaiting approval: README edits drafted in the
-  licensing worktree (uncommitted) and `test/captures/README.md` (patch
-  in session scratchpad: fixtures now committed). After `feature/licensing`
+- Licensing follow-up: After `feature/licensing`
   merges and this branch rebases: SPDX headers on this branch's new files
   (`hdl/rtl/**` CERN-OHL-W-2.0, rest MPL-2.0) and replace the
   nuc_tables license notes in `hdl/docs/placeholder_status.md` and
