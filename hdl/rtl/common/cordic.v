@@ -3,27 +3,24 @@
 // Iterative, not spatially pipelined: one iteration's worth of
 // adder/shifter hardware is reused across all 14 steps (a 4-bit iteration
 // counter selects the shift amount and ROM entry each cycle) rather than
-// replicating the datapath 14 times. Throughput is not yet budgeted, so
-// the simpler, easier-to-verify iterative FSM is the right choice here,
-// not a spatial pipeline -- revisit once timing-closure work begins.
+// replicating the datapath 14 times. A pipelined version is throughput
+// work for later.
+//
 // Bit-exact port of lib/dsp/cordic.cc's cordic_rotate()/cordic_vector():
 // every intermediate register width mirrors that file's int32_t/int16_t
-// choices directly (x/y/z kept at a full 32 bits throughout, exactly
-// matching the C++ locals) rather than attempting a tighter width -- no
-// width-optimization attempted yet either, for the same reason.
+// choices (x/y/z kept at a full 32 bits, matching the C++ locals) rather
+// than a tighter width.
 //
 // Not an AXI4-S block itself (matches lib/dsp/cordic.h's own header note):
 // a start/busy/done handshake instead, meant to be instantiated inside a
 // streaming block's own AXI4-S FSM (see hdl/rtl/sync/bootstrap_detector.v,
 // the first consumer).
 //
-// Usage: with busy low, drive mode/in_a/in_b and pulse start for exactly
-// one cycle (hold in_a/in_b stable that cycle; they are sampled on the
-// clock edge start is high). `done` pulses for exactly one cycle some
-// bounded number of cycles later (see cordic.sby's cover trace for the
-// exact count at the time of writing -- not hardcoded here since it is not
-// part of this module's documented contract, only its behavior), with
-// out_a/out_b valid that same cycle and stable until the next `start`.
+// Usage: with busy low, drive mode/in_a/in_b and pulse start (sampled on
+// that edge; ignored while busy). busy is high from that edge until done,
+// which pulses for one cycle exactly CORDIC_ITERATIONS+2 = 16 cycles later
+// (2 cycles for the vector (0, 0) bypass), with out_a/out_b valid; they
+// hold until the next done. Reset clears busy, done and the outputs.
 //   ROTATE (`CORDIC_MODE_ROTATE`): in_a = theta (Q1.15 angle format, see
 //     lib/dsp/cordic.h), in_b unused. out_a = cos(theta) (Q1.15), out_b =
 //     sin(theta) (Q1.15, sign-extended to 32 bits).

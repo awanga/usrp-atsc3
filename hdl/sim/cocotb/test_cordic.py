@@ -16,7 +16,7 @@ from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import ReadOnly, RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CORDIC_GEN = REPO_ROOT / "build-fxp" / "hdl" / "sim" / "golden" / "cordic_gen"
@@ -24,7 +24,8 @@ CORDIC_GEN = REPO_ROOT / "build-fxp" / "hdl" / "sim" / "golden" / "cordic_gen"
 CORDIC_MODE_ROTATE = 0
 CORDIC_MODE_VECTOR = 1
 
-MAX_WAIT_CYCLES = 64  # generous vs. the 14-iteration datapath's real latency
+CORDIC_ITERATIONS = 14  # lib/dsp/cordic.h kCordicIterations
+LATENCY = CORDIC_ITERATIONS + 2  # cordic.v contract: start edge to done
 
 
 def _q15(v):
@@ -92,6 +93,17 @@ def run_golden(cases):
     return results
 
 
+async def edge(dut):
+    """Next rising edge, with that edge's register updates settled."""
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+
+
+async def drive_point():
+    """Leave the ReadOnly phase so inputs can be written for the next edge."""
+    await Timer(1, "ns")
+
+
 async def reset_dut(dut):
     dut.rst.value = 1
     dut.start.value = 0
@@ -99,13 +111,19 @@ async def reset_dut(dut):
     dut.in_a.value = 0
     dut.in_b.value = 0
     for _ in range(3):
-        await RisingEdge(dut.clk)
+        await edge(dut)
+    await drive_point()
     dut.rst.value = 0
-    await RisingEdge(dut.clk)
+    await edge(dut)
+    await drive_point()
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=10, timeout_unit="ms")
 async def bit_exact_vs_golden_model(dut):
+    """Every case bit-exact against the golden model, plus the handshake
+    contract: done exactly LATENCY cycles after the start edge (2 for the
+    vector (0, 0) bypass), busy high until then, outputs held until done,
+    start ignored while busy."""
     rnd = random.Random(0xC0271C)
     cases = generate_stimulus(rnd)
     golden = run_golden(cases)
@@ -113,32 +131,37 @@ async def bit_exact_vs_golden_model(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
 
+    checks = 0
     for idx, ((mode, in_a, in_b), (exp_out_a, exp_out_b)) in enumerate(zip(cases, golden)):
-        assert dut.busy.value == 0, f"case {idx}: DUT unexpectedly busy before start"
+        what = f"case {idx} (mode={mode}, in_a={in_a}, in_b={in_b})"
+        latency = 2 if (mode == CORDIC_MODE_VECTOR and in_a == 0 and in_b == 0) else LATENCY
+        assert dut.busy.value == 0, f"{what}: DUT unexpectedly busy before start"
+        held = (int(dut.out_a.value), int(dut.out_b.value))
 
         dut.mode.value = mode
         dut.in_a.value = in_a & 0xFFFF
         dut.in_b.value = in_b & 0xFFFF
         dut.start.value = 1
-        await RisingEdge(dut.clk)
-        dut.start.value = 0
-
-        for cycle in range(MAX_WAIT_CYCLES):
-            await RisingEdge(dut.clk)
-            if dut.done.value == 1:
-                break
-        else:
-            raise TimeoutError(f"case {idx} (mode={mode}, in_a={in_a}, in_b={in_b}): "
-                                f"done never asserted within {MAX_WAIT_CYCLES} cycles")
+        await edge(dut)  # start sampled here
+        await drive_point()
+        dut.start.value = idx % 3 == 0  # a start while busy must be ignored
+        dut.in_a.value = rnd.getrandbits(16)  # operands sampled at start only
+        for cycle in range(1, latency):
+            await edge(dut)
+            assert dut.busy.value == 1, f"{what}: busy low {cycle} cycle(s) after start"
+            assert dut.done.value == 0, f"{what}: done after {cycle} cycle(s), expected {latency}"
+            assert (int(dut.out_a.value), int(dut.out_b.value)) == held, (
+                f"{what}: outputs changed before done")
+            await drive_point()
+            dut.start.value = 0
+        await edge(dut)
+        assert dut.done.value == 1, f"{what}: no done {latency} cycles after start"
+        assert dut.busy.value == 0
 
         got_out_a = _q15(int(dut.out_a.value))
         got_out_b = int(dut.out_b.value.signed_integer)
-
-        assert got_out_a == exp_out_a, (
-            f"case {idx} (mode={mode}, in_a={in_a}, in_b={in_b}): "
-            f"out_a mismatch, expected {exp_out_a}, got {got_out_a}"
-        )
-        assert got_out_b == exp_out_b, (
-            f"case {idx} (mode={mode}, in_a={in_a}, in_b={in_b}): "
-            f"out_b mismatch, expected {exp_out_b}, got {got_out_b}"
-        )
+        assert got_out_a == exp_out_a, f"{what}: out_a expected {exp_out_a}, got {got_out_a}"
+        assert got_out_b == exp_out_b, f"{what}: out_b expected {exp_out_b}, got {got_out_b}"
+        checks += 1
+        await drive_point()
+    assert checks == len(cases) > 0
