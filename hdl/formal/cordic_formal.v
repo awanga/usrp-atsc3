@@ -1,23 +1,25 @@
-// cordic_formal.v — Formal harness top for hdl/rtl/common/cordic.v
+// cordic_formal.v — Formal harness for hdl/rtl/common/cordic.v
 //
-// Verification-only. Not synthesized, not part of rtl/. Instantiates the
-// flatten+expose-generated cordic_bare (produced earlier in cordic.sby's
-// [script] -- see that file and cordic_bare.v's header for why this
-// two-stage flow replaces the `bind`-based pattern used elsewhere in this
-// repo's formal work: `bind` and plain hierarchical dotted references both
-// silently fail to connect in this Yosys build, so the exposed ports here
-// are the only verified-working way to reach cordic's internal
-// state/iter/mode_r/special_zero_r from a formal top module.
+// Main property (handshake and data integrity vs a ghost model): the
+// mode and the degenerate-vector condition are captured on the edge that
+// accepts start; done must arrive exactly CORDIC_LATENCY (16) cycles
+// later, or 2 for vector (0, 0); busy is high until then; the captured
+// mode is the one computed; out_a/out_b change only on done; and vector
+// (0, 0) yields exactly (0, 0) (atan2(0, 0) = 0 by convention, magnitude
+// 0). The FSM state and iteration index are pinned to the ghost's elapsed
+// cycle count, which closes k-induction.
 //
-// Generates free (solver-chosen) stimulus on every input each cycle and
-// asserts both black-box (port-only) and white-box (exposed-internal-state)
-// protocol properties. Formal here targets control-flow/protocol safety
-// only (FSM legality, the iteration-count bound, the start/busy/done
-// handshake) -- numerical correctness (does this actually compute
-// cos/sin/atan2/magnitude right) is cocotb's job (test_cordic.py), not this
-// proof's.
+// Not proved here: the angle/magnitude/cos/sin values themselves. There
+// is no tractable independent formal oracle for atan2 or a rotation; they
+// are checked bit-exact against lib/dsp/cordic.cc in test_cordic.py.
 //
-// Run: cd hdl/formal && sby -f cordic.sby
+// Assumptions: only that the first cycle is a reset. start may be raised
+// while busy (the core must ignore it) and inputs change every cycle.
+// Depth 40 exceeds the deepest event (a full 16-cycle computation
+// followed by a back-to-back one). White-box probes come from the
+// flatten+expose flow; see hdl/docs/formal_conventions.md.
+//
+// Run: hdl/formal/run_formal.sh cordic
 
 `include "cordic_types.vh"
 
@@ -143,6 +145,56 @@ module cordic_formal (
     always @(posedge clk) begin
         if (past_valid && prev_done) begin
             assert (!done);
+        end
+    end
+
+    //--------------------------------------------------------------------
+    // Ghost model of the computation in flight
+    //--------------------------------------------------------------------
+    localparam [4:0] LATENCY      = `CORDIC_ITERATIONS + 2;
+    localparam [4:0] ZERO_LATENCY = 5'd2;
+
+    wire        accepted = start && !busy;
+    reg         g_active, g_mode, g_zero;
+    reg  [4:0]  g_age;       // edges since the accepting edge
+    reg  [15:0] prev_out_a;
+    reg  [31:0] prev_out_b;
+    wire [4:0]  g_latency = g_zero ? ZERO_LATENCY : LATENCY;
+
+    always @(posedge clk) begin
+        prev_out_a <= out_a;
+        prev_out_b <= out_b;
+        if (rst) begin
+            g_active <= 1'b0;
+            g_age    <= 5'd0;
+        end else if (accepted) begin
+            g_active <= 1'b1;
+            g_mode   <= mode;
+            g_zero   <= (mode == `CORDIC_MODE_VECTOR) && in_a == 16'sd0 && in_b == 16'sd0;
+            g_age    <= 5'd0;
+        end else if (g_active) begin
+            if (done) g_active <= 1'b0;
+            else g_age <= g_age + 5'd1;
+        end
+    end
+
+    always @(*) begin
+        if (past_valid && !rst) begin
+            if (done) begin
+                assert (g_active && g_age == g_latency);
+                if (g_zero) assert (out_a == 16'sd0 && out_b == 32'sd0);
+            end
+            if (g_active && g_age < g_latency) assert (busy && !done);
+            if (!g_active) assert (!busy && !done);
+            if (busy) assert (mode_r_probe == g_mode && special_zero_r_probe == g_zero);
+            // FSM position as a function of elapsed cycles.
+            if (busy && g_age == 5'd0) assert (state_probe == ST_PREP);
+            if (busy && !g_zero && g_age >= 5'd1 && g_age <= `CORDIC_ITERATIONS)
+                assert (state_probe == ST_ITER && iter_probe == g_age - 5'd1);
+            if (busy && g_age == g_latency - 5'd1) assert (state_probe == ST_FINISH);
+        end
+        if (past_valid && !prev_rst && !rst && !done) begin
+            assert (out_a == prev_out_a && out_b == prev_out_b);
         end
     end
 
