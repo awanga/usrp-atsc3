@@ -1,7 +1,7 @@
 # Non-Spec Placeholders in the Golden Model
 
 > RTL is required to be bit-exact against `lib/`'s
-> fixed-point golden model (Decision 7). Where the golden model itself is
+> fixed-point golden model. Where the golden model itself is
 > not ATSC A/322-compliant, RTL faithfully ports the golden model's actual
 > (non-spec) behavior, documented here rather than silently treated as
 > correct. Every entry is swappable later via a data-only or algorithm
@@ -16,7 +16,7 @@
 | 4 | 16K/32K continual pilot positions | `lib/ofdm/pilot_extractor.cc` (`:222-244`) | Computed at runtime by scaling + interpolating the 8K list | Should be tabulated per A/322 pilot pattern tables |
 | 5 | Pilot PRBS reference | `lib/ofdm/pilot_extractor.cc` | No PRBS-based pilot value reference; positions only | A/322 defines pilot boosting values via a PRBS sequence |
 | 6 | Cell deinterleaver permutation | `lib/ofdm/cell_deinterleaver.cc` (`:174-175`) | Bit-reversal permutation | Real ATSC A/322 cell interleaving (not bit-reversal) |
-| 7 | Frequency deinterleaver permutation | `lib/ofdm/freq_deinterleaver.cc` (`:161-162`) | Bit-reversal permutation | Real ATSC A/322 frequency interleaving. `docs/compliance.md` and `TASKS.md` §8.1 disagree on whether this is "LFSR" or bit-reversal -- the code is bit-reversal; those docs are stale, not this one |
+| 7 | Frequency deinterleaver permutation | `lib/ofdm/freq_deinterleaver.cc` (`:161-162`) | Bit-reversal permutation | Real ATSC A/322 frequency interleaving. `docs/compliance.md` calls this "LFSR"; the code is bit-reversal, and that doc is stale, not this one |
 | 8 | ALP ROHC decompression | `lib/framing/alp_demux.cc` (`:253-256`) | `COMPRESSED` (ROHC) ALP packets routed to the plain IPv4 handler with no actual decompression | RFC 3095-family ROHC decompression |
 
 ## Also non-spec, but load-bearing rather than swappable-later
@@ -34,11 +34,10 @@ golden model's own comments identify them as intentional:
   spec-accurate.
 - **NUC constellation compliance**: real code-rate-indexed NUC tables do
   exist (`lib/ofdm/nuc_tables.h`, credited to gr-atsc3/Ron Economos,
-  GPL-3.0 -- confirm license compatibility per `CLAUDE.md`'s Licensing
-  section before this table is ported into RTL). `TASKS.md` Phase 7.3
-  tracks 6/11 NUC compliance test failures as an open correctness bug in
-  the golden model itself, not a placeholder; RTL inherits whatever the
-  golden model does until that's fixed upstream.
+  GPL-3.0 -- the project has no license yet, so whether this copyleft
+  table may be used, and ported into RTL, is an open decision). The NUC
+  compliance tests pass against these tables in both builds; RTL ports
+  them as-is.
 
 ## Not carried into RTL scope at all
 

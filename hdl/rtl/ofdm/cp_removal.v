@@ -73,17 +73,11 @@ module cp_removal #(
     `AXI4S_MASTER(m_axis, `ATSC3_SAMPLE_WIDTH)
 );
 
-    // $clog2 is SystemVerilog, not legal under the project's Verilog-2001
-    // lint gate (see hdl/synth/lint.sh); a manual ternary in place of it,
-    // same as bootstrap_detector.v's hand-chosen widths for its own fixed
-    // spec constants.
+    // $clog2 is not Verilog-2001.
     localparam CNT_WIDTH = (MAX_SYMBOL_LEN <= 65536) ? 16 : 17;
     localparam [12:0] MAX_CP_NUMERATOR = 13'd4096;  // CpFraction::k4096_8192
-    // A bare macro-expanded decimal literal (e.g. `ATSC3_FFT_8K) can't be
-    // bit-sliced directly (`` `ATSC3_FFT_8K[CNT_WIDTH-1:0] `` is a syntax
-    // error -- verified the hard way); assigning it into a sized
-    // localparam first, as here, is an ordinary context-width assignment
-    // and hits none of that.
+    // A macro-expanded decimal literal can't be bit-sliced directly; a
+    // sized localparam gives it this block's counter width.
     localparam [CNT_WIDTH-1:0] DEFAULT_FFT_SIZE = `ATSC3_FFT_8K;
 
     //--------------------------------------------------------------------

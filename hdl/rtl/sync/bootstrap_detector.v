@@ -32,9 +32,8 @@
 // divides, the iterative CORDIC, a 64-cycle averaging divide), roughly
 // 150 clock cycles per input sample. At the 100 MHz nominal clock that is
 // well below the 6.25 MS/s sample rate. Correctness first; faster dividers
-// and a pipelined datapath are the timing-closure work tracked in
-// TASKS.md. s_axis_tready backpressures the input while a sample is in
-// flight.
+// and a pipelined datapath are later throughput work. s_axis_tready
+// backpressures the input while a sample is in flight.
 //
 // AXI4-S: TDATA=ci16 {re[15:0], im[15:0]} TVALID TREADY in (TLAST
 // ignored, the golden model has no input framing). Out: one
