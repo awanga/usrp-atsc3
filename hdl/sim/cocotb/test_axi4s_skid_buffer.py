@@ -6,7 +6,7 @@ output stream matches the input stream exactly, in order, with no drops or
 duplicates. This is the black-box counterpart to the internal invariants
 already proven in hdl/formal/axi4s_skid_buffer.sby -- that proof covers
 "never violates the protocol / never loses a captured beat" structurally;
-this test covers "a real simulated run of many beats through Verilator
+this test covers "a real simulated run of many beats on both simulators
 actually behaves like a two-deep queue."
 
 Run directly: hdl/sim/.venv/bin/python -m pytest test_axi4s_skid_buffer.py
@@ -16,7 +16,7 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import ReadOnly, RisingEdge, Timer
 
 DATA_WIDTH = 8
 NUM_BEATS = 500
@@ -80,7 +80,7 @@ async def collect_output(dut, expected, done_event):
     done_event.set()
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def randomized_backpressure(dut):
     rnd = random.Random(0xA7C3)
 
@@ -98,35 +98,35 @@ async def randomized_backpressure(dut):
     await collect_output(dut, beats, done_event)
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def full_throughput_no_stalls(dut):
-    """With TREADY always high, one beat must transfer every cycle once
-    TVALID is asserted -- the skid path should never engage."""
+    """With TREADY always high, one beat transfers every cycle and comes
+    out exactly one cycle after it was accepted -- the skid path never
+    engages and nothing is lost, duplicated or reordered."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
 
     dut.m_axis_tready.value = 1
-
     beats = [(i & ((1 << DATA_WIDTH) - 1), i == 31) for i in range(32)]
 
-    for data, last in beats:
-        dut.s_axis_tvalid.value = 1
-        dut.s_axis_tdata.value = data
-        dut.s_axis_tlast.value = int(last)
-        await RisingEdge(dut.clk)
-        assert dut.s_axis_tready.value == 1, "must accept every cycle at full throughput"
-
-    dut.s_axis_tvalid.value = 0
-
-    # Output should already have kept pace: after the loop the last beat is
-    # either present now or was already consumed each cycle. Drain and check.
     got = []
-    for _ in range(4):
+    for cycle in range(len(beats) + 3):
+        if cycle < len(beats):
+            data, last = beats[cycle]
+            dut.s_axis_tvalid.value = 1
+            dut.s_axis_tdata.value = data
+            dut.s_axis_tlast.value = int(last)
+        else:
+            dut.s_axis_tvalid.value = 0
         await RisingEdge(dut.clk)
+        await ReadOnly()
+        if cycle < len(beats):
+            assert dut.s_axis_tready.value == 1, "must accept every cycle at full throughput"
         if dut.m_axis_tvalid.value == 1:
-            got.append((int(dut.m_axis_tdata.value), int(dut.m_axis_tlast.value)))
+            # Registered output: the beat accepted on this edge is visible now.
+            assert cycle < len(beats), f"output beat after the stream ended (cycle {cycle})"
+            got.append((int(dut.m_axis_tdata.value), bool(dut.m_axis_tlast.value)))
+            assert got[-1] == beats[cycle], f"cycle {cycle}: got {got[-1]}, expected {beats[cycle]}"
+        await Timer(1, "ns")
 
-    # At minimum the tail of the stream must have flowed through with no
-    # extra latency beyond the two-stage pipeline (skid buffer adds at most
-    # one cycle of register delay).
-    assert len(got) >= 1
+    assert got == beats, f"{len(got)} of {len(beats)} beats delivered"
