@@ -88,6 +88,18 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
 - **Next:** README approval, then merge, then SPDX headers on this
   branch after it rebases (TASKS.md Open).
 
+## 2026-10-01 — OpenATSC3 rename, licensing merged
+
+- **Decision:** the project is renamed OpenATSC3 (Debian package
+  `openatsc3`); C++ namespaces, targets and the Python module keep their
+  atsc3 names.
+- **Reason:** gr-atsc3 is an existing GPL-3.0 GNU Radio module.
+- **Status:** `feature/licensing` merged to `develop` as PR #1; `develop`
+  CI green. The branch was deleted. `feature/hdl-port-foundations` was
+  pushed together with its 100 MB of capture LFS objects.
+- **Next:** this branch's rebase, SPDX headers and rename (TASKS.md
+  Open); then plan 9.5.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

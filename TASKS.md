@@ -23,21 +23,14 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Status
 
-- Branch `feature/hdl-port-foundations` (local commits not yet pushed).
+- Branch `feature/hdl-port-foundations`, pushed (incl. capture LFS
+  objects) 2026-10-01; not yet rebased onto `develop`.
 - `lib/`: float and fixed-point builds 655/655 ctest, including the 11
-  capture-replay tests on the synthetic fixtures (committed 2026-10-01,
-  LFS objects not yet pushed).
-- Licensing: branch `feature/licensing` (worktree `../usrp-atsc3-licensing`,
-  off `develop`, unpushed): NUC tables generated from A/322
-  (`scripts/gen_nuc_tables.py`), built-in float FFT with FFTW preferred
-  when found (`ATSC3_USE_FFTW=AUTO|ON|OFF`), MPL-2.0 / CERN-OHL-W-2.0
-  (RTL) / CC-BY-4.0 (docs), SPDX headers, `LICENSING.md`, `REUSE.toml`.
-- RTL done to the bar above: `axi4s_skid_buffer`, `udiv_seq`, `cordic`,
-  `bootstrap_detector` (9.1), `polyphase_fir` + `timing_recovery` (9.2),
-  `cp_removal` (9.3), `fft_engine` (9.4); integration bench
-  `ofdm_frontend_tb` (cp_removal -> fft_engine).
-- Gate: `hdl/run_all.sh [--mutants]` (lint, synth, formal, sim; 27
-  mutants). `HDL_FULL=1` adds nightly sizes (32K FFT, 16K chain).
+  capture-replay tests on the synthetic fixtures.
+- Licensing and rename merged to `develop` (PR #1, CI green
+  2026-10-01): project is now OpenATSC3; MPL-2.0 / CERN-OHL-W-2.0 (RTL) /
+  CC-BY-4.0 (docs); NUC tables generated from A/322; FFTW preferred when
+  found (`ATSC3_USE_FFTW=AUTO|ON|OFF`) with a built-in fallback FFT.
 
 ## Next
 
@@ -63,18 +56,16 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
   SymbiYosys 0.68 is a source install here. Needs an ubuntu-24.04 job
   (or the CI container) pinned to `hdl/docs/toolchain.md` versions.
-- Capture fixtures: pushing them uploads ~100 MB of LFS objects
-  (`lfs.github.com` reachable again 2026-10-01; not yet attempted).
-- Licensing follow-up: After `feature/licensing`
-  merges and this branch rebases: SPDX headers on this branch's new files
-  (`hdl/rtl/**` CERN-OHL-W-2.0, rest MPL-2.0) and replace the
+- Before merging this branch: rebase onto `develop`, then add SPDX headers to this branch's new files
+  (`hdl/rtl/**` CERN-OHL-W-2.0, rest MPL-2.0), rename its remaining
+  gr-atsc3 mentions to OpenATSC3, and replace the
   nuc_tables license notes in `hdl/docs/placeholder_status.md` and
   `config/hdl_register_map.json`. No `reuse lint` yet (pip install stalled).
 - `develop` itself: fixed-point test build fails (`test_metrics.cc`
   narrowing, fixed here in 747ec8e); fixed-point NUC/demapper tests (8)
   fail; capture tests fail on stale LFS pointers. All fixed on this branch.
-- GNU Radio and UHD are not installed here: `blocks/` and the UHD source
-  are never built or tested locally.
+- GNU Radio, UHD and cppcheck are not installed here: `blocks/`, the UHD
+  source and cppcheck run only in CI (`ci.yml`, float build only).
 - `config/hdl_register_map.json`: `angle_tbd` register format should
   adopt CORDIC's Q1.15 turns-over-pi when the phase tracker is ported.
 - `docs/compliance.md` is stale (calls the frequency deinterleaver
