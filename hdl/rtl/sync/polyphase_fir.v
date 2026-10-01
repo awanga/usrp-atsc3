@@ -27,17 +27,19 @@
 // precision "filter design" math on the host/tooling side, the same
 // treatment the CORDIC atan ROM and the FFT twiddle ROM get.
 //
-// Throughput: 2 cycles/tap (one to present mem_addr, one once mem_data
-// is valid to multiply-accumulate) plus a handful of cycles of
-// start/finish overhead -- roughly 70 cycles per interpolate() call.
-// timing_recovery.v needs up to 4 calls per symbol boundary (emit + the
-// Gardner TED's curr/mid/prev), so this is not pipelined for maximum
-// throughput; correctness first, per the same policy
-// bootstrap_detector.v documents (faster/pipelined datapaths are 9.17
-// timing-closure work).
+// Contract: with busy low, drive phase/base_idx and pulse start (sampled
+// on that edge; ignored while busy). mem_addr is registered and the
+// buffer is read as a synchronous RAM: mem_data must reflect the address
+// presented on the previous edge (an asynchronous read also works, since
+// the address is held through the following edge). busy is high from the
+// start edge until done, which pulses for one cycle exactly
+// 2*NUM_TAPS+1 cycles after it (2 cycles per tap plus the rounding
+// cycle); result_re/result_im are valid then and hold until the next
+// done. Not pipelined: timing_recovery.v makes up to 4 calls per symbol
+// boundary, so a faster MAC is throughput work for later.
 //
-// AXI4-S: none -- this is a synchronous request/response core (start/
-// busy/done), the same shape as udiv_seq.v and cordic.v.
+// AXI4-S: none -- a start/busy/done request/response core, the same shape
+// as udiv_seq.v and cordic.v.
 
 `include "axi4s_types.vh"
 

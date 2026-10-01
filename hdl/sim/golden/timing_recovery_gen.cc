@@ -17,6 +17,16 @@
 //     initial block) -- see hdl/rtl/sync/README_coeffs.md generation
 //     note in that file's header.
 //
+//   I
+//     followed by:
+//   B <re0> <im0> ... <re127> <im127>  -- load the 128-entry ring buffer
+//   Q <phase> <base_idx>               -- one interpolate() call
+//     Each Q prints "R <re> <im>": PolyphaseInterpolator::interpolate()
+//     on the loaded buffer at base_idx with mu = phase/16 (exactly the
+//     phase polyphase_fir.v selects), buffer size 128. Feeds
+//     test_polyphase_fir.py, which therefore also checks that the
+//     generated coefficient ROM matches the running filter design.
+//
 //   C <sample_rate_hz> <symbol_rate_millihz> <loop_bandwidth_hz>
 //     <loop_damping_milli> <samples_per_symbol> <initial_offset_q15>
 //     <locked_at_start:0|1>
@@ -27,8 +37,8 @@
 //     First prints:
 //       G <kp_q15> <ki_q15>
 //     (compute_loop_gains()'s one-time output for this config -- the RTL
-//     takes these as direct registers rather than re-deriving them; see
-//     TASKS.md's 9.2 implementation notes). Then, per input sample:
+//     takes these as direct registers rather than re-deriving the
+//     division-heavy loop design per cycle). Then, per input sample:
 //       M <mu_q16> <timing_error_q15>
 //         get_timing_offset()*65536 and get_timing_error()*32768,
 //         both exact integers -- matches the RTL's mon_mu_q16/
@@ -47,6 +57,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 using atsc3::sample_t;
 using atsc3::sync::PolyphaseConfig;
@@ -72,6 +83,50 @@ int run_rom_dump() {
     // hdl/docs/q_format_notes.md); CMake also builds it in the default
     // float configuration (same as bootstrap_gen/cp_removal_gen), where
     // there is nothing meaningful for it to do.
+    std::cerr << "timing_recovery_gen: requires an ATSC3_FIXED_POINT=ON build\n";
+    return 1;
+#endif
+}
+
+int run_interpolate() {
+#ifdef ATSC3_FIXED_POINT
+    constexpr size_t kBufSize = 128;
+    PolyphaseConfig config;
+    PolyphaseInterpolator interp(config);
+    std::vector<sample_t> buf(kBufSize);
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        std::istringstream iss(line);
+        char tag = 0;
+        iss >> tag;
+        if (tag == 'B') {
+            for (size_t i = 0; i < kBufSize; ++i) {
+                int re = 0;
+                int im = 0;
+                if (!(iss >> re >> im)) {
+                    std::cerr << "timing_recovery_gen: short B line\n";
+                    return 1;
+                }
+                buf[i] = sample_t(static_cast<int16_t>(re), static_cast<int16_t>(im));
+            }
+        } else if (tag == 'Q') {
+            unsigned phase = 0;
+            size_t base_idx = 0;
+            if (!(iss >> phase >> base_idx) || phase >= config.num_phases ||
+                base_idx >= kBufSize) {
+                std::cerr << "timing_recovery_gen: bad Q line: " << line << '\n';
+                return 1;
+            }
+            double mu = static_cast<double>(phase) / static_cast<double>(config.num_phases);
+            sample_t y = interp.interpolate(buf.data(), base_idx, mu, kBufSize);
+            std::cout << "R " << y.real() << ' ' << y.imag() << '\n';
+        } else if (!line.empty()) {
+            std::cerr << "timing_recovery_gen: bad line: " << line << '\n';
+            return 1;
+        }
+    }
+    return 0;
+#else
     std::cerr << "timing_recovery_gen: requires an ATSC3_FIXED_POINT=ON build\n";
     return 1;
 #endif
@@ -159,6 +214,9 @@ int main() {
     }
     if (first_line == "ROM") {
         return run_rom_dump();
+    }
+    if (first_line == "I") {
+        return run_interpolate();
     }
     return run_capture(first_line);
 }

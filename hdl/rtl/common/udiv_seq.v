@@ -15,8 +15,11 @@
 //
 // Handshake matches hdl/rtl/common/cordic.v: with busy low, drive
 // dividend/divisor and pulse start for one cycle (operands are sampled on
-// that edge). `done` pulses for one cycle exactly WIDTH+1 cycles later,
-// with `quotient` valid that cycle and held until the next start.
+// that edge); start is ignored while busy. `busy` is high from that edge
+// until `done`, which pulses for one cycle exactly WIDTH+1 cycles later
+// with `quotient` valid. `quotient` then holds until the next `done`
+// (including while the next division runs). Reset clears busy, done and
+// quotient and abandons any division in flight.
 //
 // divisor == 0 yields an all-ones quotient (what the restoring algorithm
 // naturally produces). This module does not guard against it: callers
