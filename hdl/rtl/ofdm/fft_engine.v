@@ -72,7 +72,12 @@
 
 `include "axi4s_types.vh"
 
-module fft_engine (
+module fft_engine #(
+    // $readmemh image of the twiddle ROM (see below). Tools resolve a
+    // relative name against their working directory, so the sim, synth
+    // and formal scripts pass an absolute path.
+    parameter TWIDDLE_HEX = "fft_twiddles.hex"
+) (
     input  wire         clk,
     input  wire         rst,  // synchronous, active-high
 
@@ -99,20 +104,16 @@ module fft_engine (
     reg [3:0]           log2_n_r;    // 13, 14, or 15
 
     //--------------------------------------------------------------------
-    // Twiddle ROM: 16384 entries, Q1.15 {cos, -sin} (forward direction
-    // only -- see header). Generated the same way as
-    // timing_recovery_coeffs.vh: dumped from a tool that calls the real
-    // atsc3::float_to_q15() on the exact compute_twiddles() formula
-    // (sign = -1, forward), not a from-scratch reimplementation of
-    // float_to_q15 itself. See hdl/sim/golden/fft_twiddle_gen.cc.
+    // Twiddle ROM: 16384 entries of {cos, -sin} in Q1.15 (forward
+    // direction only -- see header), loaded from fft_twiddles.hex, which
+    // hdl/sim/golden/fft_twiddle_gen generates from compute_twiddles()'s
+    // formula and the real atsc3::float_to_q15(). The formal build skips
+    // the load: no proved property depends on ROM values.
     //--------------------------------------------------------------------
 
-    reg signed [15:0] twiddle_rom_re [0:16383];
-    reg signed [15:0] twiddle_rom_im [0:16383];
+    reg [31:0] twiddle_rom [0:16383];
 `ifndef FORMAL_SKIP_ROM_INIT
-    initial begin
-        `include "fft_twiddles.vh"
-    end
+    initial $readmemh(TWIDDLE_HEX, twiddle_rom);
 `endif
 
     //--------------------------------------------------------------------
@@ -187,8 +188,9 @@ module fft_engine (
     // read-data registers and the ROM)
     //--------------------------------------------------------------------
 
-    wire signed [15:0] tw_re = twiddle_rom_re[tw_addr];
-    wire signed [15:0] tw_im = twiddle_rom_im[tw_addr];
+    wire        [31:0] tw_word = twiddle_rom[tw_addr];
+    wire signed [15:0] tw_re   = tw_word[31:16];
+    wire signed [15:0] tw_im   = tw_word[15:0];
 
     // Same int64 headroom as the C++: odd can be ~2^31, twiddle ~2^15.
     wire signed [63:0] t_re_wide = ($signed(tw_re) * ram_rdata_b_re) -

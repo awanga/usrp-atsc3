@@ -17,12 +17,10 @@ smtbmc z3
 # output ports. See hdl/docs/formal_conventions.md for why this
 # flatten+expose flow replaces a `bind`-based checker.
 #
-# FORMAL_SKIP_ROM_INIT skips the twiddle ROM's 16384-entry `initial`
-# load (see fft_engine.v) -- none of the properties proved here depend
-# on ROM *values* (only on control-flow and addressing, and the
-# complex multiply that consumes the ROM is itself cut below), and
-# populating all 16384 entries was the dominant cost in Yosys's
-# Stage 1 elaboration/flatten pass.
+# FORMAL_SKIP_ROM_INIT skips the twiddle ROM's $readmemh load (see
+# fft_engine.v): none of the properties proved here depend on ROM
+# values (only on control flow and addressing, and the complex multiply
+# that consumes the ROM is itself cut below).
 read_verilog -formal -I. -DFORMAL_SKIP_ROM_INIT fft_engine.v
 read_verilog -formal -I. fft_engine_bare.v
 hierarchy -top fft_engine_bare
@@ -69,7 +67,6 @@ opt_clean
 
 [files]
 axi4s_types.vh ../rtl/include/axi4s_types.vh
-fft_twiddles.vh ../rtl/ofdm/fft_twiddles.vh
 fft_engine.v ../rtl/ofdm/fft_engine.v
 fft_engine_bare.v
 fft_engine_formal.v
