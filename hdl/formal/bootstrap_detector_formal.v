@@ -1,22 +1,35 @@
-// bootstrap_detector_formal.v — Formal harness top for
+// bootstrap_detector_formal.v — Formal harness for
 // hdl/rtl/sync/bootstrap_detector.v
 //
-// Verification-only. Instantiates the flatten+expose-generated
-// bootstrap_detector_bare (see bootstrap_detector.sby) at the small
-// L = 4 / 4-entry-window parameterization. Control-path and protocol
-// safety only; numerical bit-exactness against the C++ golden model is
-// test_bootstrap_detector.py's job.
+// Main property (data integrity vs a ghost model): the detector's sample
+// counter -- the source of every detection's reported sample index --
+// always equals a ghost count of accepted input beats (compared mod 256,
+// which keeps PDR fast and still catches any skipped or repeated count),
+// and each accepted
+// beat produces exactly one monitor update before the next beat is
+// accepted. The correlator, metric and CFO values are not proved: there is
+// no tractable independent formal oracle for them (and the multipliers
+// are cut), so they are checked bit-exact against
+// lib/sync/bootstrap_detector.cc in test_bootstrap_detector.py.
 //
-// Non-vacuity: there is no cover task (see bootstrap_detector.sby), so the
-// proof was checked against RTL mutants instead, with
-// `prove_pdr.sh --mutant` (bounded BMC; PDR stalls on deep
-// counterexamples): a history-index wrap off-by-one fails `hidx < win_n`
-// (frame 16), dividing regardless of the energy floor fails the divisor
-// guard (frame 9), and leaving in_det set on detection fails the
-// detect/re-arm exclusivity (frame 162, two full samples in); the
-// unmodified RTL proves. Repeat that check when changing this harness.
+// Supplementary: FSM legality; correlator, window and history index
+// bounds; the averaging window clamp (and stability while running); the
+// P/R divides only above the energy floor (so never by zero); detect and
+// re-arm states exclusive; AXI4-S input/output exclusivity, TLAST on the
+// status word and output stability.
 //
-// Run: hdl/formal/prove_pdr.sh bootstrap_detector
+// Assumptions: only that the first cycle is a reset. Configuration is
+// latched at reset; every input is otherwise free each cycle.
+//
+// Runs at L = 4 with a 4-entry window, multipliers cut, proved unbounded
+// with ABC PDR (smtbmc/z3 cannot finish a depth-2 BMC here). PDR gives no
+// cover, so non-vacuity comes from the committed mutants in hdl/mutants,
+// checked with bounded BMC (prove_pdr.sh --mutant): a history-index wrap
+// off-by-one (fails at frame 16), dividing below the energy floor (frame
+// 9) and staying in detection after a detection (frame 162, two full
+// samples in).
+//
+// Run: hdl/formal/run_formal.sh bootstrap_detector
 
 `include "status_words.vh"
 
@@ -63,6 +76,7 @@ module bootstrap_detector_formal (
     wire               div_start_probe;
     wire               div_avg_probe;
     wire [63:0]        div_a_divisor_probe;
+    wire [47:0]        sample_count_probe;
 
     bootstrap_detector_bare dut_top (
         .clk                  (clk),
@@ -91,7 +105,8 @@ module bootstrap_detector_formal (
         .\dut.rearm_blocked   (rearm_blocked_probe),
         .\dut.div_start       (div_start_probe),
         .\dut.div_avg         (div_avg_probe),
-        .\dut.div_a_divisor   (div_a_divisor_probe)
+        .\dut.div_a_divisor   (div_a_divisor_probe),
+        .\dut.sample_count    (sample_count_probe)
     );
 
     reg past_valid;
@@ -110,6 +125,38 @@ module bootstrap_detector_formal (
     reg [2:0]                            prev_win_n;
     reg                                  prev_m_stall;
     reg [`BOOTSTRAP_DETECTION_WIDTH-1:0] prev_m_tdata;
+
+    //--------------------------------------------------------------------
+    // Ghost model: accepted-beat count and one monitor update per beat
+    //--------------------------------------------------------------------
+    localparam [3:0] ST_ACC = 4'd2;
+    wire        in_fire = s_axis_tvalid && s_axis_tready;
+    reg  [7:0]  g_count;  // low bits suffice to catch a skipped or repeated count
+    reg         g_mon_owed;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            g_count    <= 8'd0;
+            g_mon_owed <= 1'b0;
+        end else begin
+            if (in_fire) g_count <= g_count + 8'd1;
+            if (in_fire) g_mon_owed <= 1'b1;
+            else if (mon_valid) g_mon_owed <= 1'b0;
+        end
+    end
+
+    always @(*) begin
+        if (past_valid && !rst) begin
+            // sample_count advances in ST_ACC, the cycle after the accept.
+            assert (sample_count_probe[7:0] == (state_probe == ST_ACC ? g_count - 8'd1 : g_count));
+            // ST_DETECT raises mon_valid on the same edge that returns to
+            // ST_IDLE (and re-opens s_axis_tready), so the pulse visible
+            // this cycle settles the previous beat's debt.
+            if (in_fire) assert (!g_mon_owed || mon_valid);
+            if (mon_valid) assert (g_mon_owed);
+            if (state_probe == ST_IDLE || state_probe == 4'd0) assert (!g_mon_owed || mon_valid);
+        end
+    end
 
     always @(posedge clk) begin
         prev_rst        <= rst;
