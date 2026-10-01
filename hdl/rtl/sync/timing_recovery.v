@@ -165,8 +165,16 @@ module timing_recovery #(
     reg [8:0]                 buf_count;   // 0..BUF_SIZE (needs one bit more than BUF_ADDR_WIDTH)
     reg [7:0]                 samples_since_symbol;
 
+    // error_q15 and timing_error_q15 are int64 in the C++ but bounded far
+    // below that: the interpolator outputs are saturated to +-32767, so
+    // |diff * mid + diff * mid| <= 2 * 65534 * 32767 < 2^33 and
+    // |error_q15| = |that >> 15| <= 2^17; the 0.9/0.1 filter (gains summing
+    // to exactly 1.0) keeps timing_error_q15 within the same bound. 32 bits
+    // holds both exactly and keeps the loop-filter multipliers 16x32 and
+    // 32x15 instead of 64x64. loop_integrator_q15 accumulates without
+    // bound, so it stays 64-bit like the C++.
     reg [15:0]                mu_q16;
-    reg signed [63:0]         timing_error_q15;
+    reg signed [31:0]         timing_error_q15;
     reg signed [63:0]         loop_integrator_q15;
 
     //--------------------------------------------------------------------
@@ -180,7 +188,7 @@ module timing_recovery #(
     reg signed [15:0]         x_curr_re, x_curr_im;
     reg signed [15:0]         x_mid_re, x_mid_im;
     reg signed [15:0]         x_prev_re, x_prev_im;
-    reg signed [63:0]         error_q15;
+    reg signed [31:0]         error_q15;
 
     localparam [BUF_ADDR_WIDTH-1:0] NUM_TAPS_ADDR = NUM_TAPS[BUF_ADDR_WIDTH-1:0];
 
@@ -222,9 +230,11 @@ module timing_recovery #(
     reg signed [15:0]         x_re, x_im;
 
     // Loop-filter combinational terms (ST_UPDATE_LOOP)
-    wire signed [63:0] ki_term = ($signed({{48{ki_q15_r[15]}}, ki_q15_r}) * error_q15) >>> 15;
+    wire signed [47:0] ki_prod = ki_q15_r * error_q15;
+    wire signed [63:0] ki_term = {{16{ki_prod[47]}}, ki_prod} >>> 15;
     wire signed [63:0] new_loop_integrator = loop_integrator_q15 + ki_term;
-    wire signed [63:0] kp_term = ($signed({{48{kp_q15_r[15]}}, kp_q15_r}) * error_q15) >>> 15;
+    wire signed [47:0] kp_prod = kp_q15_r * error_q15;
+    wire signed [63:0] kp_term = {{16{kp_prod[47]}}, kp_prod} >>> 15;
     wire signed [63:0] adjustment_q15 = kp_term + new_loop_integrator;
     // Only the low 16 bits of (adjustment_q15 << 1) ever matter -- the
     // C++ adds the full-width value to a uint16_t and lets the implicit
@@ -235,9 +245,10 @@ module timing_recovery #(
     wire [15:0] adjustment_q16 = {adjustment_q15[14:0], 1'b0};
     wire [15:0] new_mu_q16 = mu_q16 + adjustment_q16;
     // timing_error_q15 = (timing_error_q15*0.9 + error_q15*0.1), exact Q1.15 gains
-    wire signed [63:0] filt_a = timing_error_q15 * 64'sd29491;  // float_to_q15(0.9f)
-    wire signed [63:0] filt_b = error_q15 * 64'sd3277;          // float_to_q15(0.1f)
-    wire signed [63:0] new_timing_error_q15 = (filt_a + filt_b) >>> 15;
+    wire signed [47:0] filt_a = timing_error_q15 * 48'sd29491;  // float_to_q15(0.9f)
+    wire signed [47:0] filt_b = error_q15 * 48'sd3277;          // float_to_q15(0.1f)
+    wire signed [47:0] filt_sum = (filt_a + filt_b) >>> 15;
+    wire signed [31:0] new_timing_error_q15 = filt_sum[31:0];
 
     // ST_COMPUTE_ERROR combinational terms
     // Plain signed subtraction: both operands are already `reg signed`,
@@ -255,6 +266,7 @@ module timing_recovery #(
     wire signed [63:0] error_raw =
         $signed(diff_re) * $signed({{48{x_mid_re[15]}}, x_mid_re}) +
         $signed(diff_im) * $signed({{48{x_mid_im[15]}}, x_mid_im});
+    wire signed [63:0] error_raw_shifted = error_raw >>> 15;
 
     always @(posedge clk) begin
         if (rst) begin
@@ -273,7 +285,7 @@ module timing_recovery #(
             buf_count             <= 9'd0;
             samples_since_symbol <= 8'd0;
 
-            timing_error_q15     <= 64'sd0;
+            timing_error_q15     <= 32'sd0;
             loop_integrator_q15  <= 64'sd0;
 
             buf_wr_en   <= 1'b0;
@@ -411,7 +423,7 @@ module timing_recovery #(
                 end
 
                 ST_COMPUTE_ERROR: begin
-                    error_q15 <= error_raw >>> 15;
+                    error_q15 <= error_raw_shifted[31:0];
                     state     <= ST_UPDATE_LOOP;
                 end
 
@@ -443,7 +455,7 @@ module timing_recovery #(
                 ST_DONE_SAMPLE: begin
                     mon_valid            <= 1'b1;
                     mon_mu_q16           <= mu_q16;
-                    mon_timing_error_q15 <= timing_error_q15;
+                    mon_timing_error_q15 <= {{32{timing_error_q15[31]}}, timing_error_q15};
                     s_axis_tready        <= 1'b1;
                     state                <= ST_IDLE;
                 end
@@ -461,6 +473,7 @@ module timing_recovery #(
     // adjustment_q15's high bits similarly feed nothing but
     // adjustment_q16's 15-bit slice (see that computation's comment).
     wire unused_ok = &{1'b0, s_axis_tlast, fir_busy, cfg_initial_offset_q15[15],
-                       mu_snapshot_plus_half[11:0], adjustment_q15[63:15], 1'b0};
+                       mu_snapshot_plus_half[11:0], adjustment_q15[63:15],
+                       filt_sum[47:32], error_raw_shifted[63:32], 1'b0};
 
 endmodule
