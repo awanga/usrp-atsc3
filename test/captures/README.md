@@ -5,18 +5,12 @@ IQ capture fixtures used by the capture-replay integration tests
 Tracked via git-lfs (`*.sigmf-data`, `*.sigmf-meta`); run `git lfs pull`
 before running these tests locally.
 
-**Not currently checked into this branch.** The dev environment this
-branch was pushed from has outbound network access to `github.com` but
-not `lfs.github.com`, so `git lfs push` cannot complete from it (the
-batch/upload stages succeed, the final per-object `verify` call to
-`lfs.github.com` is rejected by the environment's network policy). Rather
-than block the RTL/test work on that, the two fixture files were removed
-from this branch's history; `test_iq_replay.cc`/`test_signal_chain.cc`
-already `GTEST_SKIP()` when no capture is present, so the rest of the
-suite is unaffected. Regenerate them locally with
-`scripts/generate_synthetic_capture.py` (below) and `git lfs push` from
-an environment that can reach `lfs.github.com`, or check them in from a
-machine without that restriction.
+Both fixtures are committed (git-lfs objects, 50 MB each). The
+`.sigmf-meta` files label them as synthetic and annotate every burst.
+With them present, the capture-replay tests run instead of skipping. A
+noise-only capture makes the detection-dependent ones fail (bootstrap
+detection, CFO correction, bootstrap-to-FFT chain), so they do check
+the fixture's content.
 
 ## Provenance
 
