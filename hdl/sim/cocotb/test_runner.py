@@ -26,12 +26,14 @@ SIMULATORS = ["verilator", "icarus"]
 #              parameters); the testbench is test_<toplevel>.py
 BLOCKS = {
     "axi4s_skid_buffer": (["common/axi4s_skid_buffer.v"], [], {"DATA_WIDTH": 8}),
+    "udiv_seq": (["common/udiv_seq.v"], [], {"WIDTH": 16, "CNT_WIDTH": 5}),
     "cordic": (["common/cordic.v"], [], {}),
     "bootstrap_detector": (
         ["sync/bootstrap_detector.v", "common/cordic.v", "common/udiv_seq.v"],
         [],
         {},
     ),
+    "polyphase_fir": (["sync/polyphase_fir.v"], ["sync"], {}),
     "timing_recovery": (
         ["sync/timing_recovery.v", "sync/polyphase_fir.v"],
         ["sync"],
