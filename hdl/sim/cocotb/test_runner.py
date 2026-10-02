@@ -61,8 +61,17 @@ BLOCKS = {
 # test_<bench>.py -> (RTL sources relative to RTL, parameters)
 INTEGRATION = {
     "ofdm_frontend_tb": (
-        ["ofdm/cp_removal.v", "ofdm/fft_engine.v"],
-        {"TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"'},
+        [
+            "sync/freq_correction.v",
+            "common/cordic.v",
+            "ofdm/cp_removal.v",
+            "ofdm/fft_engine.v",
+            "ofdm/pilot_extractor.v",
+        ],
+        {
+            "TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"',
+            "CP_ROM_HEX": f'"{RTL / "ofdm" / "pilot_cp_positions.hex"}"',
+        },
     ),
 }
 
