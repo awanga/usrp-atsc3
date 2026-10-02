@@ -167,9 +167,10 @@ missing status or a timeout disqualifies):
 | Engine | Result |
 |---|---|
 | `smtbmc z3` | qualified; default for every smtbmc harness |
+| `smtbmc yices` (2.6.5) | qualified 2026-10-02; used by pilot_extractor, where z3 did not finish a depth-4 base case in ten minutes and yices closes the induction in about 90 s. The older harnesses have not been re-timed with it |
 | `smtbmc cvc5` | qualified, but timed out (900 s) on cordic, cp_removal and fft_engine where z3 takes 6-340 s |
 | `smtbmc boolector` | unusable (broken pipe, no status) |
-| `smtbmc yices`, `smtbmc bitwuzla` | not installed |
+| `smtbmc bitwuzla` | unusable (no status) |
 | sby `abc pdr` / `abc bmc3` | unusable through sby (`KeyError: 'asserts'`, see below) |
 | ABC `pdr` / `bmc3` on the sby-built AIG | qualified; this is `prove_pdr.sh` |
 

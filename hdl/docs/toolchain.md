@@ -12,7 +12,7 @@
 | Icarus Verilog | 12.0 | `apt install iverilog` |
 | Yosys | 0.33 | `apt install yosys` |
 | SymbiYosys (`sby`) | 0.68 | `apt install sby` (pulled in with yosys on Debian/Ubuntu) |
-| SMT solver | z3 4.8.12 (cvc5 1.1.2 qualified but slower; see formal_conventions.md) | `apt install z3` |
+| SMT solver | z3 4.8.12, yices 2.6.5 (cvc5 1.1.2 qualified but slower; see formal_conventions.md) | `apt install z3 yices2` |
 | cocotb | **1.9.2**, pinned -- see below | `pip install -r hdl/sim/cocotb/requirements.txt` inside the venv |
 | Python | 3.12.3 | system |
 
