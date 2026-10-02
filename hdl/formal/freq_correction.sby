@@ -1,0 +1,44 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 44
+
+[engines]
+smtbmc z3
+
+[script]
+# Stage 1: flatten freq_correction_bare and expose the control state,
+# phase accumulator and the CORDIC start/angle registers as ports
+# (hdl/docs/formal_conventions.md).
+read_verilog -formal -I. cordic.v
+read_verilog -formal -I. freq_correction.v
+read_verilog -formal -I. freq_correction_bare.v
+hierarchy -top freq_correction_bare
+proc
+flatten
+expose -dff w:\dut.state w:\dut.acc w:\dut.cordic_start w:\dut.cordic_angle w:\dut.in_last
+write_verilog gen_freq_correction_bare.v
+
+# Stage 2: re-elaborate the exposed wrapper under the harness.
+design -reset
+read_verilog -formal -I. gen_freq_correction_bare.v
+read_verilog -formal -I. freq_correction_formal.v
+prep -top freq_correction_formal
+
+# The four products are cut: no property here depends on their values
+# (the output bound holds for any product, and test_freq_correction.py
+# checks every output bit-exact against lib/sync/freq_correction.cc).
+cutpoint t:$mul
+opt_clean
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+cordic_types.vh ../rtl/include/cordic_types.vh
+cordic.v ../rtl/common/cordic.v
+freq_correction.v ../rtl/sync/freq_correction.v
+freq_correction_bare.v
+freq_correction_formal.v

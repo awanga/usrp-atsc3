@@ -45,6 +45,11 @@ BLOCKS = {
         [],
         {"TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"'},
     ),
+    "freq_correction": (
+        ["sync/freq_correction.v", "common/cordic.v"],
+        [],
+        {},
+    ),
     "pilot_extractor": (
         ["ofdm/pilot_extractor.v"],
         [],

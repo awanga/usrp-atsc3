@@ -221,6 +221,35 @@ MUTANTS = [
         replace="m_axis_tlast  <= 1'b0;",
         killers=["sim:fft_engine"],
     ),
+    # --- freq_correction ---------------------------------------------------
+    dict(
+        name="fc_phase_reset_after_sample",
+        file="sync/freq_correction.v",
+        find="cordic_angle <= acc_base[31:16];",
+        replace="cordic_angle <= acc[31:16];",
+        killers=["sim:freq_correction", "formal:freq_correction"],
+    ),
+    dict(
+        name="fc_no_negative_saturation",
+        file="sync/freq_correction.v",
+        find="                sat16 = -16'sd32767;",
+        replace="                sat16 = v[15:0];",
+        killers=["sim:freq_correction", "formal:freq_correction"],
+    ),
+    dict(
+        name="fc_overwrites_stalled_output",
+        file="sync/freq_correction.v",
+        find="                    if (out_free) begin",
+        replace="                    if (1'b1) begin",
+        killers=["sim:freq_correction", "formal:freq_correction"],
+    ),
+    dict(
+        name="fc_loses_tlast",
+        file="sync/freq_correction.v",
+        find="m_axis_tlast  <= in_last;",
+        replace="m_axis_tlast  <= 1'b0;",
+        killers=["sim:freq_correction", "formal:freq_correction"],
+    ),
     # --- pilot_extractor ---------------------------------------------------
     dict(
         name="pe_continual_beats_scattered",
