@@ -1,0 +1,51 @@
+# smtbmc yices, not z3: z3 did not finish a depth-4 base case in ten
+# minutes (the ghost's variable-divisor mod and the two ROM muxes), and
+# ABC PDR was still undecided after 20 minutes; yices closes the
+# k-induction in about 90 s (qualified: hdl/docs/formal_conventions.md).
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 4
+cover: mode cover
+cover: depth 56
+
+[engines]
+smtbmc yices
+
+[script]
+# Stage 1: flatten pilot_extractor_bare and expose the bin counter,
+# scattered-pilot counter, ROM pointer and latched configuration as
+# ports (hdl/docs/formal_conventions.md).
+read_verilog -formal -I. pilot_extractor.v
+read_verilog -formal -I. pilot_extractor_bare.v
+hierarchy -top pilot_extractor_bare
+proc
+flatten
+expose -dff w:\dut.k w:\dut.m w:\dut.cp_ptr w:\dut.cp_next w:\dut.sym_r w:\dut.first_r w:\dut.last_r w:\dut.last_bin_r w:\dut.rom_base_r w:\dut.dx_r w:\dut.dy_mask_r w:\dut.period_m1_r
+write_verilog gen_pilot_extractor_bare.v
+
+# Stage 2: re-elaborate the exposed wrapper under the harness.
+design -reset
+read_verilog -formal -I. gen_pilot_extractor_bare.v
+read_verilog -formal -I. pilot_extractor_formal.v
+prep -top pilot_extractor_formal
+
+# Both continual-pilot ROMs (the DUT's and the ghost's) are constant:
+# mapping them to logic lets opt fold each into a constant mux. Left as
+# SMT arrays, two 1024-entry initialized memories took z3 past 7 GB
+# without finishing step 0. Plain opt, not opt -full: its -undriven
+# would tie the harness's free inputs to 0.
+memory_map
+opt
+
+[files]
+axi4s_types.vh ../rtl/include/axi4s_types.vh
+status_words.vh ../rtl/include/status_words.vh
+pilot_extractor.v ../rtl/ofdm/pilot_extractor.v
+pilot_cp_positions.hex ../rtl/ofdm/pilot_cp_positions.hex
+pilot_extractor_bare.v
+pilot_extractor_formal.v

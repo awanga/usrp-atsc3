@@ -29,13 +29,15 @@ declare -A SOURCES=(
     [timing_recovery]="sync/timing_recovery.v sync/polyphase_fir.v"
     [cp_removal]="ofdm/cp_removal.v"
     [fft_engine]="ofdm/fft_engine.v"
+    [pilot_extractor]="ofdm/pilot_extractor.v"
 )
 # Extra Yosys commands run after reading the sources, per top.
 declare -A SETUP=(
     [fft_engine]="chparam -set TWIDDLE_HEX \"$RTL_DIR/ofdm/fft_twiddles.hex\" fft_engine;"
+    [pilot_extractor]="chparam -set CP_ROM_HEX \"$RTL_DIR/ofdm/pilot_cp_positions.hex\" pilot_extractor;"
 )
 TOPS=(axi4s_skid_buffer udiv_seq cordic bootstrap_detector polyphase_fir
-    timing_recovery cp_removal fft_engine)
+    timing_recovery cp_removal fft_engine pilot_extractor)
 [[ $# -gt 0 ]] && TOPS=("$@")
 
 pass=0

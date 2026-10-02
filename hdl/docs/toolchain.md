@@ -74,6 +74,8 @@ Generated RTL data:
 - `hdl/rtl/ofdm/fft_twiddles.hex`: `build-fxp/hdl/sim/golden/fft_twiddle_gen > hdl/rtl/ofdm/fft_twiddles.hex`
   (loaded with `$readmemh`; tools get its absolute path through the
   `TWIDDLE_HEX` parameter).
+- `hdl/rtl/ofdm/pilot_cp_positions.hex`: `build-fxp/hdl/sim/golden/pilot_cp_rom_gen > hdl/rtl/ofdm/pilot_cp_positions.hex`
+  (same `$readmemh` scheme, through the `CP_ROM_HEX` parameter).
 - `hdl/rtl/sync/timing_recovery_coeffs.vh`: from `echo ROM |
   build-fxp/hdl/sim/golden/timing_recovery_gen`; `test_polyphase_fir.py`
   fails if it drifts from the running filter design.

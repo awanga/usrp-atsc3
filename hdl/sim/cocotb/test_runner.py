@@ -45,6 +45,11 @@ BLOCKS = {
         [],
         {"TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"'},
     ),
+    "pilot_extractor": (
+        ["ofdm/pilot_extractor.v"],
+        [],
+        {"CP_ROM_HEX": f'"{RTL / "ofdm" / "pilot_cp_positions.hex"}"'},
+    ),
 }
 
 # Integration benches: top module hdl/sim/cocotb/tb/<bench>.v, testbench

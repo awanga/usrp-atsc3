@@ -221,4 +221,43 @@ MUTANTS = [
         replace="m_axis_tlast  <= 1'b0;",
         killers=["sim:fft_engine"],
     ),
+    # --- pilot_extractor ---------------------------------------------------
+    dict(
+        name="pe_continual_beats_scattered",
+        file="ofdm/pilot_extractor.v",
+        find="wire [7:0]  pilot_type = is_sp ? `PILOT_TYPE_SCATTERED :\n"
+        "                             is_cp ? `PILOT_TYPE_CONTINUAL : `PILOT_TYPE_EDGE;",
+        replace="wire [7:0]  pilot_type = is_cp ? `PILOT_TYPE_CONTINUAL :\n"
+        "                             is_sp ? `PILOT_TYPE_SCATTERED : `PILOT_TYPE_EDGE;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_live_symbol_index",
+        file="ofdm/pilot_extractor.v",
+        find="wire [3:0]  sym       = first_bin ? s_axis_tuser : sym_r;",
+        replace="wire [3:0]  sym       = s_axis_tuser;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_cp_pointer_skips",
+        file="ofdm/pilot_extractor.v",
+        find="cp_ptr_next = cp_ptr + 10'd1;",
+        replace="cp_ptr_next = cp_ptr + 10'd2;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_drops_stalled_record",
+        file="ofdm/pilot_extractor.v",
+        find="            end else if (m_axis_tready) begin\n"
+        "                m_axis_tvalid <= 1'b0;",
+        replace="            end else begin\n                m_axis_tvalid <= 1'b0;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_lfsr_wrong_tap",
+        file="ofdm/pilot_extractor.v",
+        find="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[1]};",
+        replace="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[2]};",
+        killers=["sim:pilot_extractor"],
+    ),
 ]
