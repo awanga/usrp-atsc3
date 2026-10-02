@@ -282,8 +282,10 @@ std::vector<PilotSymbol> PilotExtractor::extract(const sample_t* fft_output,
     auto edge = extract_edge(fft_output);
     pilots.insert(pilots.end(), edge.begin(), edge.end());
 
-    // Sort by subcarrier index
-    std::sort(pilots.begin(), pilots.end(), [](const PilotSymbol& a, const PilotSymbol& b) {
+    // Sort by subcarrier index. Stable, so a carrier that is several
+    // pilot types keeps the insertion order above, and std::unique below
+    // keeps the first: SCATTERED over CONTINUAL over EDGE.
+    std::stable_sort(pilots.begin(), pilots.end(), [](const PilotSymbol& a, const PilotSymbol& b) {
         return a.subcarrier_index < b.subcarrier_index;
     });
 

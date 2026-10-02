@@ -675,6 +675,48 @@ TEST(PilotExtractorTest, OutputIsSortedAndUnique) {
     }
 }
 
+// A carrier that is both a scattered and a continual (or edge) pilot is
+// reported once, as SCATTERED; a continual pilot on an edge carrier is
+// reported as CONTINUAL. The RTL port classifies each carrier with this
+// same fixed precedence, so it must not depend on sort stability.
+TEST(PilotExtractorTest, CollisionPrecedenceScatteredContinualEdge) {
+    const PilotPattern patterns[] = {PilotPattern::PP1, PilotPattern::PP2, PilotPattern::PP3,
+                                     PilotPattern::PP4, PilotPattern::PP5, PilotPattern::PP6,
+                                     PilotPattern::PP7, PilotPattern::PP8};
+    size_t sp_cp_collisions = 0;
+    size_t sp_edge_collisions = 0;
+    for (size_t fft_size : {8192u, 16384u, 32768u}) {
+        std::vector<sample_t> fft_output(fft_size, sample_t(0, 0));
+        for (PilotPattern pattern : patterns) {
+            PilotExtractorConfig config;
+            config.fft_size = fft_size;
+            config.pattern = pattern;
+            PilotExtractor extractor(config);
+            PilotPatternParams params = extractor.get_pattern_params();
+            for (size_t sym = 0; sym < params.dy; ++sym) {
+                for (const PilotSymbol& p : extractor.extract(fft_output.data(), sym)) {
+                    size_t k = p.subcarrier_index;
+                    bool sp = extractor.is_scattered_pilot(k, sym);
+                    bool cp = extractor.is_continual_pilot(k);
+                    bool edge = (k == params.first_active || k == params.last_active);
+                    PilotType expected = sp   ? PilotType::SCATTERED
+                                         : cp ? PilotType::CONTINUAL
+                                              : PilotType::EDGE;
+                    ASSERT_TRUE(sp || cp || edge) << "non-pilot carrier " << k;
+                    ASSERT_EQ(p.type, expected)
+                        << "fft " << fft_size << " PP" << static_cast<int>(pattern) << " sym "
+                        << sym << " carrier " << k;
+                    sp_cp_collisions += (sp && cp) ? 1 : 0;
+                    sp_edge_collisions += (sp && edge) ? 1 : 0;
+                }
+            }
+        }
+    }
+    // Non-vacuity: both kinds of collision occur (not in every configuration).
+    EXPECT_GT(sp_cp_collisions, 0u);
+    EXPECT_GT(sp_edge_collisions, 0u);
+}
+
 }  // namespace
 }  // namespace ofdm
 }  // namespace atsc3
