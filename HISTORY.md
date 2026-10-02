@@ -100,6 +100,34 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
 - **Next:** this branch's rebase, SPDX headers and rename (TASKS.md
   Open); then plan 9.5.
 
+## 2026-10-02 — Pilot extraction and frequency correction RTL (plan 9.5)
+
+- **Decision:** pilot_extractor classifies each FFT bin as it streams
+  (bins arrive sorted, so the C++'s sort+dedup becomes a fixed
+  precedence); continual pilots come from a ROM generated from the C++
+  (`pilot_cp_rom_gen`), stored relative to the first active carrier.
+  freq_correction ports only the per-sample NCO (CORDIC + complex
+  multiply + saturation); the Hz-to-Q1.31 conversion and fine-CFO loop
+  filter stay software, written to a `cfg_phase_inc` register
+  (`FreqCorrection::get_phase_increment_q31()` added for the CLI).
+- **Reason:** both keep the RTL a bit-exact port of the fixed-point
+  golden model with no arithmetic the C++ doesn't do.
+- **Status:** golden fix first: `extract()` used `std::sort` before
+  `std::unique`, and an EDGE record could win a SCATTERED/EDGE collision
+  (new unit test failed on the old code); now `std::stable_sort`. Both
+  blocks: contract headers, cocotb on Verilator and Icarus (all eight
+  patterns, 8K/16K/32K, active-window edges, invalid config, framing
+  error, stalls, resets; CFO sweep to +/-Fs/2, phase resets, an
+  injected-tone check), formal ghost-model proofs (pilot records vs an
+  independent classifier with ROM-pointer invariants; NCO phase vs a
+  ghost accumulator, beat conservation, output bound), 13 committed
+  mutants all killed, lint, synth; both added to `ofdm_frontend_tb`.
+  Formal lessons: `opt -full` after `prep` ties undriven harness inputs
+  to 0 (its `-undriven`), silently pinning the stimulus; two initialized
+  1024-entry ROMs as SMT arrays took z3 past 7 GB (`memory_map` first);
+  z3 and ABC PDR could not close the pilot proof, yices did in ~90 s.
+- **Next (as of then):** frame sync RTL (9.6).
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

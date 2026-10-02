@@ -25,8 +25,15 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 - Branch `feature/hdl-port-foundations`, pushed (incl. capture LFS
   objects) 2026-10-01; not yet rebased onto `develop`.
-- `lib/`: float and fixed-point builds 655/655 ctest, including the 11
-  capture-replay tests on the synthetic fixtures.
+- `lib/`: float and fixed-point builds 656/656 ctest, including the 11
+  capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
+  clean locally.
+- RTL done through 9.5 (2026-10-02): pilot_extractor and freq_correction
+  meet the done bar; integration bench is now freq_correction ->
+  cp_removal -> fft_engine -> pilot_extractor. Golden fix: pilot dedup
+  precedence pinned (SCATTERED > CONTINUAL > EDGE; `std::sort` let an
+  EDGE record win). Formal for pilot_extractor uses yices (z3 and PDR
+  could not close it); yices 2.6.5 qualified.
 - Licensing and rename merged to `develop` (PR #1, CI green
   2026-10-01): project is now OpenATSC3; MPL-2.0 / CERN-OHL-W-2.0 (RTL) /
   CC-BY-4.0 (docs); NUC tables generated from A/322; FFTW preferred when
@@ -34,13 +41,9 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Next
 
-1. 9.5 Pilot extraction + frequency correction RTL: pilot ROM (PP1-PP8
-   from `pilot_extractor.h`); pin SCATTERED > CONTINUAL > EDGE dedup in
-   the golden model first; CORDIC NCO for `freq_correction`. Add both to
-   the integration bench (after FFT).
-2. 9.6 Frame sync RTL (after FFT + frequency correction; largest
+1. 9.6 Frame sync RTL (after FFT + frequency correction; largest
    correlator; pin the golden CLI's sample chunking).
-3. 9.7 Channel estimator, 9.8 equalizer, 9.9 constellation demapper,
+2. 9.7 Channel estimator, 9.8 equalizer, 9.9 constellation demapper,
    9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
    end-to-end pipeline test, 9.17 throughput/timing closure. Scope notes
@@ -48,11 +51,19 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Open
 
-- Throughput (9.17): bootstrap detector ~150 cycles/sample, FFT ~192.5k
-  cycles per 8K symbol; at 6.25 MS/s / 100 MHz the budget is 16
-  cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
+- Throughput (9.17): bootstrap detector ~150 cycles/sample,
+  freq_correction 18 cycles/sample (one iterative CORDIC per sample),
+  FFT ~192.5k cycles per 8K symbol; at 6.25 MS/s / 100 MHz the budget is
+  16 cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
   `realtime_budget_8k` is an expected failure until this closes (it
-  measures 167,922 source-stall cycles over two 8K symbols).
+  measures 514,051 source-stall cycles over two 8K symbols).
+- Pilot golden model is not spec-exact (the RTL inherits it bit-exactly):
+  16K/32K continual pilots are interpolated from the 8K table, not
+  A/322's tables; the 8K table's source is unrecorded; the reference
+  sequence is a generic x^11+x^2+1 PRBS. Verify against A/322 before
+  the channel estimator (9.7) depends on it.
+- Formal harnesses other than pilot_extractor have not been re-timed
+  with yices (qualified 2026-10-02; z3 stays their default).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
   SymbiYosys 0.68 is a source install here. Needs an ubuntu-24.04 job
   (or the CI container) pinned to `hdl/docs/toolchain.md` versions.
@@ -64,8 +75,8 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - `develop` itself: fixed-point test build fails (`test_metrics.cc`
   narrowing, fixed here in 747ec8e); fixed-point NUC/demapper tests (8)
   fail; capture tests fail on stale LFS pointers. All fixed on this branch.
-- GNU Radio, UHD and cppcheck are not installed here: `blocks/`, the UHD
-  source and cppcheck run only in CI (`ci.yml`, float build only).
+- GNU Radio and UHD are not installed here: `blocks/` and the UHD
+  source build only in CI (`ci.yml`, float build only).
 - `config/hdl_register_map.json`: `angle_tbd` register format should
   adopt CORDIC's Q1.15 turns-over-pi when the phase tracker is ported.
 - `docs/compliance.md` is stale (calls the frequency deinterleaver
@@ -80,5 +91,3 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   dev tools: pypdf BSD-3-Clause (NUC generator), cocotb BSD-3-Clause,
   pytest MIT, Verilator LGPL-3.0/Artistic-2.0, Icarus GPL-2.0*, Yosys/SBY
   ISC, z3 MIT, cvc5 BSD-3-Clause. All compatible with MPL-2.0 as used.
-- Project name "gr-atsc3" is also the name of an existing GPL-3.0 GNU
-  Radio module (drmpeg/gr-atsc3); consider renaming before release.
