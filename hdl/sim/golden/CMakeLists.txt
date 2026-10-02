@@ -22,3 +22,12 @@ target_link_libraries(fft_twiddle_gen atsc3_lib)
 
 add_executable(fft_engine_gen fft_engine_gen.cc)
 target_link_libraries(fft_engine_gen atsc3_lib)
+
+add_executable(pilot_cp_rom_gen pilot_cp_rom_gen.cc)
+target_link_libraries(pilot_cp_rom_gen atsc3_lib)
+
+add_executable(pilot_extractor_gen pilot_extractor_gen.cc)
+target_link_libraries(pilot_extractor_gen atsc3_lib)
+
+add_executable(freq_correction_gen freq_correction_gen.cc)
+target_link_libraries(freq_correction_gen atsc3_lib)

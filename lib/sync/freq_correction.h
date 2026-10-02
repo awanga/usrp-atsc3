@@ -96,6 +96,14 @@ public:
         return sample_count_;
     }
 
+#ifdef ATSC3_FIXED_POINT
+    // Per-sample phase increment, Q1.31 turns-over-pi: the value the RTL
+    // NCO takes as its phase-increment register.
+    int32_t get_phase_increment_q31() const {
+        return phase_increment_q31_;
+    }
+#endif
+
 private:
     FreqCorrectionConfig config_;
 
