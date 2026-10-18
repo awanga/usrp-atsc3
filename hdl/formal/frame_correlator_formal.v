@@ -7,7 +7,7 @@
 //     for a = 1..len, i.e. exactly len consecutive addresses from base,
 //     each presented once, starting the cycle after start;
 //   - busy is high from that edge until done; done is a one-cycle pulse,
-//     not before the samples have been read and accumulated (len + 3
+//     not before the samples have been read and accumulated (len + 4
 //     cycles), and busy is low on it;
 //   - operands are latched: base / len / start may change freely (and
 //     start may be asserted) while busy without effect on the addresses;
@@ -100,7 +100,7 @@ module frame_correlator_formal (
             if (g_age >= 8'd1 && {8'd0, g_age} <= {8'd0, g_len[7:0]}) assert (rd_addr == g_addr);
             if (done) begin
                 assert (!busy);
-                assert (g_age >= {8'd0, g_len[7:0]} + 8'd3);
+                assert (g_age >= {8'd0, g_len[7:0]} + 8'd4);
             end else begin
                 assert (busy);
             end

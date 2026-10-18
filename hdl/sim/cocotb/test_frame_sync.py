@@ -435,6 +435,24 @@ async def directed_search_step(dut):
 
 
 @cocotb.test(timeout_time=600, timeout_unit="sec")
+async def directed_search_bound(dut):
+    """SEARCHING never correlates past the end of the chunk. With a 37-sample
+    chunk the offset-12 window would end one sample beyond it; the sample
+    just past the chunk (left in the RAM by the previous chunk) is what would
+    make that window a perfect copy of the reference. At the maximum
+    threshold only a perfect window passes, so reading it shows up."""
+    rnd = random.Random(12)
+    ref = model_reference()
+    bench = Bench(dut, rnd, stalls=False, gaps=False)
+    await bench.start()
+    cfg = (26, 4, 3, 2, 32767, 2, 5, 10, 64)
+    stale = [(0, 0)] * 37 + [ref[(37 - 12) % 13]]  # sample 37 continues the reference
+    chunk = [(0, 0)] * 12 + [ref[i % 13] for i in range(25)]  # reference in [12, 37)
+    results = await bench.play([("P", cfg), ("K", stale), ("K", chunk)])
+    assert results[2][1][0] == 0, "SEARCHING correlated past the chunk"
+
+
+@cocotb.test(timeout_time=600, timeout_unit="sec")
 async def directed_holdover_relock(dut):
     """HOLDOVER predicts the next boundary one frame (180 samples) after the
     last one, and correlates there when the prediction falls inside a chunk
