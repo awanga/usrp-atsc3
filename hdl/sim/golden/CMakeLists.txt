@@ -31,3 +31,6 @@ target_link_libraries(pilot_extractor_gen atsc3_lib)
 
 add_executable(freq_correction_gen freq_correction_gen.cc)
 target_link_libraries(freq_correction_gen atsc3_lib)
+
+add_executable(frame_sync_gen frame_sync_gen.cc)
+target_link_libraries(frame_sync_gen atsc3_lib)
