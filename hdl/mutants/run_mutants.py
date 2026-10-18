@@ -72,7 +72,12 @@ def run(cmd, log, env=None, cwd=None, timeout=None):
 def check(ws, killer):
     kind, target = killer.split(":")
     log = ws / f"{kind}_{target}.log"
-    if kind == "sim":
+    if kind in ("sim", "bench"):
+        test_id = (
+            f"test_runner.py::test_block[{target}-verilator]"
+            if kind == "sim"
+            else f"test_runner.py::test_integration[{target}-verilator]"
+        )
         rc, out = run(
             [
                 str(PYTHON),
@@ -81,7 +86,7 @@ def check(ws, killer):
                 "-q",
                 "-p",
                 "no:cacheprovider",
-                f"test_runner.py::test_block[{target}-verilator]",
+                test_id,
             ],
             log,
             env={"HDL_RTL_DIR": str(ws / "rtl"), "HDL_SIM_BUILD": str(ws / "sim")},

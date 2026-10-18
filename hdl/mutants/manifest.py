@@ -6,6 +6,7 @@ manifest cannot silently rot as the RTL changes.
 
 `killers` lists every checker that must fail on the mutant:
   "sim:<block>"     cocotb testbench test_<block>.py (Verilator)
+  "bench:<bench>"   cocotb integration bench test_<bench>.py (Verilator)
   "formal:<job>"    hdl/formal/<job>.sby (smtbmc prove/cover tasks)
   "bmc:<job>"       hdl/formal/prove_pdr.sh --mutant <job> (bounded ABC bmc3)
 
@@ -288,5 +289,224 @@ MUTANTS = [
         find="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[1]};",
         replace="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[2]};",
         killers=["sim:pilot_extractor"],
+    ),
+    # --- isqrt_seq ---------------------------------------------------------
+    dict(
+        name="isqrt_strict_compare",
+        file="common/isqrt_seq.v",
+        find="wire            fits  = rem >= trial;",
+        replace="wire            fits  = rem > trial;",
+        killers=["sim:isqrt_seq", "formal:isqrt_seq"],
+    ),
+    dict(
+        name="isqrt_skips_top_pair",
+        file="common/isqrt_seq.v",
+        find="bit_r <= {{(IN_W-1){1'b0}}, 1'b1} << (IN_W - 2);",
+        replace="bit_r <= {{(IN_W-1){1'b0}}, 1'b1} << (IN_W - 4);",
+        killers=["sim:isqrt_seq", "formal:isqrt_seq"],
+    ),
+    # --- frame_correlator --------------------------------------------------
+    dict(
+        name="fcorr_conjugate_sign",
+        file="sync/frame_correlator.v",
+        find="wire signed [32:0] t_im = si * rr - sr * ri;",
+        replace="wire signed [32:0] t_im = si * rr + sr * ri;",
+        killers=["bench:frame_correlator_tb", "sim:frame_sync"],
+    ),
+    dict(
+        name="fcorr_reference_period_12",
+        file="sync/frame_correlator.v",
+        find="rom_ph   <= (rom_ph == 4'd12) ? 4'd0 : rom_ph + 4'd1;",
+        replace="rom_ph   <= (rom_ph == 4'd11) ? 4'd0 : rom_ph + 4'd1;",
+        killers=["bench:frame_correlator_tb", "sim:frame_sync"],
+    ),
+    dict(
+        name="fcorr_one_sample_short",
+        file="sync/frame_correlator.v",
+        find="iss_left  <= {1'b0, len};",
+        replace="iss_left  <= {1'b0, len} - 17'd1;",
+        killers=["bench:frame_correlator_tb", "sim:frame_sync", "formal:frame_correlator"],
+    ),
+    dict(
+        name="fcorr_no_shift_back",
+        file="sync/frame_correlator.v",
+        find="<< (shift + 6'd15);",
+        replace="<< 6'd15;",
+        killers=["bench:frame_correlator_tb", "sim:frame_sync"],
+    ),
+    dict(
+        name="fcorr_shift_cap_8",
+        file="sync/frame_correlator.v",
+        find="shift < 6'd48",
+        replace="shift < 6'd8",
+        killers=["bench:frame_correlator_tb"],
+    ),
+    dict(
+        name="fcorr_norm_uses_sig_twice",
+        file="sync/frame_correlator.v",
+        find="norm  <= sig_mag * sq_root;",
+        replace="norm  <= sig_mag * sig_mag;",
+        killers=["bench:frame_correlator_tb", "sim:frame_sync"],
+    ),
+    # --- frame_sync_fsm / frame_sync ---------------------------------------
+    dict(
+        name="fsync_acquiring_ties_pick_last",
+        file="sync/frame_sync_fsm.v",
+        find="                        if (corr_ratio > best) begin\n"
+        "                            best     <= corr_ratio;\n"
+        "                            best_off <= off;\n"
+        "                        end\n"
+        "                        off   <= off + 32'd1;\n"
+        "                        state <= S_ACQ_CHK;",
+        replace="                        if (corr_ratio >= best) begin\n"
+        "                            best     <= corr_ratio;\n"
+        "                            best_off <= off;\n"
+        "                        end\n"
+        "                        off   <= off + 32'd1;\n"
+        "                        state <= S_ACQ_CHK;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_locked_ties_pick_last",
+        file="sync/frame_sync_fsm.v",
+        find="                        if (corr_ratio > best) begin\n"
+        "                            best     <= corr_ratio;\n"
+        "                            best_off <= off;\n"
+        "                        end\n"
+        "                        off   <= off + 32'd1;\n"
+        "                        state <= S_LCK_CHK;",
+        replace="                        if (corr_ratio >= best) begin\n"
+        "                            best     <= corr_ratio;\n"
+        "                            best_off <= off;\n"
+        "                        end\n"
+        "                        off   <= off + 32'd1;\n"
+        "                        state <= S_LCK_CHK;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_relaxed_threshold_three_quarters",
+        file="sync/frame_sync_fsm.v",
+        find="wire [15:0] relax_now = (thr_now * 4) / 5;",
+        replace="wire [15:0] relax_now = (thr_now * 3) / 4;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_event_old_confidence",
+        file="sync/frame_sync_fsm.v",
+        find="ev_confidence   <= blend95[15:0];",
+        replace="ev_confidence   <= confidence;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_holdover_no_decay",
+        file="sync/frame_sync_fsm.v",
+        find="confidence   <= decay90[15:0];",
+        replace="confidence   <= confidence;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_locked_boundary_no_frame",
+        file="sync/frame_sync_fsm.v",
+        find="expected        <= sample_counter + {16'd0, best_off} + frame_samples;",
+        replace="expected        <= sample_counter + {16'd0, best_off};",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_search_step_eighth",
+        file="sync/frame_sync_fsm.v",
+        find="off   <= off + {18'd0, fft_r[15:2]};  // F / 4",
+        replace="off   <= off + {19'd0, fft_r[15:3]};",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_bootstrap_ignored_in_holdover",
+        file="sync/frame_sync_fsm.v",
+        find="if (fs_state == FS_SEARCHING || fs_state == FS_HOLDOVER) begin",
+        replace="if (fs_state == FS_SEARCHING) begin",
+        killers=["sim:frame_sync", "formal:frame_sync_fsm"],
+    ),
+    dict(
+        name="fsync_holdover_counter_kept",
+        file="sync/frame_sync_fsm.v",
+        find="                            fs_state <= FS_HOLDOVER;\n"
+        "                            hold_cnt <= 32'd0;",
+        replace="                            fs_state <= FS_HOLDOVER;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_lock_count_off_by_one",
+        file="sync/frame_sync_fsm.v",
+        find="if (hits + 32'd1 >= {16'd0, acq_r}) begin",
+        replace="if (hits >= {16'd0, acq_r}) begin",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_relock_keeps_misses",
+        file="sync/frame_sync_fsm.v",
+        find="                        fs_state        <= FS_LOCKED;\n"
+        "                        misses          <= 32'd0;\n"
+        "                        confidence      <= SCORE_ONE;\n"
+        "                        hits            <= 32'd1;",
+        replace="                        fs_state        <= FS_LOCKED;\n"
+        "                        confidence      <= SCORE_ONE;\n"
+        "                        hits            <= 32'd1;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_threshold_read_live",
+        file="sync/frame_sync_fsm.v",
+        find="                        if (corr_ratio >= thr_r) begin\n"
+        "                            expected   <= sample_counter + {16'd0, off};",
+        replace="                        if (corr_ratio >= thr_now) begin\n"
+        "                            expected   <= sample_counter + {16'd0, off};",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_event_loses_tlast",
+        file="sync/frame_sync.v",
+        find="m_axis_tlast                                                            <= 1'b1;",
+        replace="m_axis_tlast                                                            <= 1'b0;",
+        killers=["sim:frame_sync", "formal:frame_sync"],
+    ),
+    dict(
+        name="fsync_full_ram_chunk_refused",
+        file="sync/frame_sync.v",
+        find="wire        proc_skip  = fft_bad || (proc_n > DEPTH);",
+        replace="wire        proc_skip  = fft_bad || (proc_n >= DEPTH);",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
+        name="fsync_bootstrap_taken_mid_chunk",
+        file="sync/frame_sync.v",
+        find="assign bs_ready = (top_state == T_RX) && at_start;",
+        replace="assign bs_ready = (top_state == T_RX);",
+        killers=["sim:frame_sync", "formal:frame_sync"],
+    ),
+    dict(
+        name="fsync_sample_taken_with_bootstrap",
+        file="sync/frame_sync.v",
+        find="wire rx_ok = (top_state == T_RX) && !(bs_valid && at_start);",
+        replace="wire rx_ok = (top_state == T_RX);",
+        killers=["sim:frame_sync", "formal:frame_sync"],
+    ),
+    dict(
+        name="fsync_search_reads_past_chunk",
+        file="sync/frame_sync_fsm.v",
+        find="                    if (off + fft32 <= n_r) begin\n"
+        "                        corr_start  <= 1'b1;\n"
+        "                        corr_offset <= off;\n"
+        "                        state       <= S_SRCH_WAIT;",
+        replace="                    if (off + fft32 <= n_r + 32'd1) begin\n"
+        "                        corr_start  <= 1'b1;\n"
+        "                        corr_offset <= off;\n"
+        "                        state       <= S_SRCH_WAIT;",
+        killers=["sim:frame_sync", "formal:frame_sync_fsm"],
+    ),
+    dict(
+        name="fsync_frame_number_double_step",
+        file="sync/frame_sync_fsm.v",
+        find="                        frame_number    <= frame_number + 32'd1;",
+        replace="                        frame_number    <= frame_number + 32'd2;",
+        killers=["sim:frame_sync", "formal:frame_sync_fsm"],
     ),
 ]

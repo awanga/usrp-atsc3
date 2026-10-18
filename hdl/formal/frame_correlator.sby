@@ -1,0 +1,33 @@
+# Run via hdl/formal/run_formal.sh frame_correlator. Black-box harness on
+# ports plus a ghost record; the cores it instantiates are replaced by
+# stubs (frame_correlator_stubs.v) and the products are cut.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 32
+cover: mode cover
+cover: depth 32
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -I. frame_correlator.v
+read_verilog -formal -I. frame_correlator_stubs.v
+read_verilog -formal -I. frame_correlator_formal.v
+prep -top frame_correlator_formal
+
+# The datapath products are cut: no control property depends on their values.
+cutpoint t:$mul
+opt_clean
+
+[files]
+cordic_types.vh ../rtl/include/cordic_types.vh
+frame_sync_ref.vh ../rtl/sync/frame_sync_ref.vh
+frame_correlator.v ../rtl/sync/frame_correlator.v
+frame_correlator_stubs.v
+frame_correlator_formal.v

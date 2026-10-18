@@ -16,7 +16,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 export FORMAL_BUILD="${FORMAL_BUILD:-$(cd .. && pwd)/build/formal}"
 mkdir -p "$FORMAL_BUILD"
 
-SBY_JOBS=(axi4s_skid_buffer udiv_seq cordic cp_removal timing_recovery fft_engine freq_correction pilot_extractor)
+SBY_JOBS=(axi4s_skid_buffer udiv_seq isqrt_seq cordic cp_removal timing_recovery fft_engine freq_correction pilot_extractor frame_correlator frame_sync_fsm frame_sync)
 PDR_JOBS=(bootstrap_detector)
 jobs=("${SBY_JOBS[@]}" "${PDR_JOBS[@]}")
 [[ $# -gt 0 ]] && jobs=("$@")

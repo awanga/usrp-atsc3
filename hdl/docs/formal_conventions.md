@@ -213,6 +213,31 @@ registers sample the DUT's uninitialized outputs on the reset cycle: gate
 any `prev_*`-based assertion on `!prev_rst`. PDR found exactly that bug
 in the first version of this harness.
 
+## Composed blocks: stubs for the sub-blocks, bounded BMC for wide control
+
+A block built from other proved blocks is checked in layers rather than
+flattened with all of them. `frame_sync` is three jobs:
+
+- `frame_correlator` instantiates `isqrt_seq`, `cordic` and `udiv_seq`;
+  `frame_correlator_stubs.v` supplies same-port modules whose results are
+  arbitrary and whose only behavior is the handshake contract (busy from an
+  accepted start to a done pulse at a solver-chosen time, start ignored
+  while busy). The `.sby` reads the real correlator and the stubs instead of
+  the real cores. The cores keep their own harnesses.
+- `frame_sync_fsm` has the correlator abstracted to free `corr_done` /
+  `corr_ratio` inputs under assumptions that restate its handshake.
+- `frame_sync` (chunk buffer, framing) replaces both the state machine and
+  the correlator with `frame_sync_stubs.v`.
+
+Each stub states the contract the lower proof establishes, so the layers
+compose; a stub that promises more than its harness proves would be a hole.
+Products and quotients that no property reads are cut
+(`cutpoint t:$mul t:$div`): the state machine's depth-30 base case went from
+over a minute per step at step 25 to seconds. The state machine is checked
+by bounded `mode bmc` (depth 30) plus a `cover` task reaching every
+transition kind, not by k-induction: its 32- and 48-bit counters would
+need strengthening lemmas, and the header says "bounded" in those words.
+
 ## `.sby` file mechanics
 
 `[files]` entries get flattened into one `src/` directory regardless of
