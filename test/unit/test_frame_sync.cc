@@ -345,6 +345,181 @@ TEST(FrameSyncTest, FixedPointVsReferenceEquivalence) {
                                   << snr_db_value << " dB over " << trial_count << " trials";
 }
 
+//==============================================================================
+// Integer state machine: thresholds, confidence blends and the lock
+// sequence are exact Q1.15 integer operations in the fixed-point build.
+// The expected values below come from the Q1.15 definitions (truncating
+// float_to_q15 of the threshold, 9/10 and 19/20 blends, 1.0 = 32767), not
+// from running the implementation.
+//==============================================================================
+
+namespace {
+
+std::vector<sample_t> reference_chunk(const FrameSync& sync, size_t n) {
+    const auto& ref = sync.preamble_reference();
+    std::vector<sample_t> chunk(n);
+    for (size_t i = 0; i < n; ++i) {
+        chunk[i] = ref[i % ref.size()];
+    }
+    return chunk;
+}
+
+long q15(double v) {
+    return std::lround(v * 32768.0);
+}
+
+}  // namespace
+
+TEST(FrameSyncFixedTest, BootstrapConfidenceTruncatesToQ15) {
+    FrameSync sync;
+    sync.set_bootstrap_offset(10, 0.85);
+    EXPECT_EQ(q15(sync.get_confidence()), 27852);  // trunc(0.85 * 32768)
+    FrameSync other;
+    other.set_bootstrap_offset(10, 1.0);
+    EXPECT_EQ(q15(other.get_confidence()), 32767);  // +1.0 saturates, never 32768
+}
+
+// The ACQUIRING search loop bounds the end of the correlation window by
+// the search window (offset + fft_size <= expected + half_window), so it
+// can only succeed when fft_size fits inside search_window. These tests
+// therefore use a 26-sample preamble (two reference periods) and a
+// 64-sample window.
+FrameSyncConfig short_preamble_config() {
+    FrameSyncConfig config;
+    config.frame_params.fft_size = 26;
+    config.frame_params.cp_length = 4;
+    config.frame_params.symbols_per_subframe = 3;
+    config.frame_params.subframes_per_frame = 2;
+    config.lock_acquire_count = 2;
+    config.search_window = 64;
+    return config;
+}
+
+TEST(FrameSyncFixedTest, LockSequenceAndLockedBlend) {
+    FrameSync sync(short_preamble_config());
+
+    std::vector<FrameEvent> events;
+    sync.set_frame_callback([&](const FrameEvent& ev) { events.push_back(ev); });
+
+    // A perfect copy of the reference correlates at ~1.0 (>= 0.999).
+    auto chunk = reference_chunk(sync, 66);
+    EXPECT_GE(sync.compute_correlation(chunk.data(), chunk.size(), 0), 0.999);
+
+    sync.process(chunk.data(), chunk.size());  // SEARCHING -> ACQUIRING at offset 0
+    EXPECT_EQ(sync.get_state(), FrameSyncState::ACQUIRING);
+    EXPECT_EQ(sync.expected_boundary(), 0u);
+    EXPECT_TRUE(events.empty());
+
+    // Second hit locks (lock_acquire_count = 2); LOCKED resets confidence
+    // to +1.0 before the event is emitted.
+    sync.set_bootstrap_offset(66 + 20, 0.5);
+    sync.process(chunk.data(), chunk.size());
+    EXPECT_EQ(sync.get_state(), FrameSyncState::LOCKED);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, FrameEvent::FRAME_START);
+    EXPECT_EQ(events[0].sample_index, 66u);  // sample_counter_ at the chunk start
+    EXPECT_EQ(q15(events[0].confidence), 32767);
+    // Every shift of the reference is the same sequence rotated by a
+    // constant phase, so all offsets correlate at ~1.0 and the argmax is
+    // decided by CORDIC rounding; it must still lie in the search window.
+    EXPECT_GE(sync.expected_boundary(), 66u);
+    EXPECT_LE(sync.expected_boundary(), 66u + 26u);
+
+    // LOCKED: expected boundary inside the next chunk. The reference repeats
+    // every 13 samples, so every offset in the window is an equally good
+    // peak; confidence is (19 * 16384 + best) / 20 with best in
+    // [0.999, 2.0) of full scale.
+    sync.set_bootstrap_offset(132 + 20, 0.5);
+    EXPECT_EQ(q15(sync.get_confidence()), 16384);
+    sync.process(chunk.data(), chunk.size());
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(sync.get_state(), FrameSyncState::LOCKED);
+    EXPECT_EQ(sync.get_frame_number(), 1u);
+    // CORDIC magnitude error keeps best within 1% of full scale.
+    EXPECT_GE(q15(events[1].confidence), (19 * 16384 + 32735) / 20);
+    EXPECT_LE(q15(events[1].confidence), (19 * 16384 + 33096) / 20);
+    // Next boundary: chunk start + best offset (0..40) + one frame
+    // (2 subframes x 3 symbols x (26 + 4) samples).
+    EXPECT_GE(sync.expected_boundary(), 132u + 180u);
+    EXPECT_LE(sync.expected_boundary(), 132u + 40u + 180u);
+}
+
+// A chunk whose first m samples copy the reference and the rest are zero
+// correlates at sqrt(m / 26) at offset 0 and lower elsewhere (every
+// reference sample has the same magnitude).
+std::vector<sample_t> partial_chunk(const FrameSync& sync, size_t n, size_t m) {
+    auto chunk = reference_chunk(sync, n);
+    for (size_t i = m; i < n; ++i) {
+        chunk[i] = sample_t(0, 0);
+    }
+    return chunk;
+}
+
+TEST(FrameSyncFixedTest, LockedUsesFourFifthsOfTheThreshold) {
+    FrameSync sync(short_preamble_config());
+    auto full = reference_chunk(sync, 66);
+    sync.process(full.data(), full.size());
+    sync.set_bootstrap_offset(66 + 20, 0.5);
+    sync.process(full.data(), full.size());
+    ASSERT_EQ(sync.get_state(), FrameSyncState::LOCKED);
+
+    // sqrt(8/26) = 0.5547 < 0.56 = 0.7 * 4/5: a miss, still LOCKED.
+    std::vector<FrameEvent> events;
+    sync.set_frame_callback([&](const FrameEvent& ev) { events.push_back(ev); });
+    auto low = partial_chunk(sync, 66, 8);
+    sync.set_bootstrap_offset(132 + 20, 0.5);
+    sync.process(low.data(), low.size());
+    EXPECT_TRUE(events.empty());
+    EXPECT_EQ(sync.get_frame_number(), 0u);
+
+    // sqrt(12/26) = 0.679: above 0.56 but below 0.7, a locked-state hit.
+    auto mid = partial_chunk(sync, 66, 12);
+    sync.set_bootstrap_offset(198 + 20, 0.5);
+    sync.process(mid.data(), mid.size());
+    EXPECT_EQ(events.size(), 1u);
+    EXPECT_EQ(sync.get_frame_number(), 1u);
+}
+
+TEST(FrameSyncFixedTest, SearchingUsesTheFullThreshold) {
+    FrameSync sync(short_preamble_config());
+    auto mid = partial_chunk(sync, 66, 12);  // 0.679 < 0.7
+    sync.process(mid.data(), mid.size());
+    EXPECT_EQ(sync.get_state(), FrameSyncState::SEARCHING);
+    auto high = partial_chunk(sync, 66, 14);  // sqrt(14/26) = 0.734
+    sync.process(high.data(), high.size());
+    EXPECT_EQ(sync.get_state(), FrameSyncState::ACQUIRING);
+}
+
+TEST(FrameSyncFixedTest, HoldoverDecaysConfidenceByNinetyPercent) {
+    FrameSyncConfig config = short_preamble_config();
+    config.lock_acquire_count = 1;
+    config.lock_loss_count = 1;
+    config.holdover_frames = 3;
+    FrameSync sync(config);
+
+    auto good = reference_chunk(sync, 66);
+    sync.process(good.data(), good.size());  // SEARCHING -> ACQUIRING
+    sync.set_bootstrap_offset(66 + 20, 0.5);
+    sync.process(good.data(), good.size());  // ACQUIRING -> LOCKED
+    ASSERT_EQ(sync.get_state(), FrameSyncState::LOCKED);
+
+    // Silence at the expected boundary: relaxed threshold missed -> HOLDOVER.
+    std::vector<sample_t> silence(66, sample_t(0, 0));
+    sync.set_bootstrap_offset(132 + 20, 0.5);
+    sync.process(silence.data(), silence.size());
+    ASSERT_EQ(sync.get_state(), FrameSyncState::HOLDOVER);
+
+    // Each holdover call decays confidence_ <- 9 * confidence_ / 10 (floor).
+    long conf = q15(sync.get_confidence());
+    ASSERT_EQ(conf, 16384);
+    sync.process(silence.data(), silence.size());
+    conf = 9 * conf / 10;
+    EXPECT_EQ(conf, 14745);
+    EXPECT_EQ(q15(sync.get_confidence()), conf);
+    sync.process(silence.data(), silence.size());
+    EXPECT_EQ(q15(sync.get_confidence()), 9 * conf / 10);
+}
+
 #endif  // ATSC3_FIXED_POINT
 
 }  // namespace

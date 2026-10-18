@@ -56,6 +56,65 @@ uint64_t integer_sqrt(uint64_t x) {
     }
     return res;
 }
+
+constexpr FrameScore kScoreOne = 32767;  // +1.0 in Q1.15 (32768 would not fit a Q1.15 field)
+constexpr FrameScore kScoreCap = 65535;  // correlation ratio ceiling (2.0)
+
+FrameScore score_from_double(double v) {
+    if (v <= 0.0) {
+        return 0;
+    }
+    double scaled = v * 32768.0;
+    return scaled >= static_cast<double>(kScoreOne) ? kScoreOne : static_cast<FrameScore>(scaled);
+}
+
+double score_to_double(FrameScore s) {
+    return static_cast<double>(s) / 32768.0;
+}
+
+// Exponential blends with fixed weights, floor-divided so the RTL can
+// reproduce them with one small division.
+FrameScore blend_90_10(FrameScore old_v, FrameScore new_v) {
+    return (9 * old_v + new_v) / 10;
+}
+
+FrameScore blend_95_5(FrameScore old_v, FrameScore new_v) {
+    return (19 * old_v + new_v) / 20;
+}
+
+FrameScore decay_90(FrameScore v) {
+    return 9 * v / 10;
+}
+
+FrameScore relaxed(FrameScore threshold) {
+    return threshold * 4 / 5;
+}
+#else
+constexpr FrameScore kScoreOne = 1.0;
+
+FrameScore score_from_double(double v) {
+    return v;
+}
+
+double score_to_double(FrameScore s) {
+    return s;
+}
+
+FrameScore blend_90_10(FrameScore old_v, FrameScore new_v) {
+    return 0.9 * old_v + 0.1 * new_v;
+}
+
+FrameScore blend_95_5(FrameScore old_v, FrameScore new_v) {
+    return 0.95 * old_v + 0.05 * new_v;
+}
+
+FrameScore decay_90(FrameScore v) {
+    return v * 0.9;
+}
+
+FrameScore relaxed(FrameScore threshold) {
+    return threshold * 0.8;
+}
 #endif
 
 }  // namespace
@@ -71,7 +130,9 @@ FrameSync::FrameSync(const FrameSyncConfig& config)
       consecutive_misses_(0),
       holdover_counter_(0),
       expected_boundary_(0),
-      confidence_(0.0) {
+      confidence_(0),
+      detection_threshold_(score_from_double(config.detection_threshold)),
+      relaxed_threshold_(relaxed(detection_threshold_)) {
     init_preamble_reference();
 }
 
@@ -109,7 +170,15 @@ void FrameSync::reset() {
     consecutive_misses_ = 0;
     holdover_counter_ = 0;
     expected_boundary_ = 0;
-    confidence_ = 0.0;
+    confidence_ = 0;
+}
+
+double FrameSync::get_confidence() const {
+    return score_to_double(confidence_);
+}
+
+double FrameSync::compute_correlation(const sample_t* symbols, size_t n, size_t offset) {
+    return score_to_double(correlate_preamble(symbols, n, offset));
 }
 
 void FrameSync::update_frame_params(const FrameParams& params) {
@@ -123,7 +192,7 @@ void FrameSync::update_frame_params(const FrameParams& params) {
 void FrameSync::set_bootstrap_offset(size_t sample_index, double conf) {
     // Bootstrap detector provides coarse timing
     expected_boundary_ = sample_index;
-    confidence_ = conf;
+    confidence_ = score_from_double(conf);
 
     if (state_ == FrameSyncState::SEARCHING) {
         transition_state(FrameSyncState::ACQUIRING);
@@ -145,7 +214,7 @@ void FrameSync::transition_state(FrameSyncState new_state) {
         case FrameSyncState::SEARCHING:
             consecutive_hits_ = 0;
             consecutive_misses_ = 0;
-            confidence_ = 0.0;
+            confidence_ = 0;
             break;
 
         case FrameSyncState::ACQUIRING:
@@ -154,7 +223,7 @@ void FrameSync::transition_state(FrameSyncState new_state) {
 
         case FrameSyncState::LOCKED:
             consecutive_misses_ = 0;
-            confidence_ = 1.0;
+            confidence_ = kScoreOne;
             break;
 
         case FrameSyncState::HOLDOVER:
@@ -165,9 +234,9 @@ void FrameSync::transition_state(FrameSyncState new_state) {
     state_ = new_state;
 }
 
-double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t offset) {
+FrameScore FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t offset) {
     if (offset + preamble_ref_.size() > n) {
-        return 0.0;
+        return 0;
     }
 
     size_t corr_len = std::min(preamble_ref_.size(), n - offset);
@@ -200,7 +269,7 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
     }
 
     if (sig_power <= 0 || ref_power <= 0) {
-        return 0.0;
+        return 0;
     }
 
     // Normalization denominator: sqrt(sig_power) * sqrt(ref_power), not
@@ -213,7 +282,7 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
     uint64_t ref_mag = integer_sqrt(static_cast<uint64_t>(ref_power));
     uint64_t norm = sig_mag * ref_mag;
     if (norm == 0) {
-        return 0.0;
+        return 0;
     }
 
     // Correlation magnitude via CORDIC vectoring (this part genuinely is
@@ -233,7 +302,10 @@ double FrameSync::correlate_preamble(const sample_t* symbols, size_t n, size_t o
     dsp::CordicVectorResult vec = dsp::cordic_vector(saturate_i16(re), saturate_i16(im));
     uint64_t corr_mag = static_cast<uint64_t>(vec.magnitude) << shift;
 
-    return static_cast<double>(corr_mag) / static_cast<double>(norm);
+    // Q1.15 ratio, floor division. corr_mag < 2^47 (shift keeps the
+    // rails within int16 before the CORDIC), so the shift cannot overflow.
+    uint64_t ratio = (corr_mag << 15) / norm;
+    return ratio > kScoreCap ? static_cast<FrameScore>(kScoreCap) : static_cast<FrameScore>(ratio);
 #else
     // Cross-correlation between received symbols and reference
     double corr_re = 0.0;
@@ -279,7 +351,7 @@ void FrameSync::emit_frame_event(FrameEvent::Type type) {
     event.frame_number = frame_number_;
     event.subframe_number = subframe_number_;
     event.symbol_number = symbol_position_;
-    event.confidence = confidence_;
+    event.confidence = score_to_double(confidence_);
 
     frame_callback_(event);
 }
@@ -296,9 +368,9 @@ void FrameSync::handle_searching(const sample_t* symbols, size_t n) {
     size_t search_step = config_.frame_params.fft_size / 4;  // Coarse search
 
     for (size_t offset = 0; offset + preamble_ref_.size() <= n; offset += search_step) {
-        double corr = correlate_preamble(symbols, n, offset);
+        FrameScore corr = correlate_preamble(symbols, n, offset);
 
-        if (corr >= config_.detection_threshold) {
+        if (corr >= detection_threshold_) {
             expected_boundary_ = sample_counter_ + offset;
             confidence_ = corr;
             transition_state(FrameSyncState::ACQUIRING);
@@ -322,21 +394,21 @@ void FrameSync::handle_acquiring(const sample_t* symbols, size_t n) {
         search_end = std::min(expected_offset + half_window, n);
     }
 
-    double best_corr = 0.0;
+    FrameScore best_corr = 0;
     size_t best_offset = 0;
 
     for (size_t offset = search_start; offset + preamble_ref_.size() <= search_end && offset < n;
          ++offset) {
-        double corr = correlate_preamble(symbols, n, offset);
+        FrameScore corr = correlate_preamble(symbols, n, offset);
         if (corr > best_corr) {
             best_corr = corr;
             best_offset = offset;
         }
     }
 
-    if (best_corr >= config_.detection_threshold) {
+    if (best_corr >= detection_threshold_) {
         expected_boundary_ = sample_counter_ + best_offset;
-        confidence_ = 0.9 * confidence_ + 0.1 * best_corr;
+        confidence_ = blend_90_10(confidence_, best_corr);
         ++consecutive_hits_;
 
         if (consecutive_hits_ >= config_.lock_acquire_count) {
@@ -363,23 +435,23 @@ void FrameSync::handle_locked(const sample_t* symbols, size_t n) {
         size_t search_start = (expected_offset > half_window) ? expected_offset - half_window : 0;
         size_t search_end = std::min(expected_offset + half_window + 1, n);
 
-        double best_corr = 0.0;
+        FrameScore best_corr = 0;
         size_t best_offset = expected_offset;
 
         for (size_t offset = search_start;
              offset + preamble_ref_.size() <= n && offset < search_end; ++offset) {
-            double corr = correlate_preamble(symbols, n, offset);
+            FrameScore corr = correlate_preamble(symbols, n, offset);
             if (corr > best_corr) {
                 best_corr = corr;
                 best_offset = offset;
             }
         }
 
-        if (best_corr >= config_.detection_threshold * 0.8) {  // Relaxed threshold
+        if (best_corr >= relaxed_threshold_) {  // Relaxed threshold
             // Timing error available for future refinement
             // (best_offset vs expected_offset delta)
 
-            confidence_ = 0.95 * confidence_ + 0.05 * best_corr;
+            confidence_ = blend_95_5(confidence_, best_corr);
             consecutive_misses_ = 0;
 
             // Emit frame event
@@ -409,9 +481,9 @@ void FrameSync::handle_holdover(const sample_t* symbols, size_t n) {
     // Try to reacquire
     if (expected_boundary_ >= sample_counter_ && expected_boundary_ < sample_counter_ + n) {
         size_t expected_offset = expected_boundary_ - sample_counter_;
-        double corr = correlate_preamble(symbols, n, expected_offset);
+        FrameScore corr = correlate_preamble(symbols, n, expected_offset);
 
-        if (corr >= config_.detection_threshold) {
+        if (corr >= detection_threshold_) {
             transition_state(FrameSyncState::LOCKED);
             consecutive_hits_ = 1;
             emit_frame_event(FrameEvent::FRAME_START);
@@ -427,7 +499,7 @@ void FrameSync::handle_holdover(const sample_t* symbols, size_t n) {
         ++frame_number_;
         size_t frame_samples = config_.frame_params.samples_per_frame();
         expected_boundary_ += frame_samples;
-        confidence_ *= 0.9;  // Decay confidence
+        confidence_ = decay_90(confidence_);  // Decay confidence
     }
 }
 
