@@ -21,6 +21,17 @@
 namespace atsc3 {
 namespace sync {
 
+// Detection score and confidence domain. The float build keeps the
+// original normalized double; the fixed-point build works in unsigned
+// Q1.15 integers (32768 = 1.0, the same format as the DETECTION_THRESHOLD
+// register), so every comparison and blend in the state machine is an
+// integer operation the RTL reproduces exactly.
+#ifdef ATSC3_FIXED_POINT
+using FrameScore = uint32_t;
+#else
+using FrameScore = double;
+#endif
+
 // Frame sync state
 enum class FrameSyncState {
     SEARCHING,  // Looking for bootstrap/preamble
@@ -158,13 +169,16 @@ public:
         return symbol_position_;
     }
 
+    // Absolute sample index of the next expected frame boundary
+    size_t expected_boundary() const {
+        return expected_boundary_;
+    }
+
     // Get samples until next expected boundary
     size_t get_samples_to_boundary() const;
 
     // Get lock confidence
-    double get_confidence() const {
-        return confidence_;
-    }
+    double get_confidence() const;
 
     // Is locked?
     bool is_locked() const {
@@ -184,8 +198,13 @@ public:
     // FSM state), so it can be compared call-by-call against a double
     // reference without the closed-loop trajectory concerns
     // TimingRecovery's equivalence test ran into.
-    double compute_correlation(const sample_t* symbols, size_t n, size_t offset) {
-        return correlate_preamble(symbols, n, offset);
+    double compute_correlation(const sample_t* symbols, size_t n, size_t offset);
+
+    // Preamble reference sample k (k < fft_size). Exposed so the RTL's
+    // reference table can be generated from, and checked against, the
+    // running model.
+    const std::vector<sample_t>& preamble_reference() const {
+        return preamble_ref_;
     }
 
 private:
@@ -205,7 +224,14 @@ private:
 
     // Expected boundary
     size_t expected_boundary_;  // Next expected frame boundary
-    double confidence_;         // Current lock confidence
+    FrameScore confidence_;     // Current lock confidence
+
+    // Detection thresholds in the score domain, derived once from
+    // config_.detection_threshold: fixed-point truncates to Q1.15 (0.7 ->
+    // 22937, the register reset value); the relaxed locked-state
+    // threshold is 4/5 of it (integer divide in fixed-point).
+    FrameScore detection_threshold_;
+    FrameScore relaxed_threshold_;
 
     // Preamble reference for correlation
     std::vector<sample_t> preamble_ref_;
@@ -220,13 +246,10 @@ private:
     void handle_locked(const sample_t* symbols, size_t n);
     void handle_holdover(const sample_t* symbols, size_t n);
 
-    // Correlation. Return type stays double regardless of build mode
-    // (this class's existing public/internal contract -- the state
-    // machine above compares this against config_.detection_threshold,
-    // a double); under ATSC3_FIXED_POINT the computation itself is
-    // genuine fixed-point, converted only at this one boundary (see
-    // frame_sync.cc).
-    double correlate_preamble(const sample_t* symbols, size_t n, size_t offset);
+    // Normalized correlation magnitude in the score domain: the
+    // fixed-point build returns floor(|corr| * 32768 / norm), capped at
+    // 65535, with every step in integers (see frame_sync.cc).
+    FrameScore correlate_preamble(const sample_t* symbols, size_t n, size_t offset);
 
     // Event emission
     void emit_frame_event(FrameEvent::Type type);
