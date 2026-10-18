@@ -1,0 +1,23 @@
+# Run via hdl/formal/run_formal.sh isqrt_seq. Black-box harness: every
+# property is on ports plus a ghost model, so no flatten+expose stage.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+cover: mode cover
+depth 12
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal isqrt_seq.v
+read_verilog -formal isqrt_seq_formal.v
+prep -top isqrt_seq_formal
+
+[files]
+isqrt_seq.v ../rtl/common/isqrt_seq.v
+isqrt_seq_formal.v

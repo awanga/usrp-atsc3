@@ -1,0 +1,29 @@
+# Run via hdl/formal/run_formal.sh frame_sync_fsm. Black-box harness: every
+# property is on ports plus a ghost record, so no flatten+expose stage.
+# Bounded (see the harness header): the prove task is BMC, not induction.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 30
+cover: mode cover
+cover: depth 60
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal frame_sync_fsm.v
+read_verilog -formal frame_sync_fsm_formal.v
+prep -top frame_sync_fsm_formal
+
+# Products and quotients are cut (see the harness header).
+cutpoint t:$mul t:$div
+opt_clean
+
+[files]
+frame_sync_fsm.v ../rtl/sync/frame_sync_fsm.v
+frame_sync_fsm_formal.v
