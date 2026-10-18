@@ -57,7 +57,7 @@ target_include_directories(atsc3_lib
 
 target_link_libraries(atsc3_lib
     PUBLIC
-        Boost::system
+        Boost::boost
     PRIVATE
         $<$<NOT:$<BOOL:${ATSC3_FIXED_POINT}>>:${FFTW3_LIBRARIES}>
 )

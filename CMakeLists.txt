@@ -106,8 +106,10 @@ if(NOT FFTW3_FOUND)
   set(FFTW3_INCLUDE_DIRS "")
 endif()
 
-# Boost (required for various utilities)
-find_package(Boost 1.71 REQUIRED COMPONENTS system)
+# Boost (required for various utilities). Header-only use: Boost.System has been
+# header-only since 1.69 and Boost >= 1.89 no longer ships a boost_system CMake
+# component, so requesting it fails to configure there.
+find_package(Boost 1.71 REQUIRED)
 
 # GNU Radio (required for blocks/)
 find_package(Gnuradio ${ATSC3_GR_VERSION} COMPONENTS runtime blocks fft filter)
