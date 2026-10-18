@@ -28,7 +28,15 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - `lib/`: float and fixed-point builds 656/656 ctest, including the 11
   capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
   clean locally.
-- RTL done through 9.5 (2026-10-02): pilot_extractor and freq_correction
+- RTL done through 9.6 (2026-10-18): frame_sync (chunk buffer + FSM +
+  correlator + isqrt_seq) meets the done bar; the front-end bench now
+  taps the corrected stream into it. Golden change: the fixed-point
+  state machine runs on Q1.15 integer scores/thresholds/confidence
+  (float build unchanged). Host moved to Ubuntu 26.04 (Verilator 5.032,
+  Yosys 0.52, Python 3.14, GCC 15, Boost 1.90): lint/synth scripts and
+  the venv adapted, Boost.System made header-only; see
+  `hdl/docs/toolchain.md`.
+- Earlier, through 9.5 (2026-10-02): pilot_extractor and freq_correction
   meet the done bar; integration bench is now freq_correction ->
   cp_removal -> fft_engine -> pilot_extractor. Golden fix: pilot dedup
   precedence pinned (SCATTERED > CONTINUAL > EDGE; `std::sort` let an
@@ -41,8 +49,8 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Next
 
-1. 9.6 Frame sync RTL (after FFT + frequency correction; largest
-   correlator; pin the golden CLI's sample chunking).
+1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; needs the
+   vendor schematic and the user's answers on Vivado).
 2. 9.7 Channel estimator, 9.8 equalizer, 9.9 constellation demapper,
    9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
@@ -50,6 +58,26 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
    per block: HISTORY.md archive, "Phase 9".
 
 ## Open
+
+- Golden bug (needs approval, tagged-release behavior): FrameSync's
+  ACQUIRING loop ends the correlation window at `offset + fft_size <=
+  expected + search_window/2`, so it can only succeed when fft_size <=
+  search_window. At the defaults (8192 vs 64) the synchronizer can never
+  leave ACQUIRING for LOCKED. The RTL ports it faithfully; tests use small
+  preambles. Fix (LOCKED's bound: `offset + fft_size <= n && offset <
+  search_end`) changes both the model and the RTL.
+- frame_sync throughput: one correlation is fft_size + ~170 cycles and a
+  chunk runs up to search_window+1 of them with the input held off
+  (~0.5M cycles at 8K/64); the bench measures +8,333 source-stall cycles
+  per symbol (one correlation). Overlap/double-buffering is 9.17 work.
+- frame_sync_fsm formal is bounded (BMC depth 30, cover depth 60), not
+  unbounded; blends/products are cut. The correlator's arithmetic is
+  covered by bit-exact simulation and mutants only.
+- GCC 15 rejects `test/unit/test_alp_demux.cc` (-Werror=stringop-overflow
+  false positive in std::vector); cppcheck 2.19 flags 5 existing
+  `returnByReference` notes (metrics/*.h, pilot_extractor.h). Not touched.
+- Gate sizes/timings of blocks before frame_sync were not re-baselined on
+  Yosys 0.52.
 
 - Throughput (9.17): bootstrap detector ~150 cycles/sample,
   freq_correction 18 cycles/sample (one iterative CORDIC per sample),

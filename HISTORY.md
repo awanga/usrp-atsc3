@@ -1130,3 +1130,30 @@ below holds the same bit-exact bar against its C++ reference.
 - [ ] RTL port: `hdl/rtl/channel_estimator.v` — LS + pipelined Wiener
 - [ ] AXI4-Lite control plane for all blocks (parameter load from ROM/registers)
 - [ ] Timing closure simulation (Verilator gate-level with annotated delays)
+
+## 2026-10-18 — Frame sync RTL (plan 9.6) and the hg_xcku5p test-bed plan
+
+- Golden: the fixed-point FrameSync compared doubles; score, thresholds
+  and confidence are now unsigned Q1.15 integers (ratio = floor(|corr| *
+  32768 / norm) capped at 65535, threshold truncated, relaxed = 4/5,
+  blends (9c+x)/10, (19c+x)/20, 9c/10). New unit tests were shown to fail
+  under four mutants. Found while writing them: the ACQUIRING window loop
+  can only succeed when fft_size <= search_window (see TASKS.md Open).
+- RTL: `isqrt_seq` (digit-recurrence sqrt), `frame_correlator` (one
+  offset: MAC over a 13-entry reference period, two sqrts, CORDIC
+  magnitude, 64-bit divide), `frame_sync_fsm` (the four handlers) and
+  `frame_sync` (TLAST-delimited chunk RAM, bootstrap port, FrameEvent
+  output). Pinned chunking: a chunk is the TLAST packet.
+- Verification: bit-exact cocotb vs `frame_sync_gen` (random scripts,
+  directed lock/holdover/threshold/search-step cases, skipped and
+  oversized chunks, reset mid-process, config scrambled while processing);
+  correlator bench; formal jobs isqrt_seq (unbounded), frame_correlator,
+  frame_sync_fsm, frame_sync (bounded BMC, covers reached).
+  Bench bugs found on the way: a sample driven at a falling edge was
+  accepted twice; a tvalid left high through input gaps duplicated
+  samples; the event sink judged the hold rule one cycle late.
+- Environment: host upgraded to Ubuntu 26.04; see toolchain.md for the
+  lint/synth/venv/Boost adaptations.
+- Test bed: `hdl/docs/hg_xcku5p_testbed.md` (CPU vs state machine trade,
+  data path, LEDs, HDMI, phases); the vendor page lacks HDMI, PHY, FMC
+  and pinout details.
