@@ -8,13 +8,29 @@
 
 | Tool | Version verified | Install |
 |---|---|---|
-| Verilator | 5.020 (Debian 5.020-1) | `apt install verilator` |
+| Verilator | 5.032 (Debian 5.032-1); 5.020 earlier | `apt install verilator` |
 | Icarus Verilog | 12.0 | `apt install iverilog` |
-| Yosys | 0.33 | `apt install yosys` |
+| Yosys | 0.52; 0.33 earlier | `apt install yosys` |
 | SymbiYosys (`sby`) | 0.68 | `apt install sby` (pulled in with yosys on Debian/Ubuntu) |
 | SMT solver | z3 4.8.12, yices 2.6.5 (cvc5 1.1.2 qualified but slower; see formal_conventions.md) | `apt install z3 yices2` |
 | cocotb | **1.9.2**, pinned -- see below | `pip install -r hdl/sim/cocotb/requirements.txt` inside the venv |
-| Python | 3.12.3 | system |
+| Python | 3.14.4 (venv); 3.12.3 earlier | system |
+
+The host moved to Ubuntu 26.04 on 2026-10-18 (Verilator 5.032, Yosys 0.52,
+Python 3.14, GCC 15, Boost 1.90). What that changed for the HDL flow:
+
+- Verilator 5.032 prints a "Verilation Report" banner even for a clean
+  `--lint-only`, which broke the "no output at all" lint gate;
+  `lint.sh` passes `--quiet-stats`.
+- Yosys 0.52's `-p` treats the commas in `abc -g AND,NAND,...` as command
+  separators; `synth.sh` writes the script to a file and runs `yosys -s`.
+- The venv has to be rebuilt per system Python (the old one pointed at a
+  removed interpreter): `python3 -m venv --clear hdl/sim/.venv`, then
+  `pip install -r hdl/sim/cocotb/requirements.txt black==24.1.1
+  flake8==7.0.0`. cocotb 1.9.2 builds and runs against Python 3.14 and
+  Verilator 5.032 (the shim problem below is specific to cocotb 2.x).
+- Existing formal jobs and gate sizes were not re-baselined on Yosys 0.52
+  beyond the new blocks and the full gate run recorded in TASKS.md.
 
 No vendor/proprietary tools anywhere in this list.
 
@@ -76,6 +92,10 @@ Generated RTL data:
   `TWIDDLE_HEX` parameter).
 - `hdl/rtl/ofdm/pilot_cp_positions.hex`: `build-fxp/hdl/sim/golden/pilot_cp_rom_gen > hdl/rtl/ofdm/pilot_cp_positions.hex`
   (same `$readmemh` scheme, through the `CP_ROM_HEX` parameter).
+- `hdl/rtl/sync/frame_sync_ref.vh`: from `echo Z |
+  build-fxp/hdl/sim/golden/frame_sync_gen`, reformatted as the `case`
+  table (header of the file); `test_frame_correlator_tb.py` fails if it
+  drifts from the model.
 - `hdl/rtl/sync/timing_recovery_coeffs.vh`: from `echo ROM |
   build-fxp/hdl/sim/golden/timing_recovery_gen`; `test_polyphase_fir.py`
   fails if it drifts from the running filter design.

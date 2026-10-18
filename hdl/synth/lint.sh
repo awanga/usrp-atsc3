@@ -38,8 +38,8 @@ for f in "$RTL_DIR"/**/*.v; do
     rel="${f#"$RTL_DIR"/}"
     log="$LOG_DIR/${rel//\//_}.log"
     {
-        verilator --lint-only --language 1364-2001 -Wall "${vl_args[@]}" "$f" 2>&1 || echo "verilator-2001: exit $?"
-        verilator --lint-only --language 1800-2017 -Wall "${vl_args[@]}" "$f" 2>&1 || echo "verilator-2017: exit $?"
+        verilator --lint-only --quiet-stats --language 1364-2001 -Wall "${vl_args[@]}" "$f" 2>&1 || echo "verilator-2001: exit $?"
+        verilator --lint-only --quiet-stats --language 1800-2017 -Wall "${vl_args[@]}" "$f" 2>&1 || echo "verilator-2017: exit $?"
         iverilog -g2001 -Wall "${iv_args[@]}" -o /dev/null "$f" 2>&1 || echo "iverilog: exit $?"
     } >"$log"
     if [[ -s "$log" ]]; then

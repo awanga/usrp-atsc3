@@ -31,6 +31,9 @@ declare -A SOURCES=(
     [fft_engine]="ofdm/fft_engine.v"
     [freq_correction]="sync/freq_correction.v common/cordic.v"
     [pilot_extractor]="ofdm/pilot_extractor.v"
+    [isqrt_seq]="common/isqrt_seq.v"
+    [frame_correlator]="sync/frame_correlator.v common/isqrt_seq.v common/cordic.v common/udiv_seq.v"
+    [frame_sync]="sync/frame_sync.v sync/frame_sync_fsm.v sync/frame_correlator.v common/isqrt_seq.v common/cordic.v common/udiv_seq.v"
 )
 # Extra Yosys commands run after reading the sources, per top.
 declare -A SETUP=(
@@ -38,7 +41,8 @@ declare -A SETUP=(
     [pilot_extractor]="chparam -set CP_ROM_HEX \"$RTL_DIR/ofdm/pilot_cp_positions.hex\" pilot_extractor;"
 )
 TOPS=(axi4s_skid_buffer udiv_seq cordic bootstrap_detector polyphase_fir
-    timing_recovery cp_removal fft_engine freq_correction pilot_extractor)
+    timing_recovery cp_removal fft_engine freq_correction pilot_extractor isqrt_seq
+    frame_correlator frame_sync)
 [[ $# -gt 0 ]] && TOPS=("$@")
 
 pass=0
@@ -59,7 +63,10 @@ for top in "${TOPS[@]}"; do
         opt_clean;
         check -assert;
         tee -o $LOG_DIR/$top.stat stat"
-    if timeout "${SYNTH_TIMEOUT:-600}" yosys -q -l "$log" -p "$script" >/dev/null 2>&1 &&
+    # A script file, not -p: Yosys 0.52's -p treats the commas in abc's gate
+    # list as command separators.
+    printf '%s\n' "$script" >"$LOG_DIR/$top.ys"
+    if timeout "${SYNTH_TIMEOUT:-600}" yosys -q -l "$log" -s "$LOG_DIR/$top.ys" >/dev/null 2>&1 &&
         ! grep -q '^Warning' "$log"; then
         cells=$(awk '/Number of cells:/ {n = $4} END {print n}' "$LOG_DIR/$top.stat")
         rambits=$(awk '/parameter .SIZE / {s = $3} /parameter .WIDTH / {t += s * $3} END {print t + 0}' \
