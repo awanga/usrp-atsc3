@@ -3,7 +3,9 @@
 // Extracts scattered pilots (SP), continual pilots (CP), and edge pilots
 // from FFT output for channel estimation and tracking.
 //
-// Reference: ATSC A/322 Section 7.2 (Pilot Patterns)
+// Reference: ATSC A/322:2018 Section 8.1 (Pilot Insertion), Annex D
+// (Continual Pilot Patterns). The CP32 table and the additional-CP
+// indices below are transcribed from Tables D.1.1, D.1.4 and D.1.5.
 
 #include "pilot_extractor.h"
 
@@ -16,78 +18,154 @@ namespace ofdm {
 
 namespace {
 
-// Pilot pattern parameters table per ATSC A/322 Section 7.2
-// Each pattern has frequency spacing (Dx) and time spacing (Dy)
+// Scattered pilot spacing DX and pattern depth DY per pattern code (Table 8.2)
 struct PatternDef {
-    size_t dx;  // Frequency spacing (subcarriers)
+    size_t dx;  // Frequency spacing (carriers)
     size_t dy;  // Time spacing (symbols)
 };
 
 constexpr PatternDef kPatternTable[] = {
-    {0, 0},   // Placeholder for index 0
-    {3, 4},   // PP1: Dx=3, Dy=4
-    {6, 2},   // PP2: Dx=6, Dy=2
-    {6, 4},   // PP3: Dx=6, Dy=4
-    {12, 2},  // PP4: Dx=12, Dy=2
-    {12, 4},  // PP5: Dx=12, Dy=4
-    {24, 2},  // PP6: Dx=24, Dy=2
-    {24, 4},  // PP7: Dx=24, Dy=4
-    {6, 16},  // PP8: Dx=6, Dy=16
+    {3, 2},  {3, 4},  {4, 2},  {4, 4},  {6, 2},  {6, 4},  {8, 2},  {8, 4},
+    {12, 2}, {12, 4}, {16, 2}, {16, 4}, {24, 2}, {24, 4}, {32, 2}, {32, 4},
+};
+constexpr size_t kNumPatterns = sizeof(kPatternTable) / sizeof(kPatternTable[0]);
+
+// Maximum carriers NoCmax and carrier reduction unit Cunit per FFT size
+// (Section 7.2.3, Table 7.1)
+struct FftDef {
+    size_t fft_size;
+    size_t noc_max;
+    size_t c_unit;
 };
 
-// Active carrier counts per FFT size (from ATSC A/322)
-constexpr size_t kActiveCarriers8K = 6913;
-constexpr size_t kActiveCarriers16K = 13825;
-constexpr size_t kActiveCarriers32K = 27649;
+constexpr FftDef kFftTable[] = {
+    {8192, 6913, 96},
+    {16384, 13825, 192},
+    {32768, 27649, 384},
+};
+constexpr size_t kMaxReduction = 4;  // Cred_coeff ranges 0..4
 
-// Continual pilot positions for 8K FFT (ATSC A/322 Table 7.5)
-// These are the carrier indices within the active region
-const std::vector<size_t> kContinualPilots8K = {
-    44,   122,  203,  262,  346,  410,  490,  559,  643,  715,  797,  866,  943,  1016, 1094, 1165,
-    1247, 1318, 1397, 1469, 1550, 1619, 1700, 1769, 1850, 1922, 2000, 2069, 2153, 2222, 2299, 2378,
-    2453, 2521, 2602, 2678, 2755, 2823, 2900, 2975, 3053, 3128, 3203, 3278, 3353, 3421, 3500, 3575,
-    3650, 3721, 3800, 3878, 3950, 4022, 4097, 4171, 4250, 4318, 4397, 4469, 4547, 4618, 4694, 4769,
-    4844, 4919, 4994, 5065, 5143, 5218, 5294, 5366, 5441, 5518, 5594, 5669, 5741, 5818, 5893, 5966,
-    6044, 6116, 6197, 6262, 6343, 6412, 6493, 6562, 6643, 6715, 6793, 6869};
+// Common continual pilot set CP32: absolute carrier indices, Table D.1.1
+constexpr size_t kCp32[192] = {
+    236,   316,   356,   412,   668,   716,   868,   1100,  1228,  1268,  1340,  1396,  1876,
+    1916,  2140,  2236,  2548,  2644,  2716,  2860,  3004,  3164,  3236,  3436,  3460,  3700,
+    3836,  4028,  4124,  4132,  4156,  4316,  4636,  5012,  5132,  5140,  5332,  5372,  5500,
+    5524,  5788,  6004,  6020,  6092,  6428,  6452,  6500,  6740,  7244,  7316,  7372,  7444,
+    7772,  7844,  7924,  8020,  8164,  8308,  8332,  8348,  8788,  8804,  9116,  9140,  9292,
+    9412,  9436,  9604,  10076, 10204, 10340, 10348, 10420, 10660, 10684, 10708, 11068, 11132,
+    11228, 11356, 11852, 11860, 11884, 12044, 12116, 12164, 12268, 12316, 12700, 12772, 12820,
+    12988, 13300, 13340, 13564, 13780, 13868, 14084, 14308, 14348, 14660, 14828, 14876, 14948,
+    15332, 15380, 15484, 15532, 15604, 15764, 15788, 15796, 16292, 16420, 16516, 16580, 16940,
+    16964, 16988, 17228, 17300, 17308, 17444, 17572, 18044, 18212, 18236, 18356, 18508, 18532,
+    18844, 18860, 19300, 19316, 19340, 19484, 19628, 19724, 19804, 19876, 20204, 20276, 20332,
+    20404, 20908, 21148, 21196, 21220, 21556, 21628, 21644, 21860, 22124, 22148, 22276, 22316,
+    22508, 22516, 22636, 23012, 23332, 23492, 23516, 23524, 23620, 23812, 23948, 24188, 24212,
+    24412, 24484, 24644, 24788, 24932, 25004, 25100, 25412, 25508, 25732, 25772, 26252, 26308,
+    26380, 26420, 26548, 26780, 26932, 26980, 27236, 27292, 27332, 27412,
+};
 
-// Compute first active subcarrier (center FFT around DC)
-size_t compute_first_active(size_t fft_size, size_t num_active) {
-    return (fft_size - num_active) / 2;
+// Additional scattered-pilot-bearing continual pilots, relative carrier
+// indices (Tables D.1.4 and D.1.5). Entries in parentheses in the standard
+// are not used when Cred_coeff is odd (`odd_unused`). A pattern that has no
+// entry for an FFT size is not an allowed combination (Table 8.3).
+struct AdditionalCp {
+    size_t index;
+    bool odd_unused;
+};
+
+struct AdditionalSet {
+    bool allowed;
+    size_t count;
+    AdditionalCp cp[3];
+};
+
+constexpr AdditionalSet kNone = {false, 0, {{0, false}, {0, false}, {0, false}}};
+// Allowed, but the set is computed (8K SP32_4)
+constexpr AdditionalSet kByReduction = {true, 0, {{0, false}, {0, false}, {0, false}}};
+
+constexpr AdditionalSet one(size_t a, bool unused = false) {
+    return {true, 1, {{a, unused}, {0, false}, {0, false}}};
 }
 
-// PRBS generator for pilot reference values
-// Uses polynomial x^11 + x^2 + 1 per ATSC A/322
-class PrbsGenerator {
-public:
-    PrbsGenerator() : state_(0x7FF) {}  // All ones initial state
+constexpr AdditionalSet three(size_t a, size_t b, size_t c, bool b_unused = false,
+                              bool c_unused = false) {
+    return {true, 3, {{a, false}, {b, b_unused}, {c, c_unused}}};
+}
 
-    void reset() {
-        state_ = 0x7FF;
-    }
-
-    int8_t next() {
-        // Output is bit 0
-        int8_t out = (state_ & 1) ? 1 : -1;
-
-        // Feedback: x^11 + x^2 + 1
-        int new_bit = ((state_ >> 10) ^ (state_ >> 1)) & 1;
-        state_ = ((state_ << 1) | new_bit) & 0x7FF;
-
-        return out;
-    }
-
-    // Get bit at specific position (generates sequence up to that point)
-    int8_t at(size_t position) {
-        reset();
-        for (size_t i = 0; i < position; ++i) {
-            next();
-        }
-        return next();
-    }
-
-private:
-    uint32_t state_;
+// [pattern code][fft: 0 = 8K, 1 = 16K, 2 = 32K]
+constexpr AdditionalSet kAdditional[kNumPatterns][3] = {
+    /* SP3_2  */ {one(1731), one(3471), one(6939)},
+    /* SP3_4  */ {three(1731, 2886, 5733), three(3471, 5778, 11469), kNone},
+    /* SP4_2  */ {one(1732), one(3460), kNone},
+    /* SP4_4  */ {three(1732, 2888, 5724), three(3460, 5768, 11452), kNone},
+    /* SP6_2  */ {one(1734), one(3462), one(6942)},
+    /* SP6_4  */ {three(1734, 2892, 5730), three(3462, 5772, 11466), kNone},
+    /* SP8_2  */ {one(1736), one(3464), one(6920)},
+    /* SP8_4  */ {three(1736, 2896, 5720), three(3464, 5776, 11448), kNone},
+    /* SP12_2 */ {one(1740), one(3468), one(6924)},
+    /* SP12_4 */ {three(1740, 2904, 5748), three(3468, 5784, 11460), kNone},
+    /* SP16_2 */ {one(1744), one(3472), one(6928)},
+    /* SP16_4 */ {three(1744, 2912, 5744, true, true), three(3472, 5792, 11440), kNone},
+    /* SP24_2 */ {kNone, one(3480), one(6936)},
+    /* SP24_4 */ {kNone, three(3480, 5808, 11496), kNone},
+    /* SP32_2 */ {one(1696, true), one(3488), one(6944)},
+    /* SP32_4 */ {kByReduction, three(3488, 5824, 11488, true, true), kNone},
 };
+
+// 8K SP32_4 additional CPs depend on Cred_coeff (Table D.1.5)
+std::vector<size_t> additional_sp32_4_8k(size_t cred) {
+    switch (cred) {
+        case 0:
+            return {1696, 2880, 5728};
+        case 1:
+            return {};
+        case 2:
+            return {1696};
+        case 3:
+            return {1696, 2880};
+        default:
+            return {1696, 2880, 5728};
+    }
+}
+
+const FftDef& fft_def(size_t fft_size) {
+    for (const FftDef& def : kFftTable) {
+        if (def.fft_size == fft_size) {
+            return def;
+        }
+    }
+    throw std::invalid_argument("Invalid FFT size for pilot extraction");
+}
+
+size_t fft_index(size_t fft_size) {
+    return static_cast<size_t>(&fft_def(fft_size) - kFftTable);
+}
+
+// Common continual pilot, absolute carrier index: CP32 for 32K, and for
+// 16K / 8K the ceiling of every 2nd / 4th CP32 entry halved / quartered
+// (Section 8.1.4.1; reproduces Tables D.1.2 and D.1.3).
+std::vector<size_t> common_cp_absolute(size_t fft_size) {
+    const size_t stride = 32768 / fft_size;
+    std::vector<size_t> out;
+    for (size_t i = 0; i * stride < 192; ++i) {
+        out.push_back((kCp32[i * stride] + stride - 1) / stride);
+    }
+    return out;
+}
+
+// Reference sequence r_k (Section 8.1.2): 13-bit generator with
+// G(x) = 1 + x^9 + x^10 + x^12 + x^13, initial sequence 0000 0000 1101 1,
+// reloaded at the start of every symbol. Values 0..12 are the initial
+// sequence read from x13 back to x1; later values follow the recurrence
+// s[n] = s[n-9] ^ s[n-10] ^ s[n-12] ^ s[n-13].
+std::vector<uint8_t> reference_sequence(size_t length) {
+    static constexpr uint8_t kInitial[13] = {1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<uint8_t> s(length);
+    for (size_t n = 0; n < length; ++n) {
+        s[n] = (n < 13) ? kInitial[n] : (s[n - 9] ^ s[n - 10] ^ s[n - 12] ^ s[n - 13]);
+    }
+    return s;
+}
 
 }  // namespace
 
@@ -158,112 +236,82 @@ void PilotExtractor::init() {
 }
 
 void PilotExtractor::compute_pattern_params() {
-    size_t idx = static_cast<size_t>(config_.pattern);
-    if (idx < 1 || idx > 8) {
+    const size_t idx = static_cast<size_t>(config_.pattern);
+    if (idx >= kNumPatterns) {
         throw std::invalid_argument("Invalid pilot pattern");
+    }
+    const FftDef& fft = fft_def(config_.fft_size);
+    if (!kAdditional[idx][fft_index(config_.fft_size)].allowed) {
+        throw std::invalid_argument("Pilot pattern not allowed for this FFT size");
+    }
+
+    if (config_.num_active_carriers == 0) {
+        config_.num_active_carriers = fft.noc_max;
+    }
+    if (config_.num_active_carriers > fft.noc_max ||
+        (fft.noc_max - config_.num_active_carriers) % fft.c_unit != 0 ||
+        (fft.noc_max - config_.num_active_carriers) / fft.c_unit > kMaxReduction) {
+        throw std::invalid_argument("Invalid number of active carriers for pilot extraction");
     }
 
     params_.pattern = config_.pattern;
     params_.dx = kPatternTable[idx].dx;
     params_.dy = kPatternTable[idx].dy;
     params_.has_edge_pilots = true;
+    params_.reduced_carriers = (fft.noc_max - config_.num_active_carriers) / fft.c_unit;
 
-    // Set active carrier range based on FFT size
-    if (config_.fft_size == 8192) {
-        params_.num_continual_pilots = kContinualPilots8K.size();
-        if (config_.num_active_carriers == 0) {
-            config_.num_active_carriers = kActiveCarriers8K;
-        }
-    } else if (config_.fft_size == 16384) {
-        // 16K has approximately 2x as many continual pilots
-        params_.num_continual_pilots = kContinualPilots8K.size() * 2;
-        if (config_.num_active_carriers == 0) {
-            config_.num_active_carriers = kActiveCarriers16K;
-        }
-    } else if (config_.fft_size == 32768) {
-        // 32K has approximately 4x as many continual pilots
-        params_.num_continual_pilots = kContinualPilots8K.size() * 4;
-        if (config_.num_active_carriers == 0) {
-            config_.num_active_carriers = kActiveCarriers32K;
-        }
-    } else {
-        throw std::invalid_argument("Invalid FFT size for pilot extraction");
-    }
-
-    // Compute first active carrier if not set
     if (config_.first_active_carrier == 0) {
-        config_.first_active_carrier =
-            compute_first_active(config_.fft_size, config_.num_active_carriers);
+        config_.first_active_carrier = (config_.fft_size - config_.num_active_carriers) / 2;
     }
-
     params_.first_active = config_.first_active_carrier;
     params_.last_active = params_.first_active + config_.num_active_carriers - 1;
 }
 
 void PilotExtractor::generate_continual_positions() {
+    const FftDef& fft = fft_def(config_.fft_size);
+    const size_t cred = params_.reduced_carriers;
+    const size_t noc = config_.num_active_carriers;
+    const size_t shift = cred * fft.c_unit / 2;  // absolute index of relative carrier 0
+
+    std::vector<size_t> relative;
+
+    // Common CPs outside the configured carriers are not transmitted
+    for (size_t abs_index : common_cp_absolute(config_.fft_size)) {
+        if (abs_index >= shift && abs_index - shift < noc) {
+            relative.push_back(abs_index - shift);
+        }
+    }
+
+    for (size_t index : additional_continual_pilots(config_.fft_size, config_.pattern, cred)) {
+        relative.push_back(index);
+    }
+
+    std::sort(relative.begin(), relative.end());
+    relative.erase(std::unique(relative.begin(), relative.end()), relative.end());
+
     continual_positions_.clear();
-
-    // Scale factor for FFT size
-    size_t scale = config_.fft_size / 8192;
-
-    // Generate continual pilot positions
-    // For larger FFT sizes, positions scale and additional pilots are added
-    // to maintain consistent spectral density
-    for (size_t pos : kContinualPilots8K) {
-        // Scale position for FFT size
-        size_t scaled_pos = pos * scale;
-        size_t actual_pos = config_.first_active_carrier + scaled_pos;
-
-        if (actual_pos <= params_.last_active) {
-            continual_positions_.push_back(actual_pos);
+    for (size_t rel : relative) {
+        if (rel < noc) {
+            continual_positions_.push_back(params_.first_active + rel);
         }
     }
-
-    // For 16K and 32K, add interpolated positions to maintain pilot density
-    if (scale > 1) {
-        std::vector<size_t> additional;
-
-        // Add midpoint positions between existing continual pilots
-        for (size_t i = 0; i < kContinualPilots8K.size() - 1; ++i) {
-            size_t pos1 = kContinualPilots8K[i] * scale;
-            size_t pos2 = kContinualPilots8K[i + 1] * scale;
-
-            // Add intermediate positions based on scale
-            for (size_t j = 1; j < scale; ++j) {
-                size_t interp_pos = pos1 + ((pos2 - pos1) * j) / scale;
-                size_t actual_pos = config_.first_active_carrier + interp_pos;
-
-                if (actual_pos <= params_.last_active) {
-                    additional.push_back(actual_pos);
-                }
-            }
-        }
-
-        continual_positions_.insert(continual_positions_.end(), additional.begin(),
-                                    additional.end());
-    }
-
-    // Sort and remove duplicates
-    std::sort(continual_positions_.begin(), continual_positions_.end());
-    auto last = std::unique(continual_positions_.begin(), continual_positions_.end());
-    continual_positions_.erase(last, continual_positions_.end());
+    params_.num_continual_pilots = continual_positions_.size();
 }
 
 void PilotExtractor::generate_pilot_sequence() {
-    // Pre-generate PRBS sequence for all possible pilot positions
-    pilot_sequence_.resize(config_.fft_size);
-
-    PrbsGenerator prbs;
-    for (size_t i = 0; i < config_.fft_size; ++i) {
-        pilot_sequence_[i] = prbs.next();
+    const std::vector<uint8_t> r = reference_sequence(config_.num_active_carriers);
+    pilot_sequence_.resize(r.size());
+    for (size_t k = 0; k < r.size(); ++k) {
+        // Re{c} = 2 A (1/2 - r_k): r_k = 0 is +A, r_k = 1 is -A
+        pilot_sequence_[k] = r[k] ? -1 : 1;
     }
 }
 
-int8_t PilotExtractor::get_prbs_bit(size_t position) const {
-    if (position >= pilot_sequence_.size()) {
+int8_t PilotExtractor::get_prbs_bit(size_t relative_carrier) const {
+    if (relative_carrier >= pilot_sequence_.size()) {
         return 1;  // Default to +1
     }
-    return pilot_sequence_[position];
+    return pilot_sequence_[relative_carrier];
 }
 
 std::vector<PilotSymbol> PilotExtractor::extract(const sample_t* fft_output,
@@ -316,7 +364,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_scattered(const sample_t* fft_o
         pilot.type = PilotType::SCATTERED;
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
-        int8_t prbs = get_prbs_bit(k);
+        int8_t prbs = get_prbs_bit(k - params_.first_active);
         pilot.reference_value = make_bpsk_sample(prbs);
 
         pilots.push_back(pilot);
@@ -336,7 +384,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_continual(const sample_t* fft_o
         pilot.type = PilotType::CONTINUAL;
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
-        int8_t prbs = get_prbs_bit(k);
+        int8_t prbs = get_prbs_bit(k - params_.first_active);
         pilot.reference_value = make_bpsk_sample(prbs);
 
         pilots.push_back(pilot);
@@ -362,7 +410,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_edge(const sample_t* fft_output
         pilot.type = PilotType::EDGE;
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
-        int8_t prbs = get_prbs_bit(k);
+        int8_t prbs = get_prbs_bit(k - params_.first_active);
         pilot.reference_value = make_bpsk_sample(prbs);
 
         pilots.push_back(pilot);
@@ -371,7 +419,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_edge(const sample_t* fft_output
     return pilots;
 }
 
-PilotPatternParams PilotExtractor::get_pattern_params() const {
+const PilotPatternParams& PilotExtractor::get_pattern_params() const {
     return params_;
 }
 
@@ -418,7 +466,7 @@ bool PilotExtractor::is_continual_pilot(size_t subcarrier) const {
 }
 
 sample_t PilotExtractor::get_reference(size_t subcarrier, size_t /* symbol_index */) const {
-    int8_t prbs = get_prbs_bit(subcarrier);
+    int8_t prbs = get_prbs_bit(subcarrier - params_.first_active);
     return make_bpsk_sample(prbs);
 }
 
@@ -428,6 +476,35 @@ void PilotExtractor::set_config(const PilotExtractorConfig& config) {
 }
 
 // Utility functions
+std::vector<size_t> common_continual_pilots(size_t fft_size) {
+    fft_def(fft_size);  // validates the size
+    return common_cp_absolute(fft_size);
+}
+
+bool pilot_pattern_allowed(size_t fft_size, PilotPattern pattern) {
+    const size_t idx = static_cast<size_t>(pattern);
+    return idx < kNumPatterns && kAdditional[idx][fft_index(fft_size)].allowed;
+}
+
+std::vector<size_t> additional_continual_pilots(size_t fft_size, PilotPattern pattern,
+                                                size_t reduced_carriers) {
+    if (!pilot_pattern_allowed(fft_size, pattern)) {
+        throw std::invalid_argument("Pilot pattern not allowed for this FFT size");
+    }
+    const AdditionalSet& set = kAdditional[static_cast<size_t>(pattern)][fft_index(fft_size)];
+    std::vector<size_t> out;
+    if (set.count == 0) {
+        out = additional_sp32_4_8k(reduced_carriers);
+    }
+    for (size_t i = 0; i < set.count; ++i) {
+        if (!(set.cp[i].odd_unused && (reduced_carriers % 2) == 1)) {
+            out.push_back(set.cp[i].index);
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 PilotPatternParams get_pilot_pattern_params(PilotPattern pattern, size_t fft_size) {
     PilotExtractorConfig config;
     config.fft_size = fft_size;

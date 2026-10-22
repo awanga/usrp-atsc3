@@ -5,14 +5,19 @@
 // Extracts scattered pilots (SP), continual pilots (CP), and edge pilots
 // from FFT output for channel estimation and tracking.
 //
-// Pilot patterns PP1-PP8 per ATSC A/322 Section 7.2
+// Pilot layout per ATSC A/322:2018 Section 8.1 and Annexes D-E: the 16
+// scattered pilot patterns SPa_b, the common CP sets derived from CP32,
+// the additional scattered-pilot-bearing CPs, edge pilots at relative
+// carriers 0 and NoC-1, and the 13-bit reference sequence reloaded at the
+// start of every symbol. Preamble and subframe-boundary symbols carry
+// other pilot sets and are not handled here.
 //
 // AXI4-S Interface Contract:
 //   Input:  TDATA=cf32 (FFT output, N_fft subcarriers)
 //   Output: Vector of PilotSymbol (index, reference, received)
 //
-// Reference: ATSC A/322 Section 7.2 (Pilot Patterns)
-
+// Reference: ATSC A/322 Section 8.1 (Pilot Insertion), Annex D, Annex E
+//
 #include "types.h"
 
 #include <cstddef>
@@ -23,16 +28,25 @@
 namespace atsc3 {
 namespace ofdm {
 
-// Pilot pattern enumeration (PP1-PP8)
+// Scattered pilot patterns SPa_b (DX = a, DY = b, Table 8.2). The value of
+// each enumerator is its L1D_scattered_pilot_pattern code (Table 9.12).
 enum class PilotPattern {
-    PP1 = 1,  // Dx=3,  Dy=4
-    PP2 = 2,  // Dx=6,  Dy=2
-    PP3 = 3,  // Dx=6,  Dy=4
-    PP4 = 4,  // Dx=12, Dy=2
-    PP5 = 5,  // Dx=12, Dy=4
-    PP6 = 6,  // Dx=24, Dy=2
-    PP7 = 7,  // Dx=24, Dy=4
-    PP8 = 8   // Dx=6,  Dy=16
+    SP3_2 = 0,
+    SP3_4 = 1,
+    SP4_2 = 2,
+    SP4_4 = 3,
+    SP6_2 = 4,
+    SP6_4 = 5,
+    SP8_2 = 6,
+    SP8_4 = 7,
+    SP12_2 = 8,
+    SP12_4 = 9,
+    SP16_2 = 10,
+    SP16_4 = 11,
+    SP24_2 = 12,
+    SP24_4 = 13,
+    SP32_2 = 14,
+    SP32_4 = 15
 };
 
 // Pilot type classification
@@ -64,7 +78,10 @@ struct PilotPatternParams {
     size_t dx;  // Frequency spacing (subcarriers)
     size_t dy;  // Time spacing (symbols)
 
-    // Continual pilot count (depends on FFT size)
+    // Carrier reduction coefficient implied by the number of active carriers
+    size_t reduced_carriers;
+
+    // Continual pilot count: common plus additional CPs inside the active window
     size_t num_continual_pilots;
 
     // Edge pilot info
@@ -81,12 +98,16 @@ struct PilotExtractorConfig {
     size_t fft_size = 8192;
 
     // Pilot pattern
-    PilotPattern pattern = PilotPattern::PP3;
+    PilotPattern pattern = PilotPattern::SP6_4;
 
-    // Active carrier range (typically center 85-90% of FFT)
-    // Set to 0 to auto-compute based on FFT size
+    // Active carrier range. The number of carriers is NoC = NoCmax -
+    // Cred_coeff * Cunit (Table 7.1), so it must be one of the five legal
+    // values for the FFT size (8K: 6913 down to 6529 in steps of 96, 16K:
+    // 13825 in steps of 192, 32K: 27649 in steps of 384); 0 selects NoCmax.
+    // The window is centered in the FFT unless first_active_carrier is
+    // set (0 = centered).
     size_t first_active_carrier = 0;
-    size_t num_active_carriers = 0;  // 0 = auto-compute from FFT size
+    size_t num_active_carriers = 0;
 };
 
 // Pilot Extractor
@@ -98,7 +119,7 @@ struct PilotExtractorConfig {
 // Usage:
 //   PilotExtractorConfig config;
 //   config.fft_size = 8192;
-//   config.pattern = PilotPattern::PP3;
+//   config.pattern = PilotPattern::SP6_4;
 //   PilotExtractor extractor(config);
 //
 //   // Extract pilots from FFT output
@@ -129,7 +150,7 @@ public:
     std::vector<PilotSymbol> extract_edge(const sample_t* fft_output) const;
 
     // Get pilot pattern parameters
-    PilotPatternParams get_pattern_params() const;
+    const PilotPatternParams& get_pattern_params() const;
 
     // Get number of scattered pilots per symbol
     size_t get_scattered_pilot_count(size_t symbol_index) const;
@@ -166,7 +187,7 @@ private:
     // Continual pilot positions (pre-computed for FFT size)
     std::vector<size_t> continual_positions_;
 
-    // Pilot reference sequence (BPSK, derived from PRBS)
+    // Reference sequence r_k as +1 / -1 (r_k = 0 / 1), indexed by relative carrier
     std::vector<int8_t> pilot_sequence_;
 
     // Initialize internal state from config
@@ -181,9 +202,24 @@ private:
     // Generate pilot reference sequence (PRBS-based)
     void generate_pilot_sequence();
 
-    // Get PRBS bit for pilot at given position
-    int8_t get_prbs_bit(size_t position) const;
+    // Reference sign (+1 / -1) for relative carrier index k
+    int8_t get_prbs_bit(size_t relative_carrier) const;
 };
+
+// Common continual pilot set for an FFT size, ascending absolute carrier
+// indices (Section 8.1.4.1: CP32 for 32K, every 2nd / 4th entry halved /
+// quartered, rounded up, for 16K / 8K). Used to generate the RTL's ROM.
+std::vector<size_t> common_continual_pilots(size_t fft_size);
+
+// Whether Annex D defines a pilot layout for the pattern at this FFT size
+bool pilot_pattern_allowed(size_t fft_size, PilotPattern pattern);
+
+// Additional scattered-pilot-bearing continual pilots (Tables D.1.4 and
+// D.1.5): relative carrier indices for the carrier reduction coefficient,
+// ascending, with the odd-reduction exclusions applied. Throws
+// std::invalid_argument if the pattern is not allowed at this FFT size.
+std::vector<size_t> additional_continual_pilots(size_t fft_size, PilotPattern pattern,
+                                                size_t reduced_carriers);
 
 // Utility: Get pattern parameters for a given pilot pattern
 PilotPatternParams get_pilot_pattern_params(PilotPattern pattern, size_t fft_size);
