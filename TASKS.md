@@ -119,3 +119,12 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   dev tools: pypdf BSD-3-Clause (NUC generator), cocotb BSD-3-Clause,
   pytest MIT, Verilator LGPL-3.0/Artistic-2.0, Icarus GPL-2.0*, Yosys/SBY
   ISC, z3 MIT, cvc5 BSD-3-Clause. All compatible with MPL-2.0 as used.
+
+## In progress (usage limit hit mid-task)
+- Pilot HDL port to A/322 is UNCOMMITTED in the working tree (rtl/ofdm/pilot_extractor.v,
+  pilot_additional_cp_lut.v, pilot_cp_positions.hex, formal harness, test_pilot_extractor.py,
+  golden gens, runner/synth wiring). Sim passes (Icarus+Verilator), lint 15/15, synth ok.
+  Pending: formal log scratchpad/formal_pe.log, front-end bench scratchpad/fe.log,
+  pilot mutants in hdl/mutants/manifest.py (pe_cp_pointer_skips and pe_lfsr_wrong_tap
+  need new find text; add shift/additional/stride mutants), docs (toolchain.md regen
+  commands), full gate, then commit. register map / L1 / config still use PP1-PP8 (9.13).
