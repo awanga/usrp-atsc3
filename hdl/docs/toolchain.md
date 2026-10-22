@@ -91,7 +91,11 @@ Generated RTL data:
   (loaded with `$readmemh`; tools get its absolute path through the
   `TWIDDLE_HEX` parameter).
 - `hdl/rtl/ofdm/pilot_cp_positions.hex`: `build-fxp/hdl/sim/golden/pilot_cp_rom_gen > hdl/rtl/ofdm/pilot_cp_positions.hex`
-  (same `$readmemh` scheme, through the `CP_ROM_HEX` parameter).
+  (same `$readmemh` scheme, through the `CP_ROM_HEX` parameter; it holds
+  the 192-entry CP32 table of A/322 Table D.1.1, padded with FFFF).
+- `hdl/rtl/ofdm/pilot_additional_cp_lut.v`: `build-fxp/hdl/sim/golden/pilot_additional_cp_gen > hdl/rtl/ofdm/pilot_additional_cp_lut.v`
+  (additional continual pilots of Tables D.1.4/D.1.5, keyed by FFT size,
+  pattern and carrier reduction).
 - `hdl/rtl/sync/frame_sync_ref.vh`: from `echo Z |
   build-fxp/hdl/sim/golden/frame_sync_gen`, reformatted as the `case`
   table (header of the file); `test_frame_correlator_tb.py` fails if it
