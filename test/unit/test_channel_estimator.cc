@@ -666,7 +666,7 @@ TEST(ChannelEstimatorTest, IntegrationWithPilotExtractor) {
     // Create pilot extractor
     ofdm::PilotExtractorConfig pe_config;
     pe_config.fft_size = 8192;
-    pe_config.pattern = ofdm::PilotPattern::PP3;
+    pe_config.pattern = ofdm::PilotPattern::SP6_4;
     ofdm::PilotExtractor extractor(pe_config);
 
     // Create channel estimator
