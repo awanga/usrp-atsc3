@@ -80,12 +80,12 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   16 cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
   `realtime_budget_8k` is an expected failure until this closes (it
   measures 514,051 source-stall cycles over two 8K symbols).
-- Legacy PP1-PP8 pilot numbering remains in config::PilotPattern, the L1
-  decoder, config/atsc3_modes.json, config/hdl_register_map.json, the
-  register-map MD and the GRC block yml (channel_eq maps it via
+- Legacy PP1-PP8 numbering remains in config::PilotPattern, the L1 decoder,
+  config/atsc3_modes.json and the GRC block yml (channel_eq maps it via
   pilot_pattern_from_legacy(); PP8 throws; GR block uncompiled, no GNU Radio
   here). Move to A/322 L1D_scattered_pilot_pattern codes 0-15 with the L1
-  decode work (9.13); register map/GRC are API docs and need approval.
+  decode work (9.13). The register map, README and compliance doc already
+  use the A/322 codes (approved 2026-10-22).
 - Formal harnesses other than pilot_extractor have not been re-timed
   with yices (qualified 2026-10-02; z3 stays their default).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
