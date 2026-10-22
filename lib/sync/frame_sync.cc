@@ -397,7 +397,8 @@ void FrameSync::handle_acquiring(const sample_t* symbols, size_t n) {
     FrameScore best_corr = 0;
     size_t best_offset = 0;
 
-    for (size_t offset = search_start; offset + preamble_ref_.size() <= search_end && offset < n;
+    // The preamble must fit in the chunk; the window bounds only where it may start.
+    for (size_t offset = search_start; offset + preamble_ref_.size() <= n && offset < search_end;
          ++offset) {
         FrameScore corr = correlate_preamble(symbols, n, offset);
         if (corr > best_corr) {

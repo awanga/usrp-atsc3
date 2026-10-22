@@ -26,9 +26,8 @@
 //              offset: >= threshold -> LOCKED + event; else counter >=
 //              holdover_frames -> SEARCHING, else frame_number++,
 //              boundary += frame_samples, confidence * 9/10
-// ACQUIRING's window loop ends at offset + F <= expected + half_window, so
-// it can only succeed when F fits in search_window; the model has this
-// property and the RTL keeps it.
+// The window bounds where a correlation may start; the preamble only has
+// to fit inside the chunk.
 //
 // Configuration (cfg_*) is sampled at proc_start and held for the chunk
 // (corr_len is the held fft_size, for the correlator).
@@ -344,7 +343,7 @@ module frame_sync_fsm (
 
                 //--- ACQUIRING ----------------------------------------------
                 S_ACQ_CHK: begin
-                    if (off + fft32 <= end_r && off < n_r) begin
+                    if (off + fft32 <= n_r && off < end_r) begin
                         corr_start  <= 1'b1;
                         corr_offset <= off;
                         state       <= S_ACQ_WAIT;
