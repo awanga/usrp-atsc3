@@ -10,7 +10,7 @@ This document tracks gr-atsc3 compliance with ATSC A/322:2023 (Physical Layer Pr
 | L1-Pre Signaling | Implemented | All fields | CRC-32 validation |
 | L1-Post Signaling | Implemented | Multi-PLP | CRC-32 validation |
 | OFDM Demodulation | Implemented | 8K/16K/32K FFT | FFTW3 backend |
-| Pilot Extraction | Implemented | PP1-PP8 | All scatter patterns |
+| Pilot Extraction | Implemented | SP3_2-SP32_4 (A/322 Annex D) | 185 allowed FFT/reduction/pattern combinations |
 | Channel Estimation | Implemented | LS + Wiener | SNR estimation |
 | Constellation Demapping | Partial | Uniform QAM | NUC tables placeholder |
 | Cell Interleaving | Implemented | Round-trip tested | Bit-reversal permutation |
@@ -61,7 +61,7 @@ This document tracks gr-atsc3 compliance with ATSC A/322:2023 (Physical Layer Pr
 | 16K FFT (16384 points) | Pass | test_fft_engine | 13825 active carriers |
 | 32K FFT (32768 points) | Pass | test_fft_engine | 27649 active carriers |
 | CP lengths (11 values) | Pass | test_cp_removal | Per Table 7.1 |
-| Scattered pilots PP1-PP8 | Pass | test_pilot_extractor | All patterns |
+| Scattered pilots SP3_2-SP32_4 | Pass | test_pilot_extractor | Data cells per Tables 7.3/7.4 |
 | Continual pilots | Pass | test_pilot_extractor | Edge + scattered |
 | Edge pilots | Pass | test_pilot_extractor | DC and band edges |
 

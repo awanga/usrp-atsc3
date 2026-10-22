@@ -25,7 +25,7 @@ Source of truth for the RTL control plane's default-reset values and host/L1-seq
 - `milli_fixed32` — Signed 32-bit integer, value = round(real_value * 1000). Used for dimensionless ratios/rates that can legitimately exceed the q1_15 [-1,1) range or need sub-integer-Hz precision.
 - `angle_tbd` — Format intentionally left undefined. It depends on the CORDIC angle convention, which has since been fixed in lib/dsp/cordic.h (Q1.15 turns-over-pi: int16 covering [-pi, +pi)); adopt that format here when the phase tracker is ported, and do not implement RTL against this field before then.
 
-**Pilot pattern source:** Uses lib/ofdm/pilot_extractor.h's PP1-PP8 {Dx,Dy} table (config::PilotPattern / PilotPattern enum), not config/atsc3_modes.json's separate SP3_2/SP3_4/... representation -- resolving the open question of which of the two inconsistent pilot representations this register map follows. Nothing in lib/ reads atsc3_modes.json's SP*_* list (pilot_extractor.cc uses its own hardcoded constexpr table).
+**Pilot pattern source:** Encoding is the A/322 L1D_scattered_pilot_pattern code (0 = SP3_2 ... 15 = SP32_4); the pilot_extractor RTL and golden model follow A/322 section 8.1 and Annex D. config::PilotPattern and the L1 decoder still carry the legacy PP1-PP8 numbering until the L1 decode work moves them to these codes.
 
 ## Known default inconsistencies in the golden model
 
@@ -60,7 +60,7 @@ Canonical mirror of L1-Pre/L1-Post/active-PLP decode results (lib/framing/l1_dec
 | `L1PRE_VERSION` | `0x00` | uint32 | `0` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::version`)* |
 | `FFT_SIZE` | `0x04` | enum | `FFT_8K` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::fft_size (config::FftSize)`)* |
 | `CP_LENGTH` | `0x08` | enum | `CP_1024_8192` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::cp_length (config::CpLength); see known_default_inconsistencies`)* |
-| `PILOT_PATTERN` | `0x0C` | enum | `PP3` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::pilot_pattern (config::PilotPattern)`)* |
+| `PILOT_PATTERN` | `0x0C` | enum | `SP6_4` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::pilot_pattern (config::PilotPattern)`)* |
 | `L1_POST_SIZE_CELLS` | `0x10` | uint32 | `0` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::l1_post_size_cells`)* |
 | `L1_POST_MODULATION` | `0x14` | enum | `QPSK` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::l1_post_modulation (config::Modulation)`)* |
 | `L1_POST_CODE_RATE` | `0x18` | enum | `RATE_5_15` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::l1_post_code_rate (config::CodeRate)`)* |
@@ -150,7 +150,7 @@ Base address: `0x5000`
 | Register | Offset | Format | Reset | Writable by | Notes |
 |---|---|---|---|---|---|
 | `FFT_SIZE` | `0x00` | enum | `FFT_8K` | l1 | Wired from l1_status.FFT_SIZE. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::fft_size`)* |
-| `PILOT_PATTERN` | `0x04` | enum | `PP3` | l1 | Wired from l1_status.PILOT_PATTERN. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::pattern`)* |
+| `PILOT_PATTERN` | `0x04` | enum | `SP6_4` | l1 | Wired from l1_status.PILOT_PATTERN. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::pattern`)* |
 | `NUM_ACTIVE_CARRIERS` | `0x08` | uint32 | `6913` | l1 | Wired from l1_status.NUM_ACTIVE_CARRIERS. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::num_active_carriers`)* |
 
 **Open item:** Pilot dedup precedence (SCATTERED > CONTINUAL > EDGE) needs an explicit rule fixed in lib/ before this block's RTL is bit-exact (an item from the plan's pass-2 review); not resolved by this register-map deliverable.
@@ -213,8 +213,8 @@ Base address: `0x9000`
 | `TIME_TAPS` | `0x0C` | uint32 | `4` | const | Synthesis-time constant, same reasoning as FREQ_TAPS. *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::time_taps`)* |
 | `PROFILE` | `0x10` | enum | `PEDESTRIAN` | host | Selects which precomputed Wiener filter coefficient ROM to use. *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::profile`)* |
 | `NOISE_VARIANCE` | `0x14` | q1_15 | `327` (0.01) | host | *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::noise_variance`)* |
-| `PILOT_SPACING_FREQ` | `0x18` | uint32 | `6` | l1 | Dx; wired from l1_status.PILOT_PATTERN's {Dx,Dy} (PP3 default matches Dx=6). *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_freq`)* |
-| `PILOT_SPACING_TIME` | `0x1C` | uint32 | `4` | l1 | Dy; wired from l1_status.PILOT_PATTERN (PP3 default matches Dy=4). *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_time`)* |
+| `PILOT_SPACING_FREQ` | `0x18` | uint32 | `6` | l1 | Dx; wired from l1_status.PILOT_PATTERN's {Dx,Dy} (SP6_4 default matches Dx=6). *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_freq`)* |
+| `PILOT_SPACING_TIME` | `0x1C` | uint32 | `4` | l1 | Dy; wired from l1_status.PILOT_PATTERN (SP6_4 default matches Dy=4). *(`lib/channel/wiener_interpolator.h:WienerInterpolatorConfig::pilot_spacing_time`)* |
 
 ### `equalizer`
 
