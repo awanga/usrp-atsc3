@@ -64,7 +64,7 @@ BLOCKS = {
         {"ADDR_W": 11},
     ),
     "pilot_extractor": (
-        ["ofdm/pilot_extractor.v"],
+        ["ofdm/pilot_extractor.v", "ofdm/pilot_additional_cp_lut.v"],
         [],
         {"CP_ROM_HEX": f'"{RTL / "ofdm" / "pilot_cp_positions.hex"}"'},
     ),
@@ -89,6 +89,7 @@ INTEGRATION = {
             "ofdm/cp_removal.v",
             "ofdm/fft_engine.v",
             "ofdm/pilot_extractor.v",
+            "ofdm/pilot_additional_cp_lut.v",
             "sync/frame_sync.v",
             "sync/frame_sync_fsm.v",
             "sync/frame_correlator.v",

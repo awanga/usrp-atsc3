@@ -11,7 +11,7 @@ cover
 prove: mode prove
 prove: depth 4
 cover: mode cover
-cover: depth 56
+cover: depth 12
 
 [engines]
 smtbmc yices
@@ -20,18 +20,21 @@ smtbmc yices
 # Stage 1: flatten pilot_extractor_bare and expose the bin counter,
 # scattered-pilot counter, ROM pointer and latched configuration as
 # ports (hdl/docs/formal_conventions.md).
+read_verilog -formal -I. pilot_additional_cp_lut.v
 read_verilog -formal -I. pilot_extractor.v
 read_verilog -formal -I. pilot_extractor_bare.v
 hierarchy -top pilot_extractor_bare
 proc
 flatten
-expose -dff w:\dut.k w:\dut.m w:\dut.cp_ptr w:\dut.cp_next w:\dut.sym_r w:\dut.first_r w:\dut.last_r w:\dut.last_bin_r w:\dut.rom_base_r w:\dut.dx_r w:\dut.dy_mask_r w:\dut.period_m1_r
+expose -dff w:\dut.k w:\dut.m w:\dut.cp_ptr w:\dut.cp_raw w:\dut.sym_r w:\dut.first_r w:\dut.last_r w:\dut.last_bin_r w:\dut.dx_r w:\dut.dy_mask_r w:\dut.period_m1_r w:\dut.shift_r w:\dut.stride_sh_r w:\dut.add_en_r w:\dut.add0_r w:\dut.add1_r w:\dut.add2_r
 write_verilog gen_pilot_extractor_bare.v
 
 # Stage 2: re-elaborate the exposed wrapper under the harness.
 design -reset
+read_verilog -formal -I. pilot_additional_cp_lut.v
 read_verilog -formal -I. gen_pilot_extractor_bare.v
-read_verilog -formal -I. pilot_extractor_formal.v
+prove: read_verilog -formal -I. pilot_extractor_formal.v
+cover: read_verilog -formal -DCOVER -I. pilot_extractor_formal.v
 prep -top pilot_extractor_formal
 
 # Both continual-pilot ROMs (the DUT's and the ghost's) are constant:
@@ -46,6 +49,7 @@ opt
 axi4s_types.vh ../rtl/include/axi4s_types.vh
 status_words.vh ../rtl/include/status_words.vh
 pilot_extractor.v ../rtl/ofdm/pilot_extractor.v
+pilot_additional_cp_lut.v ../rtl/ofdm/pilot_additional_cp_lut.v
 pilot_cp_positions.hex ../rtl/ofdm/pilot_cp_positions.hex
 pilot_extractor_bare.v
 pilot_extractor_formal.v

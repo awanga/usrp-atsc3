@@ -9,30 +9,33 @@
 // accepted bin, a stalled record holds and otherwise TVALID drops; so
 // no record is dropped, duplicated or invented. The ghost uses its own
 // bin counter, configuration copy and classification: scattered by
-// (rel - offset) mod Dx*Dy == 0 with rel >= offset (the RTL uses a
-// running counter instead), edge by comparison, and continual by its own
-// copy of the ROM at the RTL's pointer -- made exact by the pointer
-// invariants (the entry before the pointer is below the carrier's
-// relative index, the entry at it is not, and the pointer stays between
-// its region's base and end marker: the ROM bound).
+// (rel mod Dx*Dy) == Dx * (symbol mod Dy) from the standard's formula (the
+// RTL uses a running counter instead), edge by comparison, the common
+// continual pilots by its own copy of the CP32 ROM at the RTL's pointer --
+// made exact by the pointer invariants (the entry before the pointer is
+// below the bin's absolute carrier, the entry at it is not) -- and the
+// additional continual pilots by its own lookup of the generated table.
+// The ghost also validates the configuration its own way (Cred_coeff
+// found by trying 0..4), so the invalid-configuration fallbacks and the
+// three flags are checked against it too.
 //
-// The reference's sign (the LFSR) is not modelled: test_pilot_extractor.py
-// checks every reference value against lib/ofdm/pilot_extractor.cc.
+// The reference's sign (the 13-bit generator) is not modelled:
+// test_pilot_extractor.py checks every reference value against
+// lib/ofdm/pilot_extractor.cc, which is checked against the standard's
+// first 24 values and a bit-serial model of Figure 8.2.
 //
 // Assumptions: only that the first cycle is a reset. Configuration is
 // latched at reset by both the DUT and the ghost, so cfg_* stay free; the
 // output properties do not depend on the producer holding its beat.
 //
 // Bounds: prove is k-induction at depth 4 (smtbmc yices), closed by the
-// invariants above. Cover reaches a record of each type at depth 56: with
-// every carrier active the first continual pilot is carrier 44. A whole
-// symbol (TLAST, the framing check) is past any BMC depth;
-// test_pilot_extractor.py runs whole symbols at all sizes and patterns.
-// The same depth limit means two committed mutants (continual beating
-// scattered, the ROM pointer skipping an entry) fail only the induction
-// here, with no counterexample: their first wrong record needs a
-// continual pilot (relative carrier 44 or later), or a scattered one
-// landing on it (over 100 bins). The cocotb bench kills both directly.
+// invariants. Whole symbols (the framing check) are past any BMC depth,
+// and so is a first pilot: the first active carrier of every legal
+// configuration is at least 639. The cover task therefore starts from an
+// arbitrary state that satisfies the invariants (assumed there, proved in
+// the prove task) and reaches a record of each type within a few steps.
+// test_pilot_extractor.py runs whole symbols at all sizes, patterns and
+// reductions.
 //
 // Run: hdl/formal/run_formal.sh pilot_extractor
 
@@ -43,6 +46,12 @@ module pilot_extractor_formal (
     input wire clk,
     input wire rst
 );
+
+`ifdef COVER
+    localparam COVER_MODE = 1;
+`else
+    localparam COVER_MODE = 0;
+`endif
 
     reg  [17:0] cfg_fft_size;
     reg  [3:0]  cfg_pilot_pattern;
@@ -63,12 +72,16 @@ module pilot_extractor_formal (
 
     wire [14:0] k_probe, first_probe, last_probe, last_bin_probe;
     wire [6:0]  m_probe;
-    wire [9:0]  cp_ptr_probe, rom_base_probe;
-    wire [15:0] cp_next_probe;
+    wire [7:0]  cp_ptr_probe;
+    wire [15:0] cp_raw_probe;
     wire [3:0]  sym_probe;
-    wire [4:0]  dx_probe;
+    wire [5:0]  dx_probe;
     wire [3:0]  dy_mask_probe;
     wire [6:0]  period_m1_probe;
+    wire [9:0]  shift_probe;
+    wire [1:0]  stride_sh_probe;
+    wire [2:0]  add_en_probe;
+    wire [13:0] add0_probe, add1_probe, add2_probe;
 
     pilot_extractor_bare dut_top (
         .clk                     (clk),
@@ -89,18 +102,23 @@ module pilot_extractor_formal (
         .m_axis_tvalid           (m_axis_tvalid),
         .m_axis_tready           (m_axis_tready),
         .m_axis_tlast            (m_axis_tlast),
-        .\dut.k          (k_probe),
-        .\dut.m          (m_probe),
-        .\dut.cp_ptr     (cp_ptr_probe),
-        .\dut.cp_next    (cp_next_probe),
-        .\dut.sym_r      (sym_probe),
-        .\dut.first_r    (first_probe),
-        .\dut.last_r     (last_probe),
-        .\dut.last_bin_r (last_bin_probe),
-        .\dut.rom_base_r (rom_base_probe),
-        .\dut.dx_r       (dx_probe),
-        .\dut.dy_mask_r  (dy_mask_probe),
-        .\dut.period_m1_r (period_m1_probe)
+        .\dut.k           (k_probe),
+        .\dut.m           (m_probe),
+        .\dut.cp_ptr      (cp_ptr_probe),
+        .\dut.cp_raw      (cp_raw_probe),
+        .\dut.sym_r       (sym_probe),
+        .\dut.first_r     (first_probe),
+        .\dut.last_r      (last_probe),
+        .\dut.last_bin_r  (last_bin_probe),
+        .\dut.dx_r        (dx_probe),
+        .\dut.dy_mask_r   (dy_mask_probe),
+        .\dut.period_m1_r (period_m1_probe),
+        .\dut.shift_r     (shift_probe),
+        .\dut.stride_sh_r (stride_sh_probe),
+        .\dut.add_en_r    (add_en_probe),
+        .\dut.add0_r      (add0_probe),
+        .\dut.add1_r      (add1_probe),
+        .\dut.add2_r      (add2_probe)
     );
 
     reg past_valid;
@@ -108,62 +126,124 @@ module pilot_extractor_formal (
     always @(posedge clk) past_valid <= 1'b1;
 
     always @(*) begin
-        if (!past_valid)
+        if (!past_valid && !COVER_MODE)
             assume (rst);
     end
 
     //--------------------------------------------------------------------
-    // Ghost configuration, latched at reset like the DUT's
+    // Ghost configuration, validated and latched at reset like the DUT's
     //--------------------------------------------------------------------
 
-    reg [15:0] g_rom [0:1023];
+    reg [15:0] g_rom [0:255];
     initial $readmemh("pilot_cp_positions.hex", g_rom);
 
-    reg [16:0] c_fft, c_default;
-    reg [9:0]  c_base, c_count;  // c_count: entries before the end marker
+    reg [16:0] c_fft, c_max;
+    reg [8:0]  c_unit;
+    reg [1:0]  c_sel;
     always @(*) begin
         case (cfg_fft_size)
-            18'd16384: begin c_fft = 17'd16384; c_default = 17'd13825;
-                             c_base = 10'd256; c_count = 10'd183; end
-            18'd32768: begin c_fft = 17'd32768; c_default = 17'd27649;
-                             c_base = 10'd512; c_count = 10'd365; end
-            default:   begin c_fft = 17'd8192;  c_default = 17'd6913;
-                             c_base = 10'd0;   c_count = 10'd92;  end
+            18'd16384: begin c_fft = 17'd16384; c_max = 17'd13825; c_unit = 9'd192; c_sel = 2'd1; end
+            18'd32768: begin c_fft = 17'd32768; c_max = 17'd27649; c_unit = 9'd384; c_sel = 2'd2; end
+            default:   begin c_fft = 17'd8192;  c_max = 17'd6913;  c_unit = 9'd96;  c_sel = 2'd0; end
         endcase
     end
-    wire [16:0] c_num = (cfg_num_active_carriers == 16'd0 ||
-                         {1'b0, cfg_num_active_carriers} > c_fft) ?
-                        c_default : {1'b0, cfg_num_active_carriers};
+
+    // Cred_coeff by trial: NoC = NoCmax - Cred_coeff * Cunit
+    reg [2:0]  c_cred;
+    reg        c_num_ok;
+    integer    ci;
+    always @(*) begin
+        c_cred   = 3'd0;
+        c_num_ok = (cfg_num_active_carriers == 16'd0);
+        for (ci = 0; ci <= 4; ci = ci + 1)
+            if ({1'b0, cfg_num_active_carriers} == c_max - ci * {8'd0, c_unit}) begin
+                c_cred   = ci[2:0];
+                c_num_ok = 1'b1;
+            end
+    end
+    wire [16:0] c_num = (c_num_ok && cfg_num_active_carriers != 16'd0) ?
+                        {1'b0, cfg_num_active_carriers} : c_max;
+    wire [2:0]  c_cred_eff = (c_num_ok && cfg_num_active_carriers != 16'd0) ? c_cred : 3'd0;
+
+    // Pattern: valid iff the generated table has an entry for it
+    wire        c_pat_ok;
+    wire [2:0]  c_pen;
+    wire [13:0] c_pv0, c_pv1, c_pv2;
+    pilot_additional_cp_lut c_lut (
+        .key({c_sel, cfg_pilot_pattern, c_cred_eff}),
+        .ok(c_pat_ok), .en(c_pen), .v0(c_pv0), .v1(c_pv1), .v2(c_pv2)
+    );
+    wire [3:0] c_pat = c_pat_ok ? cfg_pilot_pattern : 4'd4;
 
     reg [7:0] c_dx, c_dy;
     always @(*) begin
-        case (cfg_pilot_pattern)
-            4'd1: begin c_dx = 8'd3;  c_dy = 8'd4;  end
-            4'd2: begin c_dx = 8'd6;  c_dy = 8'd2;  end
-            4'd4: begin c_dx = 8'd12; c_dy = 8'd2;  end
-            4'd5: begin c_dx = 8'd12; c_dy = 8'd4;  end
-            4'd6: begin c_dx = 8'd24; c_dy = 8'd2;  end
-            4'd7: begin c_dx = 8'd24; c_dy = 8'd4;  end
-            4'd8: begin c_dx = 8'd6;  c_dy = 8'd16; end
-            default: begin c_dx = 8'd6; c_dy = 8'd4; end  // PP3, also for 0 and 9..15
+        case (c_pat)
+            4'd0:  begin c_dx = 8'd3;  c_dy = 8'd2; end
+            4'd1:  begin c_dx = 8'd3;  c_dy = 8'd4; end
+            4'd2:  begin c_dx = 8'd4;  c_dy = 8'd2; end
+            4'd3:  begin c_dx = 8'd4;  c_dy = 8'd4; end
+            4'd4:  begin c_dx = 8'd6;  c_dy = 8'd2; end
+            4'd5:  begin c_dx = 8'd6;  c_dy = 8'd4; end
+            4'd6:  begin c_dx = 8'd8;  c_dy = 8'd2; end
+            4'd7:  begin c_dx = 8'd8;  c_dy = 8'd4; end
+            4'd8:  begin c_dx = 8'd12; c_dy = 8'd2; end
+            4'd9:  begin c_dx = 8'd12; c_dy = 8'd4; end
+            4'd10: begin c_dx = 8'd16; c_dy = 8'd2; end
+            4'd11: begin c_dx = 8'd16; c_dy = 8'd4; end
+            4'd12: begin c_dx = 8'd24; c_dy = 8'd2; end
+            4'd13: begin c_dx = 8'd24; c_dy = 8'd4; end
+            4'd14: begin c_dx = 8'd32; c_dy = 8'd2; end
+            default: begin c_dx = 8'd32; c_dy = 8'd4; end
         endcase
     end
 
-    reg [16:0] g_fft, g_first, g_last;
-    reg [9:0]  g_base, g_count;
+    wire [16:0] c_first = (c_fft - c_num) / 2;
+    wire [16:0] c_last  = c_first + c_num - 17'd1;
+    wire [16:0] c_shift = {14'd0, c_cred_eff} * {8'd0, c_unit[8:1]};
+
+    reg [16:0] g_fft, g_first, g_last, g_shift, g_num;
+    reg [1:0]  g_sel;
+    reg [2:0]  g_cred;
+    reg [3:0]  g_pat;
     reg [7:0]  g_dx, g_dy;
+    reg        g_fft_bad, g_pat_bad, g_num_bad;
     always @(posedge clk) begin
         if (rst) begin
-            g_fft   <= c_fft;
-            g_first <= (c_fft - c_num) / 2;
-            g_last  <= (c_fft - c_num) / 2 + c_num - 17'd1;
-            g_base  <= c_base;
-            g_count <= c_count;
-            g_dx    <= c_dx;
-            g_dy    <= c_dy;
+            g_fft     <= c_fft;
+            g_num     <= c_num;
+            g_first   <= c_first;
+            g_last    <= c_last;
+            g_shift   <= c_shift;
+            g_sel     <= c_sel;
+            g_cred    <= c_cred_eff;
+            g_pat     <= c_pat;
+            g_dx      <= c_dx;
+            g_dy      <= c_dy;
+            g_fft_bad <= (cfg_fft_size != 18'd8192 && cfg_fft_size != 18'd16384 &&
+                          cfg_fft_size != 18'd32768);
+            g_pat_bad <= !c_pat_ok;
+            g_num_bad <= !c_num_ok;
         end
     end
     wire [15:0] g_period = g_dx * g_dy;
+
+    // The ghost's own lookup of the latched configuration's additional pilots
+    wire        g_lut_ok;
+    wire [2:0]  g_en;
+    wire [13:0] g_v0, g_v1, g_v2;
+    pilot_additional_cp_lut g_lut (
+        .key({g_sel, g_pat, g_cred}),
+        .ok(g_lut_ok), .en(g_en), .v0(g_v0), .v1(g_v1), .v2(g_v2)
+    );
+
+    wire [16:0] g_stride = 17'd32768 / g_fft;  // 4, 2, 1
+    function [16:0] ceil_div;
+        input [15:0] value;
+        input [16:0] stride;
+        begin
+            ceil_div = ({1'b0, value} + stride - 17'd1) / stride;
+        end
+    endfunction
 
     //--------------------------------------------------------------------
     // Ghost bin counter and classification of the bin now at the input
@@ -187,8 +267,14 @@ module pilot_extractor_formal (
     wire [16:0] g_off   = ({13'd0, g_symv} % {9'd0, g_dy}) * g_dx;
     wire        g_in    = (gk >= g_first) && (gk <= g_last);
     wire [16:0] g_rel   = gk - g_first;
-    wire        g_sp    = g_in && (g_rel >= g_off) && ((g_rel - g_off) % {1'b0, g_period} == 0);
-    wire        g_cp    = g_in && (g_rom[cp_ptr_probe] == g_rel[15:0]);
+    wire        g_sp    = g_in && ((g_rel % {1'b0, g_period}) == g_off);
+    wire [16:0] g_cur   = (gk < g_first) ? g_shift : g_rel + g_shift;
+    wire [15:0] g_entry = g_rom[cp_ptr_probe << stride_sh_probe];
+    wire        g_cpc   = g_in && (ceil_div(g_entry, g_stride) == g_cur);
+    wire        g_cpa   = g_in && ((g_en[0] && {3'd0, g_v0} == g_rel) ||
+                                   (g_en[1] && {3'd0, g_v1} == g_rel) ||
+                                   (g_en[2] && {3'd0, g_v2} == g_rel));
+    wire        g_cp    = g_cpc || g_cpa;
     wire        g_edge  = (gk == g_first) || (gk == g_last);
     wire        g_pilot = g_sp || g_cp || g_edge;
     wire [7:0]  g_type  = g_sp ? `PILOT_TYPE_SCATTERED :
@@ -249,54 +335,87 @@ module pilot_extractor_formal (
         end
         if (past_valid && prev_rst) begin
             assert (!m_axis_tvalid);
+            assert (cfg_fft_size_invalid == g_fft_bad);
+            assert (cfg_pattern_invalid == g_pat_bad);
+            assert (cfg_num_active_invalid == g_num_bad);
         end
     end
 
     //--------------------------------------------------------------------
     // Invariants tying the DUT's state to the ghost (they close the
-    // induction, and the last group is the ROM bound)
+    // induction, and the pointer group is the ROM bound). In the cover task
+    // they are assumed, so the search starts from any state they allow.
     //--------------------------------------------------------------------
 
     wire [16:0] g_m_span = ((gk > g_last + 17'd1) ? g_last + 17'd1 : gk) - g_first;
+    wire [16:0] g_entry_abs = ceil_div(g_entry, g_stride);
+    wire [15:0] g_prev_entry = g_rom[(cp_ptr_probe - 8'd1) << stride_sh_probe];
+    wire [16:0] g_prev_abs = ceil_div(g_prev_entry, g_stride);
+
+    wire inv_enable = COVER_MODE ? !rst : (past_valid && !rst && !prev_rst);
+
+    reg inv_ok;
+    always @(*) begin
+        inv_ok = 1'b1;
+        // configuration copies agree with the ghost's
+        inv_ok = inv_ok && (first_probe == g_first[14:0] && last_probe == g_last[14:0]);
+        inv_ok = inv_ok && (last_bin_probe == g_fft[14:0] - 15'd1);
+        inv_ok = inv_ok && ({2'd0, dx_probe} == g_dx[7:0] + 8'd0 && {4'd0, dy_mask_probe} == g_dy - 8'd1);
+        inv_ok = inv_ok && ({9'd0, period_m1_probe} == g_period - 16'd1);
+        inv_ok = inv_ok && ({7'd0, shift_probe} == g_shift);
+        inv_ok = inv_ok && ({15'd0, stride_sh_probe} == (g_fft == 17'd8192 ? 17'd2 :
+                                                          (g_fft == 17'd16384 ? 17'd1 : 17'd0)));
+        inv_ok = inv_ok && (add_en_probe == g_en && add0_probe == g_v0 &&
+                            add1_probe == g_v1 && add2_probe == g_v2);
+        // ghost configuration is a legal one
+        inv_ok = inv_ok && (g_fft == 17'd8192 || g_fft == 17'd16384 || g_fft == 17'd32768);
+        inv_ok = inv_ok && g_lut_ok;
+        inv_ok = inv_ok && (g_last < g_fft && g_first <= g_last && g_first >= 17'd639);
+        inv_ok = inv_ok && (g_num == g_last - g_first + 17'd1);
+        inv_ok = inv_ok && ((g_dx == 8'd3 || g_dx == 8'd4 || g_dx == 8'd6 || g_dx == 8'd8 ||
+                             g_dx == 8'd12 || g_dx == 8'd16 || g_dx == 8'd24 || g_dx == 8'd32) &&
+                            (g_dy == 8'd2 || g_dy == 8'd4));
+        // bin counter and symbol index
+        inv_ok = inv_ok && (gk < g_fft && {2'b00, k_probe} == gk);
+        if (gk != 17'd0)
+            inv_ok = inv_ok && (sym_probe == g_sym);
+        // scattered counter
+        if (gk <= g_first)
+            inv_ok = inv_ok && (m_probe == 7'd0);
+        else
+            inv_ok = inv_ok && ({10'd0, m_probe} == g_m_span % {1'b0, g_period});
+        // common continual pilot pointer: register tracks the ROM; before the
+        // window the pointer has skipped the entries below the window's first
+        // absolute carrier, one per bin; inside it, the entry before the
+        // pointer is below the bin's absolute carrier and the entry at it is not
+        inv_ok = inv_ok && (cp_raw_probe == g_entry);
+        inv_ok = inv_ok && (cp_ptr_probe <= 8'd192 >> stride_sh_probe);
+        if (gk <= g_first) begin
+            inv_ok = inv_ok && ({9'd0, cp_ptr_probe} <= gk);
+            if (cp_ptr_probe != 8'd0)
+                inv_ok = inv_ok && (g_prev_abs < g_shift);
+            inv_ok = inv_ok && (g_entry_abs >= g_shift || {9'd0, cp_ptr_probe} == gk);
+            if (gk == g_first)
+                inv_ok = inv_ok && (g_entry_abs >= g_shift);
+        end else if (gk <= g_last + 17'd1) begin
+            inv_ok = inv_ok && (g_entry_abs >= gk - g_first + g_shift);
+            if (cp_ptr_probe != 8'd0)
+                inv_ok = inv_ok && (g_prev_abs < gk - g_first + g_shift);
+        end
+    end
 
     always @(*) begin
-        if (past_valid && !rst && !prev_rst) begin
-            assert (first_probe == g_first[14:0] && last_probe == g_last[14:0]);
-            assert (last_bin_probe == g_fft[14:0] - 15'd1 && rom_base_probe == g_base);
-            assert ((g_dx == 8'd3  && g_dy == 8'd4) || (g_dx == 8'd6  && g_dy == 8'd2) ||
-                    (g_dx == 8'd6  && g_dy == 8'd4) || (g_dx == 8'd12 && g_dy == 8'd2) ||
-                    (g_dx == 8'd12 && g_dy == 8'd4) || (g_dx == 8'd24 && g_dy == 8'd2) ||
-                    (g_dx == 8'd24 && g_dy == 8'd4) || (g_dx == 8'd6  && g_dy == 8'd16));
-            assert ((g_fft == 17'd8192  && g_base == 10'd0   && g_count == 10'd92) ||
-                    (g_fft == 17'd16384 && g_base == 10'd256 && g_count == 10'd183) ||
-                    (g_fft == 17'd32768 && g_base == 10'd512 && g_count == 10'd365));
-            assert ({3'd0, dx_probe} == g_dx && {4'd0, dy_mask_probe} == g_dy - 8'd1);
-            assert ({9'd0, period_m1_probe} == g_period - 16'd1);
-            assert (g_fft == 17'd8192 || g_fft == 17'd16384 || g_fft == 17'd32768);
-            assert (g_last < g_fft && g_first <= g_last);
-            assert (gk < g_fft && {2'b00, k_probe} == gk);
-            if (gk != 17'd0)
-                assert (sym_probe == g_sym);
-
-            if (gk <= g_first)
-                assert (m_probe == 7'd0);
+        if (inv_enable) begin
+            if (COVER_MODE)
+                assume (inv_ok);
             else
-                assert ({10'd0, m_probe} == g_m_span % {1'b0, g_period});
-
-            assert (cp_next_probe == g_rom[cp_ptr_probe]);
-            assert (cp_ptr_probe >= g_base && cp_ptr_probe <= g_base + g_count);
-            if (gk <= g_first) begin
-                assert (cp_ptr_probe == g_base);
-            end else if (gk <= g_last + 17'd1) begin
-                assert ({1'b0, g_rom[cp_ptr_probe]} >= gk - g_first);
-                if (cp_ptr_probe != g_base)
-                    assert ({1'b0, g_rom[cp_ptr_probe - 10'd1]} < gk - g_first);
-            end
+                assert (inv_ok);
         end
     end
 
     //--------------------------------------------------------------------
-    // Cover: a record of each type, and a scattered pilot on an edge
+    // Cover: a record of each type, an additional continual pilot, and a
+    // scattered pilot on an edge
     //--------------------------------------------------------------------
 
     always @(*) begin

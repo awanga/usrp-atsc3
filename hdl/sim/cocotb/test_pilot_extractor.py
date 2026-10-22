@@ -6,11 +6,12 @@ ATSC3_FIXED_POINT=ON) via the hdl/sim/golden/pilot_extractor_gen CLI:
 every PilotSymbol field (carrier, type, reference, received value) and
 TLAST on each symbol's last pilot.
 
-Covers all eight pilot patterns at 8K, each on the symbol with the
-largest scattered offset (symbol Dy-1) and the symbol after it (offset 0,
-where the first scattered pilot lands on the edge carrier); 16K and 32K;
-active windows of one carrier, every carrier (bin 0 is active, so its
-symbol index is used the cycle it arrives) and an odd custom width;
+Covers every scattered pilot pattern that Annex D allows at 8K, each on
+the symbol with the largest scattered offset (symbol Dy-1) and the symbol
+after it (offset 0, where the first scattered pilot lands on the edge
+carrier); 16K and 32K; every carrier reduction at 8K, so the common
+continual pilots shift and drop out, with the odd-reduction rules for
+the parenthesized additional pilots (8K SP32_4 / SP32_2, 16K SP32_4);
 random input gaps and output backpressure with the AXI4-S hold rule
 checked; invalid configuration falling back to the C++ defaults with the
 flags set; a TLAST in the wrong place setting framing_error; and a reset
@@ -37,10 +38,36 @@ PILOT_EXTRACTOR_GEN = (
 )
 CP_ROM_HEX = REPO_ROOT / "hdl" / "rtl" / "ofdm" / "pilot_cp_positions.hex"
 
-DY = {1: 4, 2: 2, 3: 4, 4: 2, 5: 4, 6: 2, 7: 4, 8: 16}
-DEFAULT_ACTIVE = {8192: 6913, 16384: 13825, 32768: 27649}
-ROM_BASE = {8192: 0, 16384: 256, 32768: 512}
+# Pattern codes are L1D_scattered_pilot_pattern values: 0 = SP3_2, 1 = SP3_4,
+# 2 = SP4_2, ... 14 = SP32_2, 15 = SP32_4; even codes have DY = 2, odd DY = 4.
+# SP24 (codes 12, 13) has no 8K layout; 32K allows only DY = 2 patterns other
+# than SP4_2 (codes 0, 4, 6, 8, 10, 12, 14).
+DY = {code: 2 + 2 * (code % 2) for code in range(16)}
+NOC_MAX = {8192: 6913, 16384: 13825, 32768: 27649}
+CUNIT = {8192: 96, 16384: 192, 32768: 384}
+DEFAULT_ACTIVE = NOC_MAX
+ALLOWED_8K = [c for c in range(16) if c not in (12, 13)]
+ALLOWED_32K = [0, 4, 6, 8, 10, 12, 14]
+SP6_2 = 4  # the fallback pattern, allowed at every FFT size
 SCATTERED, CONTINUAL, EDGE = 0, 1, 2
+
+
+# Table D.1.4, 8K and 32K columns at Cred_coeff 0: the additional continual
+# pilots, which sit on scattered-pilot-bearing carriers (the common CPs
+# never do). Used for the collision non-vacuity check only.
+ADDITIONAL = {
+    8192: {
+        0: [1731], 1: [1731, 2886, 5733], 2: [1732], 3: [1732, 2888, 5724],
+        4: [1734], 5: [1734, 2892, 5730], 6: [1736], 7: [1736, 2896, 5720],
+        8: [1740], 9: [1740, 2904, 5748], 10: [1744], 11: [1744, 2912, 5744],
+        14: [1696], 15: [1696, 2880, 5728],
+    },
+    32768: {0: [6939], 14: [6944]},
+}
+
+
+def active(fft_size, reduction):
+    return NOC_MAX[fft_size] - reduction * CUNIT[fft_size]
 
 
 def _to_signed(v, bits):
@@ -69,21 +96,25 @@ def unpack_pilot(word):
     )
 
 
-def continual_offsets(fft_size):
-    """Relative continual-pilot carriers from the committed ROM (itself
-    generated from the C++); used only for the collision non-vacuity
-    check, never for expected values."""
+def continual_offsets(fft_size, reduction=0):
+    """Relative common continual-pilot carriers from the committed CP32 ROM
+    (itself generated from the C++) and the standard's derivation of the
+    16K / 8K sets; used only for the collision non-vacuity check, never for
+    expected values."""
     words = [
         int(line, 16)
         for line in CP_ROM_HEX.read_text().splitlines()
         if line and not line.startswith("//")
     ]
-    base = ROM_BASE[fft_size]
+    stride = 32768 // fft_size
+    shift = reduction * CUNIT[fft_size] // 2
     out = set()
-    for w in words[base:]:
+    for w in words[::stride]:
         if w == 0xFFFF:
             break
-        out.add(w)
+        absolute = (w + stride - 1) // stride
+        if absolute >= shift:
+            out.add(absolute - shift)
     return out
 
 
@@ -243,11 +274,15 @@ async def run_stream(
     return golden
 
 
-def collisions(fft_size, num_active, golden):
-    """(scattered-on-continual, scattered-on-edge) record counts."""
+def collisions(fft_size, num_active, golden, pattern=None):
+    """(scattered-on-continual, scattered-on-edge) record counts, the
+    continual carriers being the common set and the pattern's additional
+    pilots."""
     first = (fft_size - num_active) // 2
     last = first + num_active - 1
-    cps = continual_offsets(fft_size)
+    reduction = (NOC_MAX[fft_size] - num_active) // CUNIT[fft_size]
+    cps = continual_offsets(fft_size, reduction)
+    cps |= set(ADDITIONAL.get(fft_size, {}).get(pattern, []))
     sp_cp = sp_edge = 0
     for recs in golden:
         for carrier, ptype, *_ in recs:
@@ -258,21 +293,20 @@ def collisions(fft_size, num_active, golden):
     return sp_cp, sp_edge
 
 
-@cocotb.test(timeout_time=2000, timeout_unit="ms")
+@cocotb.test(timeout_time=3000, timeout_unit="ms")
 async def all_patterns_8k(dut):
-    """PP1-PP8 at 8K: the largest scattered offset (symbol Dy-1) and the
-    wrap to offset 0 (symbol Dy), plus PP1 symbol 1, the only 8K case
-    where a scattered pilot lands on a continual carrier. Both collision
-    kinds must occur."""
+    """Every pattern allowed at 8K, over a full scattered-pilot period and
+    the wrap to offset 0 (symbol Dy). Both collision kinds (scattered on an
+    additional continual carrier, scattered on an edge carrier) must occur
+    across the sweep."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x9105)
     sp_cp = sp_edge = 0
-    for pattern in range(1, 9):
+    for pattern in ALLOWED_8K:
         dy = DY[pattern]
-        indices = [dy - 1, dy] + ([1] if pattern == 1 else [])
-        symbols = random_symbols(rnd, 8192, indices)
+        symbols = random_symbols(rnd, 8192, list(range(dy)) + [dy])
         golden = await run_stream(dut, 8192, pattern, 0, symbols, rnd)
-        a, b = collisions(8192, DEFAULT_ACTIVE[8192], golden)
+        a, b = collisions(8192, DEFAULT_ACTIVE[8192], golden, pattern)
         sp_cp += a
         sp_edge += b
     assert (
@@ -281,60 +315,75 @@ async def all_patterns_8k(dut):
 
 
 @cocotb.test(timeout_time=1000, timeout_unit="ms")
-async def pp8_mid_offset_with_stalls(dut):
-    """PP8 (Dy=16) on symbols 7 and 9 back to back, with input gaps and
+async def sp12_4_mid_offset_with_stalls(dut):
+    """SP12_4 (Dy=4) on symbols 1 and 2 back to back, with input gaps and
     output backpressure."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x9108)
     await run_stream(
-        dut, 8192, 8, 0, random_symbols(rnd, 8192, [7, 9]), rnd, stalls=True
+        dut, 8192, 9, 0, random_symbols(rnd, 8192, [1, 2]), rnd, stalls=True
     )
 
 
-@cocotb.test(timeout_time=1000, timeout_unit="ms")
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def size_16k(dut):
-    """16K, PP7, symbol 3: the 16K ROM region and Dx=24 at the largest
-    offset."""
+    """16K: the stride-2 CP32 walk, with a Dy=4 and a Dy=2 pattern and the
+    pattern SP24_4 that only 16K and larger allow."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x9116)
-    golden = await run_stream(dut, 16384, 7, 0, random_symbols(rnd, 16384, [3]), rnd)
-    assert collisions(16384, DEFAULT_ACTIVE[16384], golden)[0] > 0
+    await run_stream(dut, 16384, 13, 0, random_symbols(rnd, 16384, [3]), rnd)
+    await run_stream(dut, 16384, 14, 0, random_symbols(rnd, 16384, [1]), rnd)
 
 
-@cocotb.test(timeout_time=1000, timeout_unit="ms")
+@cocotb.test(timeout_time=3000, timeout_unit="ms")
 async def size_32k(dut):
-    """32K, PP1, symbol 2: the 32K ROM region (365 entries) and bin
-    indices up to 32767."""
+    """32K (stride 1, bin indices up to 32767): SP3_2 (largest pilot
+    density) and SP32_2."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x9132)
-    golden = await run_stream(dut, 32768, 1, 0, random_symbols(rnd, 32768, [2]), rnd)
-    assert collisions(32768, DEFAULT_ACTIVE[32768], golden)[0] > 0
+    golden = await run_stream(dut, 32768, 0, 0, random_symbols(rnd, 32768, [1]), rnd)
+    await run_stream(dut, 32768, 14, 0, random_symbols(rnd, 32768, [0]), rnd)
+    assert collisions(32768, DEFAULT_ACTIVE[32768], golden, 0)[0] > 0
 
 
-@cocotb.test(timeout_time=1000, timeout_unit="ms")
-async def active_window_edges(dut):
-    """Every carrier active (first_active = 0, so bin 0 is classified the
-    cycle its TUSER arrives), a single active carrier (first = last) and
-    an odd custom width."""
+@cocotb.test(timeout_time=4000, timeout_unit="ms")
+async def carrier_reduction(dut):
+    """Every carrier reduction at 8K: the active window narrows, so the
+    first CP32 entries drop out and the rest shift (the pointer skips them
+    while the pre-window bins go by). 8K SP32_4 (Table D.1.5) and SP32_2
+    exercise the parenthesized additional pilots at odd reductions, and
+    16K SP32_4 / 32K at the deepest reductions the other sizes."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x91AE)
-    await run_stream(dut, 8192, 2, 8192, random_symbols(rnd, 8192, [0, 1]), rnd)
-    await run_stream(dut, 8192, 3, 1, random_symbols(rnd, 8192, [0]), rnd)
-    await run_stream(dut, 8192, 5, 7001, random_symbols(rnd, 8192, [2]), rnd)
+    for reduction in range(1, 5):
+        pattern = 15 if reduction % 2 else 14
+        n = active(8192, reduction)
+        await run_stream(dut, 8192, pattern, n, random_symbols(rnd, 8192, [reduction % 4]), rnd)
+    await run_stream(
+        dut, 8192, 15, active(8192, 4), random_symbols(rnd, 8192, [2]), rnd, stalls=True
+    )
+    await run_stream(dut, 16384, 15, active(16384, 3), random_symbols(rnd, 16384, [1]), rnd)
+    await run_stream(dut, 32768, 4, active(32768, 4), random_symbols(rnd, 32768, [1]), rnd)
 
 
-@cocotb.test(timeout_time=1000, timeout_unit="ms")
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
 async def invalid_config_falls_back(dut):
-    """An undefined FFT size runs as 8K, pattern 0 and 9 run as PP3, and an
-    active width beyond the FFT size runs as the default, each with its
+    """An undefined FFT size runs as 8K; a pattern the FFT size does not
+    allow (SP24_2 at 8K, SP3_4 at 32K) runs as SP6_2; a carrier count that
+    is not NoCmax - Cred_coeff * Cunit runs as the default; each with its
     flag set."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x91CF)
     syms = random_symbols(rnd, 8192, [1])
     await run_stream(dut, 8192, 4, 0, syms, rnd, cfg=(12345, 4, 0), flags=(1, 0, 0))
-    await run_stream(dut, 8192, 3, 0, syms, rnd, cfg=(8192, 0, 0), flags=(0, 1, 0))
-    await run_stream(dut, 8192, 3, 0, syms, rnd, cfg=(8192, 9, 0), flags=(0, 1, 0))
+    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 12, 0), flags=(0, 1, 0))
+    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 13, 0), flags=(0, 1, 0))
     await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 9000), flags=(0, 0, 1))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 50), flags=(0, 0, 1))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 5 * 96), flags=(0, 0, 1))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6914), flags=(0, 0, 1))
+    syms32 = random_symbols(rnd, 32768, [0])
+    await run_stream(dut, 32768, SP6_2, 0, syms32, rnd, cfg=(32768, 1, 0), flags=(0, 1, 0))
 
 
 @cocotb.test(timeout_time=500, timeout_unit="ms")
@@ -344,9 +393,9 @@ async def misplaced_tlast_flags_framing_error(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x91F7)
     symbols = random_symbols(rnd, 8192, [0])
-    golden = run_golden(8192, 3, 0, symbols)
+    golden = run_golden(8192, 5, 0, symbols)
     expected = [(r, i == len(golden[0]) - 1) for i, r in enumerate(golden[0])]
-    await reset_dut(dut, 8192, 3, 0)
+    await reset_dut(dut, 8192, 5, 0)
     drv = cocotb.start_soon(
         drive_input(dut, symbols, rnd, False, bad_tlast_at=(0, 4000))
     )
