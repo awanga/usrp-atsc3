@@ -6,7 +6,7 @@
 // SCATTERED over CONTINUAL over EDGE) is the RTL's output beat order.
 //
 // Input (stdin):
-//   C <fft_size> <pattern 1..8> <num_active_carriers, 0 = default>
+//   C <fft_size> <pattern code 0..15> <num_active_carriers, 0 = default>
 //   S <symbol_index>             -- then fft_size lines of <re> <im>
 //   ...                          -- repeated per symbol
 //
@@ -40,8 +40,8 @@ int main() {
     size_t fft_size = 0;
     int pattern = 0;
     size_t num_active = 0;
-    if (!(cfg_in >> tag >> fft_size >> pattern >> num_active) || tag != 'C' || pattern < 1 ||
-        pattern > 8 || num_active > fft_size) {
+    if (!(cfg_in >> tag >> fft_size >> pattern >> num_active) || tag != 'C' || pattern < 0 ||
+        pattern > 15 || num_active > fft_size) {
         std::cerr << "pilot_extractor_gen: bad config line: " << line << '\n';
         return 1;
     }

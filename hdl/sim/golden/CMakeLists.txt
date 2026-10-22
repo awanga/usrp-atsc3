@@ -26,6 +26,9 @@ target_link_libraries(fft_engine_gen atsc3_lib)
 add_executable(pilot_cp_rom_gen pilot_cp_rom_gen.cc)
 target_link_libraries(pilot_cp_rom_gen atsc3_lib)
 
+add_executable(pilot_additional_cp_gen pilot_additional_cp_gen.cc)
+target_link_libraries(pilot_additional_cp_gen atsc3_lib)
+
 add_executable(pilot_extractor_gen pilot_extractor_gen.cc)
 target_link_libraries(pilot_extractor_gen atsc3_lib)
 

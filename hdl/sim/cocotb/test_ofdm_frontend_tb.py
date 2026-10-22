@@ -272,9 +272,9 @@ async def run_chain(
 
 @cocotb.test(timeout_time=300, timeout_unit="ms")
 async def two_symbols_8k(dut):
-    """Two 8K symbols (CP 1024/8192, PP3) through the chain at the real
+    """Two 8K symbols (CP 1024/8192, SP6_4) through the chain at the real
     ratio, with a 12.3 kHz CFO correction."""
-    await run_chain(dut, 8192, 1024, 3, 2, 0x0F01)
+    await run_chain(dut, 8192, 1024, 5, 2, 0x0F01)
 
 
 @cocotb.test(timeout_time=300, timeout_unit="ms", expect_fail=True)
@@ -282,11 +282,11 @@ async def realtime_budget_8k(dut):
     """At 16 clocks/sample the chain must never stall the source. Known to
     fail today (freq_correction 18 cycles/sample, sequential FFT ~190k
     cycles/symbol vs 147k available)."""
-    stalls = await run_chain(dut, 8192, 1024, 3, 2, 0x0F02)
+    stalls = await run_chain(dut, 8192, 1024, 5, 2, 0x0F02)
     assert stalls == 0, f"source stalled {stalls} cycles: chain slower than real time"
 
 
 @cocotb.test(timeout_time=1500, timeout_unit="ms", skip=not FULL)
 async def three_symbols_16k_with_stalls(dut):
-    """Nightly: three 16K symbols (PP7) with random output backpressure."""
-    await run_chain(dut, 16384, 2048, 7, 3, 0x0F03, stall_output=True)
+    """Nightly: three 16K symbols (SP24_4) with random output backpressure."""
+    await run_chain(dut, 16384, 2048, 13, 3, 0x0F03, stall_output=True)
