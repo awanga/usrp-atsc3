@@ -13,8 +13,8 @@
 | 1 | LDPC H-matrices | `lib/fec/ldpc_decoder.cc` | Non-spec placeholder matrices (documented in the LDPC decoder RTL notes) | Standardized per-rate QC-LDPC matrices, A/322 Annex |
 | 2 | L1 signaling FEC | `lib/framing/l1_decoder.cc` (`fec_decode()`) | Bare LLR hard-decision sign-slicer; `short_ldpc`/`code_rate` params explicitly discarded. Comment: *"Post-MVP: Integrate full LDPC+BCH decoding for L1 signaling (currently uses hard decision)."* | L1-Basic/L1-Detail protected by their own LDPC+BCH coding |
 | 3 | Frame sync preamble reference | `lib/sync/frame_sync.cc` (`:30-50`) | Throwaway pseudo-random pattern, `(k*7)%13` phase sequence | Real ATSC 3.0 bootstrap/preamble symbol structure |
-| 4 | 16K/32K continual pilot positions | `lib/ofdm/pilot_extractor.cc` (`:222-244`) | Computed at runtime by scaling + interpolating the 8K list | Should be tabulated per A/322 pilot pattern tables |
-| 5 | Pilot PRBS reference | `lib/ofdm/pilot_extractor.cc` | No PRBS-based pilot value reference; positions only | A/322 defines pilot boosting values via a PRBS sequence |
+| 4 | ~~16K/32K continual pilot positions~~ | `lib/ofdm/pilot_extractor.cc` | Resolved: CP32 table and additional-CP tables from A/322 Annex D, checked against Tables 7.3/7.4 | n/a |
+| 5 | ~~Pilot PRBS reference~~ | `lib/ofdm/pilot_extractor.cc` | Resolved: 13-bit reference sequence of A/322 section 8.1, reloaded each symbol | n/a |
 | 6 | Cell deinterleaver permutation | `lib/ofdm/cell_deinterleaver.cc` (`:174-175`) | Bit-reversal permutation | Real ATSC A/322 cell interleaving (not bit-reversal) |
 | 7 | Frequency deinterleaver permutation | `lib/ofdm/freq_deinterleaver.cc` (`:161-162`) | Bit-reversal permutation | Real ATSC A/322 frequency interleaving. `docs/compliance.md` calls this "LFSR"; the code is bit-reversal, and that doc is stale, not this one |
 | 8 | ALP ROHC decompression | `lib/framing/alp_demux.cc` (`:253-256`) | `COMPRESSED` (ROHC) ALP packets routed to the plain IPv4 handler with no actual decompression | RFC 3095-family ROHC decompression |
