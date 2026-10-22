@@ -66,7 +66,7 @@ public:
     double get_evm_percent() const;
 
     /// Get detailed statistics
-    MerStats get_stats() const;
+    const MerStats& get_stats() const;
 
     /// Check if estimate is valid
     bool is_valid() const;

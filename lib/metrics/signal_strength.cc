@@ -90,7 +90,7 @@ double SignalStrength::get_corrected_rssi_dbm() const {
     return stats_.corrected_rssi_dbm;
 }
 
-SignalStrengthStats SignalStrength::get_stats() const {
+const SignalStrengthStats& SignalStrength::get_stats() const {
     return stats_;
 }
 

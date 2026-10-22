@@ -59,7 +59,7 @@ public:
     double get_corrected_rssi_dbm() const;
 
     /// Get detailed statistics
-    SignalStrengthStats get_stats() const;
+    const SignalStrengthStats& get_stats() const;
 
     /// Check if measurement is valid
     bool is_valid() const;
