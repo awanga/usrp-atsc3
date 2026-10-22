@@ -271,8 +271,8 @@ MUTANTS = [
     dict(
         name="pe_cp_pointer_skips",
         file="ofdm/pilot_extractor.v",
-        find="cp_ptr_next = cp_ptr + 10'd1;",
-        replace="cp_ptr_next = cp_ptr + 10'd2;",
+        find="cp_ptr_next = cp_ptr + 8'd1;",
+        replace="cp_ptr_next = cp_ptr + 8'd2;",
         killers=["sim:pilot_extractor", "formal:pilot_extractor"],
     ),
     dict(
@@ -286,8 +286,50 @@ MUTANTS = [
     dict(
         name="pe_lfsr_wrong_tap",
         file="ofdm/pilot_extractor.v",
-        find="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[1]};",
-        replace="lfsr <= {lfsr[9:0], lfsr[10] ^ lfsr[2]};",
+        find="lfsr <= {lfsr[4] ^ lfsr[3] ^ lfsr[1] ^ lfsr[0], lfsr[12:1]};",
+        replace="lfsr <= {lfsr[4] ^ lfsr[3] ^ lfsr[2] ^ lfsr[0], lfsr[12:1]};",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_cp_shift_ignored",
+        file="ofdm/pilot_extractor.v",
+        find="({1'b0, rel} + {6'd0, shift_r}) : {6'd0, shift_r};",
+        replace="{1'b0, rel} : 16'd0;",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_additional_cp_dropped",
+        file="ofdm/pilot_extractor.v",
+        find="wire        is_cp     = cp_hit || add_hit;",
+        replace="wire        is_cp     = cp_hit;",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_cp_stride_ignored",
+        file="ofdm/pilot_extractor.v",
+        find="wire [15:0] cp_abs = cp_raw >> stride_sh_r;",
+        replace="wire [15:0] cp_abs = cp_raw >> 2'd2;",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_lfsr_not_reloaded",
+        file="ofdm/pilot_extractor.v",
+        find="                    m    <= 7'd0;\n                    lfsr <= LFSR_INIT;\n",
+        replace="                    m    <= 7'd0;\n",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_lfsr_steps_before_window",
+        file="ofdm/pilot_extractor.v",
+        find="                    if (started)\n                        lfsr <=",
+        replace="                    if (1'b1)\n                        lfsr <=",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_reference_sign_flipped",
+        file="ofdm/pilot_extractor.v",
+        find="lfsr[0] ? Q15_MINUS_ONE : Q15_ONE",
+        replace="lfsr[0] ? Q15_ONE : Q15_MINUS_ONE",
         killers=["sim:pilot_extractor"],
     ),
     # --- isqrt_seq ---------------------------------------------------------
