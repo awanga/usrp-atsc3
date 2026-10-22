@@ -265,7 +265,8 @@ Concrete implementations:
   In `FIXED_POINT` mode, uses fixed-point Cooley-Tukey reference implementation
   for numerical equivalence testing against RTL.
 - `pilot_extractor` — Extracts scattered pilots (SP), continual pilots (CP),
-  and edge pilots per ATSC A/322 §7 pilot patterns PP1–PP8.
+  and edge pilots per ATSC A/322 §8.1 and Annex D (sixteen scattered patterns SP3_2 to SP32_4,
+  CP32-derived continual pilots, carrier reduction).
 - `constellation_demapper` — Produces soft LLRs; includes NUC lookup tables
   for all defined constellations.
 - `deinterleaver` — Cell, time (TDI), and frequency (FDI) de-interleavers.
