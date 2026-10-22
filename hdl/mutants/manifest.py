@@ -350,6 +350,19 @@ MUTANTS = [
     ),
     # --- frame_sync_fsm / frame_sync ---------------------------------------
     dict(
+        name="fsync_acquiring_window_ends_preamble",
+        file="sync/frame_sync_fsm.v",
+        find="if (off + fft32 <= n_r && off < end_r) begin\n"
+        "                        corr_start  <= 1'b1;\n"
+        "                        corr_offset <= off;\n"
+        "                        state       <= S_ACQ_WAIT;",
+        replace="if (off + fft32 <= end_r && off < n_r) begin\n"
+        "                        corr_start  <= 1'b1;\n"
+        "                        corr_offset <= off;\n"
+        "                        state       <= S_ACQ_WAIT;",
+        killers=["sim:frame_sync"],
+    ),
+    dict(
         name="fsync_acquiring_ties_pick_last",
         file="sync/frame_sync_fsm.v",
         find="                        if (corr_ratio > best) begin\n"

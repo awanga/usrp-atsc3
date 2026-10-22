@@ -376,11 +376,8 @@ TEST(FrameSyncFixedTest, BootstrapConfidenceTruncatesToQ15) {
     EXPECT_EQ(q15(other.get_confidence()), 32767);  // +1.0 saturates, never 32768
 }
 
-// The ACQUIRING search loop bounds the end of the correlation window by
-// the search window (offset + fft_size <= expected + half_window), so it
-// can only succeed when fft_size fits inside search_window. These tests
-// therefore use a 26-sample preamble (two reference periods) and a
-// 64-sample window.
+// A 26-sample preamble (two reference periods) and a 64-sample window keep
+// the chunks short.
 FrameSyncConfig short_preamble_config() {
     FrameSyncConfig config;
     config.frame_params.fft_size = 26;
@@ -439,6 +436,23 @@ TEST(FrameSyncFixedTest, LockSequenceAndLockedBlend) {
     // (2 subframes x 3 symbols x (26 + 4) samples).
     EXPECT_GE(sync.expected_boundary(), 132u + 180u);
     EXPECT_LE(sync.expected_boundary(), 132u + 40u + 180u);
+}
+
+// The search window bounds where a correlation may start, not where the
+// preamble ends: a preamble much longer than the window still acquires.
+TEST(FrameSyncFixedTest, AcquiresWhenPreambleExceedsSearchWindow) {
+    FrameSyncConfig config = short_preamble_config();
+    config.search_window = 8;
+    FrameSync sync(config);
+    auto chunk = reference_chunk(sync, 66);
+
+    sync.process(chunk.data(), chunk.size());
+    ASSERT_EQ(sync.get_state(), FrameSyncState::ACQUIRING);
+    sync.set_bootstrap_offset(66 + 20, 0.5);
+    sync.process(chunk.data(), chunk.size());
+    EXPECT_EQ(sync.get_state(), FrameSyncState::LOCKED);
+    EXPECT_GE(sync.expected_boundary(), 66u + 16u);
+    EXPECT_LE(sync.expected_boundary(), 66u + 24u);
 }
 
 // A chunk whose first m samples copy the reference and the rest are zero

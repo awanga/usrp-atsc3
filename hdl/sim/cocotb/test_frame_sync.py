@@ -418,6 +418,24 @@ async def directed_lock_and_loss(dut):
 
 
 @cocotb.test(timeout_time=600, timeout_unit="sec")
+async def directed_window_smaller_than_preamble(dut):
+    """The search window bounds where a correlation may start, not where the
+    preamble ends: with an 8-sample window and a 26-sample preamble the
+    synchronizer still goes SEARCHING -> ACQUIRING -> LOCKED, with the
+    boundary inside the window [16, 24) around the bootstrap offset."""
+    rnd = random.Random(13)
+    ref = model_reference()
+    bench = Bench(dut, rnd, stalls=False, gaps=False)
+    await bench.start()
+    cfg = (26, 4, 3, 2, 22937, 2, 5, 10, 8)
+    good = make_signal(rnd, "ref", 66, ref)
+    script = [("P", cfg), ("K", good), ("B", 66 + 20, 16384), ("K", good)]
+    results = await bench.play(script)
+    assert [r[1][0] for r in results[1:]] == [1, 1, 2], results
+    assert 66 + 16 <= results[3][1][2] < 66 + 24, results[3]
+
+
+@cocotb.test(timeout_time=600, timeout_unit="sec")
 async def directed_search_step(dut):
     """SEARCHING tries offsets 0, F/4, F/2, ...: with a 26-sample preamble
     that is every 6 samples. A reference that starts 28 samples into the
