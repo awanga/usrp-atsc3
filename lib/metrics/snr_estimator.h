@@ -58,7 +58,7 @@ public:
     double get_snr_db() const;
 
     /// Get detailed statistics
-    SnrStats get_stats() const;
+    const SnrStats& get_stats() const;
 
     /// Check if estimate is valid (enough samples processed)
     bool is_valid() const;

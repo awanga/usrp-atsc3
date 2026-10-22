@@ -102,7 +102,7 @@ double SnrEstimator::get_snr_db() const {
     return stats_.snr_db;
 }
 
-SnrStats SnrEstimator::get_stats() const {
+const SnrStats& SnrEstimator::get_stats() const {
     return stats_;
 }
 

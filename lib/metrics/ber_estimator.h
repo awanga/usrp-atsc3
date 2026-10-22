@@ -66,7 +66,7 @@ public:
     double get_fer() const;
 
     /// Get detailed statistics
-    BerStats get_stats() const;
+    const BerStats& get_stats() const;
 
     /// Check if estimate is valid
     bool is_valid() const;

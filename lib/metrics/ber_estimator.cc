@@ -130,7 +130,7 @@ double BerEstimator::get_fer() const {
     return stats_.fer_estimate;
 }
 
-BerStats BerEstimator::get_stats() const {
+const BerStats& BerEstimator::get_stats() const {
     return stats_;
 }
 

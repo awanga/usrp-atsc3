@@ -159,7 +159,7 @@ double MerEstimator::get_evm_percent() const {
     return stats_.evm_percent;
 }
 
-MerStats MerEstimator::get_stats() const {
+const MerStats& MerEstimator::get_stats() const {
     return stats_;
 }
 
