@@ -114,13 +114,9 @@ std::vector<std::vector<uint8_t>> create_fragmented_packets(const std::vector<ui
             ((sequence & 0x1F) << 3) | ((is_last ? 1 : 0) << 2) | ((sub_stream_id >> 6) & 0x03);
         uint8_t seg_byte1 = ((sub_stream_id & 0x3F) << 2);
 
-        packet.push_back(byte0);
-        packet.push_back(byte1);
-        packet.push_back(byte2);
-        packet.push_back(seg_byte0);
-        packet.push_back(seg_byte1);
-
-        // Add payload fragment
+        // Header and payload fragment in one allocation (GCC 15 misreports a
+        // stringop-overflow when the header is pushed byte by byte).
+        packet.assign({byte0, byte1, byte2, seg_byte0, seg_byte1});
         packet.insert(packet.end(), payload.begin() + offset, payload.begin() + offset + this_size);
 
         fragments.push_back(packet);
