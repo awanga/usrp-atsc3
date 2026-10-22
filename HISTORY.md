@@ -1157,3 +1157,8 @@ below holds the same bit-exact bar against its C++ reference.
 - Test bed: `hdl/docs/hg_xcku5p_testbed.md` (CPU vs state machine trade,
   data path, LEDs, HDMI, phases); the vendor page lacks HDMI, PHY, FMC
   and pinout details.
+
+## 2026-10-22 open items closed
+- FrameSync ACQUIRING now bounds only the correlation start (`offset + fft <= n && offset < end`), model and RTL; mutant fsync_acquiring_window_ends_preamble.
+- Pilot model rewritten to A/322:2018 8.1/Annex D (16 SPa_b patterns, CP32 + derived 16K/8K, additional CPs, carrier reduction, 13-bit reference); verified vs Tables 7.3/7.4 (185 combos). RTL ported (ROM + generated LUT), formal pass (yices, ~32 min), 15 pilot mutant pairs killed.
+- GCC 15 alp_demux test and cppcheck returnByReference fixed.

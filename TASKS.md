@@ -28,6 +28,10 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - `lib/`: float and fixed-point builds 656/656 ctest, including the 11
   capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
   clean locally.
+- Closed 2026-10-22: FrameSync ACQUIRING window fix (model+RTL), GCC 15
+  alp_demux, cppcheck returnByReference, pilot model+RTL now A/322-exact
+  (gate 4/4, fxp ctest 654/654, 15/15 pilot mutants killed). Local only,
+  not pushed.
 - RTL done through 9.6 (2026-10-18): frame_sync (chunk buffer + FSM +
   correlator + isqrt_seq) meets the done bar; the front-end bench now
   taps the corrected stream into it. Golden change: the fixed-point
@@ -49,8 +53,9 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Next
 
-1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; needs the
-   vendor schematic and the user's answers on Vivado).
+1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; hardware
+   firmware deferred by user; schematics obtained; Vivado in /opt/Xilinx
+   usable for synth/resource estimates).
 2. 9.7 Channel estimator, 9.8 equalizer, 9.9 constellation demapper,
    9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
@@ -59,13 +64,6 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Open
 
-- Golden bug (needs approval, tagged-release behavior): FrameSync's
-  ACQUIRING loop ends the correlation window at `offset + fft_size <=
-  expected + search_window/2`, so it can only succeed when fft_size <=
-  search_window. At the defaults (8192 vs 64) the synchronizer can never
-  leave ACQUIRING for LOCKED. The RTL ports it faithfully; tests use small
-  preambles. Fix (LOCKED's bound: `offset + fft_size <= n && offset <
-  search_end`) changes both the model and the RTL.
 - frame_sync throughput: one correlation is fft_size + ~170 cycles and a
   chunk runs up to search_window+1 of them with the input held off
   (~0.5M cycles at 8K/64); the bench measures +8,333 source-stall cycles
@@ -73,9 +71,6 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - frame_sync_fsm formal is bounded (BMC depth 30, cover depth 60), not
   unbounded; blends/products are cut. The correlator's arithmetic is
   covered by bit-exact simulation and mutants only.
-- GCC 15 rejects `test/unit/test_alp_demux.cc` (-Werror=stringop-overflow
-  false positive in std::vector); cppcheck 2.19 flags 5 existing
-  `returnByReference` notes (metrics/*.h, pilot_extractor.h). Not touched.
 - Gate sizes/timings of blocks before frame_sync were not re-baselined on
   Yosys 0.52.
 
@@ -85,11 +80,12 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   16 cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
   `realtime_budget_8k` is an expected failure until this closes (it
   measures 514,051 source-stall cycles over two 8K symbols).
-- Pilot golden model is not spec-exact (the RTL inherits it bit-exactly):
-  16K/32K continual pilots are interpolated from the 8K table, not
-  A/322's tables; the 8K table's source is unrecorded; the reference
-  sequence is a generic x^11+x^2+1 PRBS. Verify against A/322 before
-  the channel estimator (9.7) depends on it.
+- Legacy PP1-PP8 pilot numbering remains in config::PilotPattern, the L1
+  decoder, config/atsc3_modes.json, config/hdl_register_map.json, the
+  register-map MD and the GRC block yml (channel_eq maps it via
+  pilot_pattern_from_legacy(); PP8 throws; GR block uncompiled, no GNU Radio
+  here). Move to A/322 L1D_scattered_pilot_pattern codes 0-15 with the L1
+  decode work (9.13); register map/GRC are API docs and need approval.
 - Formal harnesses other than pilot_extractor have not been re-timed
   with yices (qualified 2026-10-02; z3 stays their default).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
@@ -119,12 +115,3 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   dev tools: pypdf BSD-3-Clause (NUC generator), cocotb BSD-3-Clause,
   pytest MIT, Verilator LGPL-3.0/Artistic-2.0, Icarus GPL-2.0*, Yosys/SBY
   ISC, z3 MIT, cvc5 BSD-3-Clause. All compatible with MPL-2.0 as used.
-
-## In progress (usage limit hit mid-task)
-- Pilot HDL port to A/322 is UNCOMMITTED in the working tree (rtl/ofdm/pilot_extractor.v,
-  pilot_additional_cp_lut.v, pilot_cp_positions.hex, formal harness, test_pilot_extractor.py,
-  golden gens, runner/synth wiring). Sim passes (Icarus+Verilator), lint 15/15, synth ok.
-  Pending: formal log scratchpad/formal_pe.log, front-end bench scratchpad/fe.log,
-  pilot mutants in hdl/mutants/manifest.py (pe_cp_pointer_skips and pe_lfsr_wrong_tap
-  need new find text; add shift/additional/stride mutants), docs (toolchain.md regen
-  commands), full gate, then commit. register map / L1 / config still use PP1-PP8 (9.13).
