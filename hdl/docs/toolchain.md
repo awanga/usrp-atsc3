@@ -29,8 +29,8 @@ Python 3.14, GCC 15, Boost 1.90). What that changed for the HDL flow:
   `pip install -r hdl/sim/cocotb/requirements.txt black==24.1.1
   flake8==7.0.0`. cocotb 1.9.2 builds and runs against Python 3.14 and
   Verilator 5.032 (the shim problem below is specific to cocotb 2.x).
-- Existing formal jobs and gate sizes were not re-baselined on Yosys 0.52
-  beyond the new blocks and the full gate run recorded in TASKS.md.
+- Gate sizes were re-baselined on Yosys 0.52 for every top; see
+  `synth_baseline.md`. Formal jobs were re-run in the full gate.
 
 No vendor/proprietary tools anywhere in this list.
 
