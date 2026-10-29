@@ -199,13 +199,14 @@ add_subdirectory(hal)
 # Audio/Video processing (must be before blocks/ so atsc3_av target exists)
 add_subdirectory(av)
 
-# GNU Radio blocks (only if GR found)
-if(Gnuradio_FOUND)
+# GNU Radio blocks (only if GR found). GR streams carry gr_complex, so the
+# blocks and their bindings are float-build only.
+if(Gnuradio_FOUND AND NOT ATSC3_FIXED_POINT)
   add_subdirectory(blocks)
 endif()
 
 # Python bindings (only if GR and pybind11 found)
-if(Gnuradio_FOUND AND pybind11_FOUND)
+if(Gnuradio_FOUND AND pybind11_FOUND AND NOT ATSC3_FIXED_POINT)
   add_subdirectory(python)
 endif()
 
