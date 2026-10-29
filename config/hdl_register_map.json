@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "gr-atsc3 HDL AXI4-Lite Register Map",
+    "title": "OpenATSC3 HDL AXI4-Lite Register Map",
     "description": "Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.",
     "version": "0.1.0",
     "conventions": {

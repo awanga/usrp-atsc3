@@ -1,4 +1,4 @@
-# gr-atsc3 HDL AXI4-Lite Register Map
+# OpenATSC3 HDL AXI4-Lite Register Map
 
 > Generated from `config/hdl_register_map.json` (v0.1.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
 

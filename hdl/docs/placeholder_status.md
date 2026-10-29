@@ -33,9 +33,8 @@ golden model's own comments identify them as intentional:
   since that's what bit-exactness is measured against, not because it's
   spec-accurate.
 - **NUC constellation compliance**: real code-rate-indexed NUC tables do
-  exist (`lib/ofdm/nuc_tables.h`, credited to gr-atsc3/Ron Economos,
-  GPL-3.0 -- the project has no license yet, so whether this copyleft
-  table may be used, and ported into RTL, is an open decision). The NUC
+  exist (`lib/ofdm/nuc_tables.h`, generated from A/322 Annex C by
+  `scripts/gen_nuc_tables.py`, MPL-2.0 like the rest of `lib/`). The NUC
   compliance tests pass against these tables in both builds; RTL ports
   them as-is.
 

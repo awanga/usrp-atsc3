@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """Generate a synthetic ATSC3-like IQ capture with genuine, detectable
 bootstrap bursts (repeated-half Schmidl-Cox structure), replacing a
-corrupted/invalid fixture. Written for gr-atsc3 test/captures/*.sigmf-data.
+corrupted/invalid fixture. Written for OpenATSC3 test/captures/*.sigmf-data.
 
 Model: background is complex Gaussian "OFDM-like" fill at a fixed power
 level. Periodically, a bootstrap burst (1024-sample CP + three identical
