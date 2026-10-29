@@ -43,7 +43,7 @@ documentation: |-
     - fft_size: FFT size in samples
     - fft_size_str: FFT size as string ("8K", "16K", "32K")
     - cp_samples: Cyclic prefix length in samples
-    - pilot_pattern: Pilot pattern ("PP1" - "PP8")
+    - pilot_pattern: Pilot pattern name ("SP3_2" - "SP32_4")
     - num_plps: Number of Physical Layer Pipes
     - plps: Vector of PLP configurations with:
       - plp_id: PLP identifier

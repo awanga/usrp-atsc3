@@ -57,13 +57,20 @@ config::FftSize index_to_fft_size(uint8_t idx) {
     }
 }
 
-// Map pilot pattern index to enum
-// Index 0-7 maps to PP1-PP8
-config::PilotPattern index_to_pilot_pattern(uint8_t idx) {
-    if (idx <= 7) {
-        return static_cast<config::PilotPattern>(idx + 1);  // PP1=1, PP8=8
+// L1-Pre carries the pilot pattern as a 3-bit index into the seven patterns
+// below; index 7 is reserved. The A/331 field is wider (it indexes all sixteen
+// patterns) and replaces this one when the L1 layout is made spec-exact.
+bool index_to_pilot_pattern(uint8_t idx, config::PilotPattern& out) {
+    static const config::PilotPattern kPatterns[] = {
+        config::PilotPattern::SP3_4,  config::PilotPattern::SP6_2,  config::PilotPattern::SP6_4,
+        config::PilotPattern::SP12_2, config::PilotPattern::SP12_4, config::PilotPattern::SP24_2,
+        config::PilotPattern::SP24_4,
+    };
+    if (idx >= sizeof(kPatterns) / sizeof(kPatterns[0])) {
+        return false;
     }
-    return config::PilotPattern::PP3;  // Default
+    out = kPatterns[idx];
+    return true;
 }
 
 // Map modulation index to enum
@@ -234,7 +241,7 @@ L1Pre L1Decoder::unpack_l1_pre(const uint8_t* bits, size_t num_bits) const {
 
     uint8_t pp_idx =
         static_cast<uint8_t>(extract_bits(bits, PILOT_PATTERN_OFFSET, PILOT_PATTERN_BITS));
-    pre.pilot_pattern = index_to_pilot_pattern(pp_idx);
+    pre.pilot_pattern_reserved = !index_to_pilot_pattern(pp_idx, pre.pilot_pattern);
 
     pre.l1_post_size_cells =
         static_cast<uint16_t>(extract_bits(bits, L1_POST_SIZE_OFFSET, L1_POST_SIZE_BITS));
@@ -363,6 +370,10 @@ bool L1Decoder::decode_l1_pre(const int8_t* llr_in, size_t num_bits, L1Pre& out)
 
     // Unpack L1-Pre fields
     out = unpack_l1_pre(decoded.data(), decoded.size() * 8);
+
+    if (out.pilot_pattern_reserved) {
+        return false;
+    }
 
     return out.crc_valid || !config_.check_crc;
 }

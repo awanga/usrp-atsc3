@@ -71,16 +71,25 @@ enum class CpLength : uint8_t {
     CP_4096_8192 = 10
 };
 
-// Pilot pattern (PP1-PP8)
+// Scattered pilot pattern: the A/322 L1D_scattered_pilot_pattern code, named
+// SP<Dx>_<Dy> after the pilot spacing in carriers and symbols (Table 7.3).
 enum class PilotPattern : uint8_t {
-    PP1 = 1,
-    PP2 = 2,
-    PP3 = 3,
-    PP4 = 4,
-    PP5 = 5,
-    PP6 = 6,
-    PP7 = 7,
-    PP8 = 8
+    SP3_2 = 0,
+    SP3_4 = 1,
+    SP4_2 = 2,
+    SP4_4 = 3,
+    SP6_2 = 4,
+    SP6_4 = 5,
+    SP8_2 = 6,
+    SP8_4 = 7,
+    SP12_2 = 8,
+    SP12_4 = 9,
+    SP16_2 = 10,
+    SP16_4 = 11,
+    SP24_2 = 12,
+    SP24_4 = 13,
+    SP32_2 = 14,
+    SP32_4 = 15
 };
 
 // Time interleaver mode
@@ -138,7 +147,7 @@ struct Atsc3Config {
     // ===== L1-Pre (preamble OFDM config) =====
     FftSize fft_size = FftSize::FFT_8K;
     CpLength cp_length = CpLength::CP_1024_8192;
-    PilotPattern pilot_pattern = PilotPattern::PP3;
+    PilotPattern pilot_pattern = PilotPattern::SP6_4;
     uint8_t gi_fraction = 0;  // Guard interval fraction index
     bool preamble_reduced_carriers = false;
 
@@ -255,7 +264,7 @@ inline Atsc3Config get_default_config() {
     Atsc3Config config;
     config.fft_size = FftSize::FFT_8K;
     config.cp_length = CpLength::CP_1024_8192;
-    config.pilot_pattern = PilotPattern::PP3;
+    config.pilot_pattern = PilotPattern::SP6_4;
     config.num_plps = 1;
     config.plps[0].plp_id = 0;
     config.plps[0].modulation = Modulation::QAM64;

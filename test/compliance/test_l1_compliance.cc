@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <stdexcept>
 #include <vector>
 
 namespace atsc3 {
@@ -66,6 +67,21 @@ uint32_t compute_crc32(const uint8_t* data, size_t num_bits) {
 //==============================================================================
 // L1-Pre Test Data Generation
 //==============================================================================
+
+const PilotPattern kFieldPatterns[] = {
+    PilotPattern::SP3_4,  PilotPattern::SP6_2,  PilotPattern::SP6_4,  PilotPattern::SP12_2,
+    PilotPattern::SP12_4, PilotPattern::SP24_2, PilotPattern::SP24_4,
+};
+
+// Field value of a pattern: its position in kFieldPatterns.
+uint8_t pilot_pattern_field(PilotPattern pp) {
+    for (uint8_t i = 0; i < sizeof(kFieldPatterns) / sizeof(kFieldPatterns[0]); i++) {
+        if (kFieldPatterns[i] == pp) {
+            return i;
+        }
+    }
+    throw std::invalid_argument("pattern has no L1-Pre field index");
+}
 
 // L1-Pre structure with CRC per ATSC A/322 Table 5.1
 struct L1PreTestVector {
@@ -129,8 +145,8 @@ std::vector<uint8_t> generate_l1_pre_with_crc(const L1PreTestVector& tv) {
     // GI fraction (4 bits)
     set_bits(data, 5, 4, tv.gi_fraction);
 
-    // Pilot pattern (3 bits) - stored as index 0-7 for PP1-PP8
-    set_bits(data, 9, 3, static_cast<uint8_t>(tv.pilot_pattern) - 1);
+    // Pilot pattern (3 bits): index into the seven patterns in kFieldPatterns
+    set_bits(data, 9, 3, pilot_pattern_field(tv.pilot_pattern));
 
     // L1-Post size cells (16 bits)
     set_bits(data, 12, 16, tv.l1_post_size_cells);
@@ -207,7 +223,7 @@ TEST_F(L1ComplianceTest, L1PreValidCrcAccepted) {
     L1PreTestVector tv{};
     tv.fft_size = FftSize::FFT_8K;
     tv.gi_fraction = 4;
-    tv.pilot_pattern = PilotPattern::PP3;
+    tv.pilot_pattern = PilotPattern::SP6_4;
     tv.l1_post_size_cells = 100;
     tv.l1_post_modulation = Modulation::QPSK;
     tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -235,7 +251,7 @@ TEST_F(L1ComplianceTest, L1PreCorruptedCrcRejected) {
     L1PreTestVector tv{};
     tv.fft_size = FftSize::FFT_8K;
     tv.gi_fraction = 4;
-    tv.pilot_pattern = PilotPattern::PP3;
+    tv.pilot_pattern = PilotPattern::SP6_4;
     tv.l1_post_size_cells = 100;
     tv.l1_post_modulation = Modulation::QPSK;
     tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -268,7 +284,7 @@ TEST_F(L1ComplianceTest, AllFftSizesValid) {
         L1PreTestVector tv{};
         tv.fft_size = fft_size;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -291,11 +307,11 @@ TEST_F(L1ComplianceTest, AllFftSizesValid) {
 //==============================================================================
 
 TEST_F(L1ComplianceTest, AllPilotPatternsValid) {
-    for (int pp = 1; pp <= 8; pp++) {
+    for (PilotPattern pp : kFieldPatterns) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = static_cast<PilotPattern>(pp);
+        tv.pilot_pattern = pp;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -308,7 +324,7 @@ TEST_F(L1ComplianceTest, AllPilotPatternsValid) {
         L1Pre pre;
         bool result = decoder_->decode_l1_pre(llr.data(), llr.size(), pre);
 
-        EXPECT_TRUE(result) << "Pilot pattern PP" << pp << " failed";
+        EXPECT_TRUE(result) << "Pilot pattern " << static_cast<int>(pp) << " failed";
         EXPECT_EQ(pre.pilot_pattern, tv.pilot_pattern);
     }
 }
@@ -324,7 +340,7 @@ TEST_F(L1ComplianceTest, AllGuardIntervalsValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = gi;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -354,7 +370,7 @@ TEST_F(L1ComplianceTest, AllL1PostModulationsValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = mod;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -386,7 +402,7 @@ TEST_F(L1ComplianceTest, AllCodeRatesValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = rate;
@@ -416,7 +432,7 @@ TEST_F(L1ComplianceTest, L1PostSizeRangeValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = size;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -446,7 +462,7 @@ TEST_F(L1ComplianceTest, SubframeCountRangeValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -474,7 +490,7 @@ TEST_F(L1ComplianceTest, AllFecTypesValid) {
         L1PreTestVector tv{};
         tv.fft_size = FftSize::FFT_8K;
         tv.gi_fraction = 4;
-        tv.pilot_pattern = PilotPattern::PP3;
+        tv.pilot_pattern = PilotPattern::SP6_4;
         tv.l1_post_size_cells = 100;
         tv.l1_post_modulation = Modulation::QPSK;
         tv.l1_post_code_rate = CodeRate::RATE_5_15;
@@ -499,7 +515,8 @@ TEST_F(L1ComplianceTest, AllFecTypesValid) {
 TEST_F(L1ComplianceTest, ComprehensiveConfigMatrix) {
     // Test all combinations of key parameters (subset)
     std::vector<FftSize> fft_sizes = {FftSize::FFT_8K, FftSize::FFT_16K, FftSize::FFT_32K};
-    std::vector<PilotPattern> patterns = {PilotPattern::PP1, PilotPattern::PP4, PilotPattern::PP8};
+    std::vector<PilotPattern> patterns = {PilotPattern::SP3_4, PilotPattern::SP12_2,
+                                          PilotPattern::SP24_4};
     std::vector<Modulation> mods = {Modulation::QPSK, Modulation::QAM64, Modulation::QAM256};
 
     size_t total_tests = 0;

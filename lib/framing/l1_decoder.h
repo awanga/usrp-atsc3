@@ -43,7 +43,7 @@ struct L1Pre {
     config::FftSize fft_size = config::FftSize::FFT_8K;
     uint8_t gi_fraction = 0;  // Guard interval index
     config::CpLength cp_length = config::CpLength::CP_1024_8192;
-    config::PilotPattern pilot_pattern = config::PilotPattern::PP3;
+    config::PilotPattern pilot_pattern = config::PilotPattern::SP6_4;
 
     // L1-Post configuration
     uint16_t l1_post_size_cells = 0;
@@ -55,6 +55,9 @@ struct L1Pre {
     // Frame configuration
     uint8_t num_subframes = 1;
     bool preamble_reduced_carriers = false;
+
+    // The pilot pattern field held the reserved index
+    bool pilot_pattern_reserved = false;
 
     // CRC status
     bool crc_valid = false;

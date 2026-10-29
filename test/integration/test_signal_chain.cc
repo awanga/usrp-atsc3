@@ -210,7 +210,7 @@ TEST_F(SignalChainTest, ConfigBusDistribution) {
     test_config.valid = true;
     test_config.fft_size = config::FftSize::FFT_16K;
     test_config.cp_length = config::CpLength::CP_2048_8192;
-    test_config.pilot_pattern = config::PilotPattern::PP4;
+    test_config.pilot_pattern = config::PilotPattern::SP12_2;
     test_config.num_plps = 1;
     test_config.plps[0].plp_id = 0;
     test_config.plps[0].modulation = config::Modulation::QAM64;
@@ -227,7 +227,7 @@ TEST_F(SignalChainTest, ConfigBusDistribution) {
     // Verify configuration matches
     EXPECT_TRUE(observer1.get_last_config().valid);
     EXPECT_EQ(observer1.get_last_config().fft_size, config::FftSize::FFT_16K);
-    EXPECT_EQ(observer1.get_last_config().pilot_pattern, config::PilotPattern::PP4);
+    EXPECT_EQ(observer1.get_last_config().pilot_pattern, config::PilotPattern::SP12_2);
     EXPECT_EQ(observer1.get_last_config().plps[0].modulation, config::Modulation::QAM64);
 
     EXPECT_EQ(bus.get_publish_count(), 1u);

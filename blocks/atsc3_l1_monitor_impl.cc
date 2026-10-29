@@ -62,7 +62,7 @@ void l1_monitor_impl::handle_l1_config(pmt::pmt_t msg) {
 
         // Extract pilot pattern
         if (pmt::dict_has_key(msg, pmt::mp("pilot_pattern"))) {
-            auto pp = pmt::to_long(pmt::dict_ref(msg, pmt::mp("pilot_pattern"), pmt::from_long(3)));
+            auto pp = pmt::to_long(pmt::dict_ref(msg, pmt::mp("pilot_pattern"), pmt::from_long(5)));
             config_.pilot_pattern = static_cast<::atsc3::config::PilotPattern>(pp);
         }
 
@@ -231,26 +231,11 @@ const char* l1_monitor_impl::fft_size_str(::atsc3::config::FftSize size) {
 }
 
 const char* l1_monitor_impl::pilot_pattern_str(::atsc3::config::PilotPattern pattern) {
-    switch (pattern) {
-        case ::atsc3::config::PilotPattern::PP1:
-            return "PP1";
-        case ::atsc3::config::PilotPattern::PP2:
-            return "PP2";
-        case ::atsc3::config::PilotPattern::PP3:
-            return "PP3";
-        case ::atsc3::config::PilotPattern::PP4:
-            return "PP4";
-        case ::atsc3::config::PilotPattern::PP5:
-            return "PP5";
-        case ::atsc3::config::PilotPattern::PP6:
-            return "PP6";
-        case ::atsc3::config::PilotPattern::PP7:
-            return "PP7";
-        case ::atsc3::config::PilotPattern::PP8:
-            return "PP8";
-        default:
-            return "Unknown";
-    }
+    static const char* const kNames[] = {"SP3_2",  "SP3_4",  "SP4_2",  "SP4_4",  "SP6_2",  "SP6_4",
+                                         "SP8_2",  "SP8_4",  "SP12_2", "SP12_4", "SP16_2", "SP16_4",
+                                         "SP24_2", "SP24_4", "SP32_2", "SP32_4"};
+    const auto code = static_cast<size_t>(pattern);
+    return code < sizeof(kNames) / sizeof(kNames[0]) ? kNames[code] : "Unknown";
 }
 
 const char* l1_monitor_impl::modulation_str(::atsc3::config::Modulation mod) {

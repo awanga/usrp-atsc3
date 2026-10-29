@@ -16,7 +16,7 @@ void bind_channel_eq(py::module_& m) {
                std::shared_ptr<gr::atsc3::channel_eq>>(m, "channel_eq", DOC_CHANNEL_EQ)
 
         .def(py::init(&gr::atsc3::channel_eq::make), py::arg("fft_size") = 8192,
-             py::arg("pilot_pattern") = 3, py::arg("use_mmse") = true, DOC_CHANNEL_EQ_MAKE)
+             py::arg("pilot_pattern") = 5, py::arg("use_mmse") = true, DOC_CHANNEL_EQ_MAKE)
 
         .def("set_pilot_pattern", &gr::atsc3::channel_eq::set_pilot_pattern, py::arg("pattern"),
              DOC_CHANNEL_EQ_SET_PILOT_PATTERN)

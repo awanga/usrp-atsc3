@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <stdexcept>
 #include <vector>
 
 namespace atsc3 {
@@ -20,9 +21,38 @@ namespace {
 // Test Helpers
 //==============================================================================
 
+// The 3-bit L1-Pre pilot pattern field indexes seven patterns; index 7 is reserved.
+uint8_t pilot_pattern_field(config::PilotPattern pp) {
+    switch (pp) {
+        case config::PilotPattern::SP3_4:
+            return 0;
+        case config::PilotPattern::SP6_2:
+            return 1;
+        case config::PilotPattern::SP6_4:
+            return 2;
+        case config::PilotPattern::SP12_2:
+            return 3;
+        case config::PilotPattern::SP12_4:
+            return 4;
+        case config::PilotPattern::SP24_2:
+            return 5;
+        case config::PilotPattern::SP24_4:
+            return 6;
+        default:
+            throw std::invalid_argument("pattern has no L1-Pre field index");
+    }
+}
+
+const config::PilotPattern kFieldPatterns[] = {
+    config::PilotPattern::SP3_4,  config::PilotPattern::SP6_2,  config::PilotPattern::SP6_4,
+    config::PilotPattern::SP12_2, config::PilotPattern::SP12_4, config::PilotPattern::SP24_2,
+    config::PilotPattern::SP24_4,
+};
+
 // Create L1-Pre test data with specified parameters
-std::vector<int8_t> create_l1_pre_llr(config::FftSize fft_size, config::PilotPattern pp,
-                                      config::Modulation l1_post_mod, uint16_t l1_post_size) {
+std::vector<int8_t> create_l1_pre_llr_with_field(config::FftSize fft_size, uint8_t pp_field,
+                                                 config::Modulation l1_post_mod,
+                                                 uint16_t l1_post_size) {
     // Build L1-Pre bits according to spec
     std::vector<uint8_t> bits(32, 0);  // 256 bits = 32 bytes
 
@@ -49,8 +79,8 @@ std::vector<int8_t> create_l1_pre_llr(config::FftSize fft_size, config::PilotPat
     // GI fraction (4 bits) = 4 (maps to CP_1024_8192)
     set_bits(5, 4, 4);
 
-    // Pilot pattern (3 bits) - stored as index 0-7 for PP1-PP8
-    set_bits(9, 3, static_cast<uint8_t>(pp) - 1);
+    // Pilot pattern (3 bits)
+    set_bits(9, 3, pp_field);
 
     // L1-Post size (16 bits)
     set_bits(12, 16, l1_post_size);
@@ -80,6 +110,12 @@ std::vector<int8_t> create_l1_pre_llr(config::FftSize fft_size, config::PilotPat
     }
 
     return llr;
+}
+
+std::vector<int8_t> create_l1_pre_llr(config::FftSize fft_size, config::PilotPattern pp,
+                                      config::Modulation l1_post_mod, uint16_t l1_post_size) {
+    return create_l1_pre_llr_with_field(fft_size, pilot_pattern_field(pp), l1_post_mod,
+                                        l1_post_size);
 }
 
 // Create L1-Post test data with specified PLPs
@@ -196,7 +232,7 @@ TEST(L1DecoderTest, DecodeL1PreFft8K) {
 
     L1Decoder decoder(config);
 
-    auto llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::PP3,
+    auto llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::SP6_4,
                                  config::Modulation::QPSK, 100);
 
     L1Pre pre;
@@ -204,7 +240,7 @@ TEST(L1DecoderTest, DecodeL1PreFft8K) {
 
     EXPECT_TRUE(result);
     EXPECT_EQ(pre.fft_size, config::FftSize::FFT_8K);
-    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::PP3);
+    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::SP6_4);
     EXPECT_EQ(pre.l1_post_modulation, config::Modulation::QPSK);
 }
 
@@ -214,7 +250,7 @@ TEST(L1DecoderTest, DecodeL1PreFft16K) {
 
     L1Decoder decoder(config);
 
-    auto llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::PP5,
+    auto llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::SP12_4,
                                  config::Modulation::QAM64, 200);
 
     L1Pre pre;
@@ -222,7 +258,7 @@ TEST(L1DecoderTest, DecodeL1PreFft16K) {
 
     EXPECT_TRUE(result);
     EXPECT_EQ(pre.fft_size, config::FftSize::FFT_16K);
-    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::PP5);
+    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::SP12_4);
     EXPECT_EQ(pre.l1_post_modulation, config::Modulation::QAM64);
     EXPECT_EQ(pre.l1_post_size_cells, 200u);
 }
@@ -233,7 +269,7 @@ TEST(L1DecoderTest, DecodeL1PreFft32K) {
 
     L1Decoder decoder(config);
 
-    auto llr = create_l1_pre_llr(config::FftSize::FFT_32K, config::PilotPattern::PP8,
+    auto llr = create_l1_pre_llr(config::FftSize::FFT_32K, config::PilotPattern::SP24_4,
                                  config::Modulation::QAM256, 500);
 
     L1Pre pre;
@@ -241,7 +277,7 @@ TEST(L1DecoderTest, DecodeL1PreFft32K) {
 
     EXPECT_TRUE(result);
     EXPECT_EQ(pre.fft_size, config::FftSize::FFT_32K);
-    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::PP8);
+    EXPECT_EQ(pre.pilot_pattern, config::PilotPattern::SP24_4);
     EXPECT_EQ(pre.l1_post_modulation, config::Modulation::QAM256);
 }
 
@@ -361,7 +397,7 @@ TEST(L1DecoderTest, BuildConfigFromL1) {
     L1Decoder decoder(cfg);
 
     // Create L1-Pre
-    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::PP4,
+    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::SP12_2,
                                      config::Modulation::QAM64, 150);
     L1Pre pre;
     decoder.decode_l1_pre(pre_llr.data(), pre_llr.size(), pre);
@@ -386,7 +422,7 @@ TEST(L1DecoderTest, BuildConfigFromL1) {
     auto config = decoder.build_config(pre, post);
 
     EXPECT_EQ(config.fft_size, config::FftSize::FFT_16K);
-    EXPECT_EQ(config.pilot_pattern, config::PilotPattern::PP4);
+    EXPECT_EQ(config.pilot_pattern, config::PilotPattern::SP12_2);
     EXPECT_EQ(config.l1_post_modulation, config::Modulation::QAM64);
     EXPECT_EQ(config.num_plps, 2u);
 
@@ -404,7 +440,7 @@ TEST(L1DecoderTest, BuildConfigDerivedParams) {
     L1Decoder decoder(cfg);
 
     // Create minimal L1 data
-    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::PP3,
+    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::SP6_4,
                                      config::Modulation::QPSK, 100);
     L1Pre pre;
     decoder.decode_l1_pre(pre_llr.data(), pre_llr.size(), pre);
@@ -444,7 +480,7 @@ TEST(L1DecoderTest, ObserverNotification) {
     });
 
     // Create and decode L1
-    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::PP3,
+    auto pre_llr = create_l1_pre_llr(config::FftSize::FFT_16K, config::PilotPattern::SP6_4,
                                      config::Modulation::QPSK, 100);
     L1Pre pre;
     decoder.decode_l1_pre(pre_llr.data(), pre_llr.size(), pre);
@@ -490,7 +526,7 @@ TEST(L1DecoderTest, Reset) {
     L1Decoder decoder(cfg);
 
     // Decode something
-    auto llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::PP3,
+    auto llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::SP6_4,
                                  config::Modulation::QPSK, 100);
     L1Pre pre;
     decoder.decode_l1_pre(llr.data(), llr.size(), pre);
@@ -519,7 +555,7 @@ TEST(L1DecoderTest, AllFftSizes) {
 
     for (auto fft_size : sizes) {
         auto llr =
-            create_l1_pre_llr(fft_size, config::PilotPattern::PP3, config::Modulation::QPSK, 100);
+            create_l1_pre_llr(fft_size, config::PilotPattern::SP6_4, config::Modulation::QPSK, 100);
         L1Pre pre;
         bool result = decoder.decode_l1_pre(llr.data(), llr.size(), pre);
 
@@ -534,8 +570,7 @@ TEST(L1DecoderTest, AllPilotPatterns) {
 
     L1Decoder decoder(cfg);
 
-    for (int pp = 1; pp <= 8; pp++) {
-        auto pattern = static_cast<config::PilotPattern>(pp);
+    for (config::PilotPattern pattern : kFieldPatterns) {
         auto llr =
             create_l1_pre_llr(config::FftSize::FFT_8K, pattern, config::Modulation::QPSK, 100);
         L1Pre pre;
@@ -557,7 +592,8 @@ TEST(L1DecoderTest, AllModulations) {
                                             config::Modulation::QAM1024};
 
     for (auto mod : mods) {
-        auto llr = create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::PP3, mod, 100);
+        auto llr =
+            create_l1_pre_llr(config::FftSize::FFT_8K, config::PilotPattern::SP6_4, mod, 100);
         L1Pre pre;
         bool result = decoder.decode_l1_pre(llr.data(), llr.size(), pre);
 
@@ -596,6 +632,20 @@ TEST(L1DecoderTest, MaxPlps) {
     for (size_t i = 0; i < num_plps; i++) {
         EXPECT_EQ(post.plps[i].plp_id, i);
     }
+}
+
+TEST(L1DecoderTest, ReservedPilotPatternIndexIsRejected) {
+    L1DecoderConfig cfg;
+    cfg.check_crc = false;
+
+    L1Decoder decoder(cfg);
+
+    auto llr =
+        create_l1_pre_llr_with_field(config::FftSize::FFT_8K, 7, config::Modulation::QPSK, 100);
+
+    L1Pre pre;
+    EXPECT_FALSE(decoder.decode_l1_pre(llr.data(), llr.size(), pre));
+    EXPECT_TRUE(pre.pilot_pattern_reserved);
 }
 
 }  // namespace

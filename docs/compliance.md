@@ -43,7 +43,7 @@ This document tracks OpenATSC3 compliance with ATSC A/322:2023 (Physical Layer P
 | L1-Pre CRC-32 | Pass | test_l1_compliance | ISO 3309 polynomial |
 | FFT size field (2 bits) | Pass | test_l1_compliance | 8K/16K/32K |
 | GI fraction field (4 bits) | Pass | test_l1_compliance | 11 valid values |
-| Pilot pattern field (3 bits) | Pass | test_l1_compliance | PP1-PP8 |
+| Pilot pattern field (3 bits) | Pass | test_l1_compliance | Seven patterns, index 7 rejected as reserved |
 | L1-Post size field (16 bits) | Pass | test_l1_compliance | Full range |
 | L1-Post modulation (4 bits) | Pass | test_l1_compliance | All uniform QAM |
 | L1-Post code rate (4 bits) | Pass | test_l1_compliance | 12 code rates |

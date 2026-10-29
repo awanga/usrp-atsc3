@@ -115,7 +115,7 @@ Create ATSC 3.0 channel equalizer block
 
 Args:
     fft_size: FFT size
-    pilot_pattern: Pilot pattern (1-8)
+    pilot_pattern: Pilot pattern code (0-15, A/322 L1D_scattered_pilot_pattern)
     use_mmse: Use MMSE equalization (vs ZF)
 
 Returns:

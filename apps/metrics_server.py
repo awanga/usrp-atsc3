@@ -134,7 +134,7 @@ class SimulatedMetricsUpdater:
             l1_valid = True
             fft_size = "8K"
             cp_length = "1/192"
-            pilot_pattern = "PP3"
+            pilot_pattern = "SP6_4"
             plp_count = 2
             plps = [
                 {

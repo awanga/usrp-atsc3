@@ -265,13 +265,13 @@ TEST(ConfigBusTest, PublishUpdatesCurrentConfig) {
     ConfigBus bus;
 
     Atsc3Config config;
-    config.pilot_pattern = PilotPattern::PP5;
+    config.pilot_pattern = PilotPattern::SP12_4;
     config.num_plps = 3;
     config.valid = true;
 
     bus.publish(config);
 
-    EXPECT_EQ(bus.get_config().pilot_pattern, PilotPattern::PP5);
+    EXPECT_EQ(bus.get_config().pilot_pattern, PilotPattern::SP12_4);
     EXPECT_EQ(bus.get_config().num_plps, 3u);
     EXPECT_TRUE(bus.has_valid_config());
 }
@@ -345,7 +345,7 @@ TEST(ConfigBusTest, PublishFullConfig) {
     config.version = 1;
     config.fft_size = FftSize::FFT_16K;
     config.cp_length = CpLength::CP_1536_8192;
-    config.pilot_pattern = PilotPattern::PP4;
+    config.pilot_pattern = PilotPattern::SP12_2;
     config.num_plps = 2;
     config.plps[0].plp_id = 0;
     config.plps[0].modulation = Modulation::QAM64;
@@ -361,7 +361,7 @@ TEST(ConfigBusTest, PublishFullConfig) {
     EXPECT_EQ(received.version, 1u);
     EXPECT_EQ(received.fft_size, FftSize::FFT_16K);
     EXPECT_EQ(received.cp_length, CpLength::CP_1536_8192);
-    EXPECT_EQ(received.pilot_pattern, PilotPattern::PP4);
+    EXPECT_EQ(received.pilot_pattern, PilotPattern::SP12_2);
     EXPECT_EQ(received.num_plps, 2u);
     EXPECT_EQ(received.plps[0].modulation, Modulation::QAM64);
     EXPECT_EQ(received.plps[1].modulation, Modulation::QAM256);

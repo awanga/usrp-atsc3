@@ -21,6 +21,7 @@
 //
 // Reference: ATSC A/322 Section 8.1 (Pilot Insertion), Annex D, Annex E
 //
+#include "config/atsc3_config.h"
 #include "types.h"
 
 #include <cstddef>
@@ -31,26 +32,9 @@
 namespace atsc3 {
 namespace ofdm {
 
-// Scattered pilot patterns SPa_b (DX = a, DY = b, Table 8.2). The value of
-// each enumerator is its L1D_scattered_pilot_pattern code (Table 9.12).
-enum class PilotPattern {
-    SP3_2 = 0,
-    SP3_4 = 1,
-    SP4_2 = 2,
-    SP4_4 = 3,
-    SP6_2 = 4,
-    SP6_4 = 5,
-    SP8_2 = 6,
-    SP8_4 = 7,
-    SP12_2 = 8,
-    SP12_4 = 9,
-    SP16_2 = 10,
-    SP16_4 = 11,
-    SP24_2 = 12,
-    SP24_4 = 13,
-    SP32_2 = 14,
-    SP32_4 = 15
-};
+// Scattered pilot patterns SPa_b (DX = a, DY = b, Table 8.2), numbered by their
+// L1D_scattered_pilot_pattern code (Table 9.12); defined with the L1 configuration.
+using PilotPattern = config::PilotPattern;
 
 // Pilot type classification
 enum class PilotType {

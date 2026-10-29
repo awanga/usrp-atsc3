@@ -174,7 +174,7 @@ TEST(Atsc3ConfigTest, GetDefaultConfig) {
     EXPECT_TRUE(config.valid);
     EXPECT_EQ(config.fft_size, FftSize::FFT_8K);
     EXPECT_EQ(config.cp_length, CpLength::CP_1024_8192);
-    EXPECT_EQ(config.pilot_pattern, PilotPattern::PP3);
+    EXPECT_EQ(config.pilot_pattern, PilotPattern::SP6_4);
     EXPECT_EQ(config.num_plps, 1);
 
     EXPECT_TRUE(config.plps[0].valid);
@@ -205,8 +205,10 @@ TEST(Atsc3ConfigTest, NoVectors) {
 
 // Test PilotPattern enum range
 TEST(Atsc3ConfigTest, PilotPatternRange) {
-    EXPECT_EQ(static_cast<uint8_t>(PilotPattern::PP1), 1);
-    EXPECT_EQ(static_cast<uint8_t>(PilotPattern::PP8), 8);
+    // A/322 Table 9.12: the enumerators are the L1D_scattered_pilot_pattern codes.
+    EXPECT_EQ(static_cast<uint8_t>(PilotPattern::SP3_2), 0);
+    EXPECT_EQ(static_cast<uint8_t>(PilotPattern::SP6_4), 5);
+    EXPECT_EQ(static_cast<uint8_t>(PilotPattern::SP32_4), 15);
 }
 
 // Test TimeInterleaveMode enum

@@ -37,29 +37,12 @@ channel_eq_impl::~channel_eq_impl() = default;
 
 namespace {
 
-// The block's pilot_pattern parameter and the L1 configuration still use
-// the legacy PP1-PP8 numbering; map each onto the A/322 pattern with the
-// same DX/DY. PP8 (DX=6, DY=16) is not an A/322 pattern.
-::atsc3::ofdm::PilotPattern pilot_pattern_from_legacy(int legacy) {
-    using ::atsc3::ofdm::PilotPattern;
-    switch (legacy) {
-        case 1:
-            return PilotPattern::SP3_4;
-        case 2:
-            return PilotPattern::SP6_2;
-        case 3:
-            return PilotPattern::SP6_4;
-        case 4:
-            return PilotPattern::SP12_2;
-        case 5:
-            return PilotPattern::SP12_4;
-        case 6:
-            return PilotPattern::SP24_2;
-        case 7:
-            return PilotPattern::SP24_4;
-        default:
-            throw std::invalid_argument("channel_eq: pilot pattern has no A/322 equivalent");
+// The pilot_pattern parameter is the A/322 L1D_scattered_pilot_pattern code.
+::atsc3::ofdm::PilotPattern pilot_pattern_from_code(int code) {
+    if (code < 0 || code > static_cast<int>(::atsc3::ofdm::PilotPattern::SP32_4)) {
+        throw std::invalid_argument("channel_eq: pilot pattern code must be 0-15");
     }
+    return static_cast<::atsc3::ofdm::PilotPattern>(code);
 }
 
 }  // namespace
@@ -68,7 +51,7 @@ void channel_eq_impl::reconfigure() {
     // Configure pilot extractor
     ::atsc3::ofdm::PilotExtractorConfig pe_config;
     pe_config.fft_size = static_cast<size_t>(fft_size_);
-    pe_config.pattern = pilot_pattern_from_legacy(pilot_pattern_);
+    pe_config.pattern = pilot_pattern_from_code(pilot_pattern_);
     pilot_extractor_ = std::make_unique<::atsc3::ofdm::PilotExtractor>(pe_config);
 
     // Configure channel estimator

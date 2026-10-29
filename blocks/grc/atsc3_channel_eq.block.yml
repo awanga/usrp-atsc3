@@ -16,8 +16,9 @@ parameters:
   - id: pilot_pattern
     label: Pilot Pattern
     dtype: int
-    default: '3'
-    options: ['1', '2', '3', '4', '5', '6', '7', '8']
+    default: '5'
+    options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']
+    option_labels: ['SP3_2', 'SP3_4', 'SP4_2', 'SP4_4', 'SP6_2', 'SP6_4', 'SP8_2', 'SP8_4', 'SP12_2', 'SP12_4', 'SP16_2', 'SP16_4', 'SP24_2', 'SP24_4', 'SP32_2', 'SP32_4']
   - id: use_mmse
     label: Equalization Mode
     dtype: bool
@@ -61,7 +62,7 @@ documentation: |-
 
   Parameters:
     fft_size: OFDM FFT size (must match demodulator)
-    pilot_pattern: ATSC 3.0 pilot pattern index (1-8)
+    pilot_pattern: ATSC 3.0 pilot pattern, the L1D_scattered_pilot_pattern code (0-15)
     use_mmse: True for MMSE equalization, False for Zero-Forcing
 
   Message Ports:

@@ -31,6 +31,7 @@ bool ModeConfig::load(const std::string& json_path) {
         if (patterns) {
             for (const auto& p : *patterns) {
                 PilotPatternDef def;
+                def.code = p.second.get<int>("code");
                 def.dx = p.second.get<size_t>("dx");
                 def.dy = p.second.get<size_t>("dy");
                 pilot_patterns_[p.first] = def;
@@ -46,46 +47,6 @@ bool ModeConfig::load(const std::string& json_path) {
                 cfg.nfft = f.second.get<size_t>("nfft");
                 cfg.active_carriers = f.second.get<size_t>("active_carriers");
                 fft_configs_[cfg.nfft] = cfg;
-            }
-        }
-
-        // Load continual pilot positions for 8K
-        continual_pilots_8k_.clear();
-        auto cp_8k = root.get_child_optional("pilot_patterns.continual_pilots_8k");
-        if (cp_8k) {
-            for (const auto& p : *cp_8k) {
-                continual_pilots_8k_.push_back(p.second.get_value<size_t>());
-            }
-        }
-
-        // Load expected pilot counts
-        expected_counts_.clear();
-        auto exp_counts = root.get_child_optional("pilot_patterns.expected_pilot_counts");
-        if (exp_counts) {
-            for (const auto& fft : *exp_counts) {
-                // Parse FFT size from key (e.g., "8K" -> 8192)
-                size_t fft_size = 0;
-                if (fft.first == "8K") {
-                    fft_size = 8192;
-                } else if (fft.first == "16K") {
-                    fft_size = 16384;
-                } else if (fft.first == "32K") {
-                    fft_size = 32768;
-                } else {
-                    continue;
-                }
-
-                ExpectedPilotCounts counts;
-                counts.continual = fft.second.get<size_t>("continual");
-
-                auto scattered = fft.second.get_child_optional("scattered_per_symbol");
-                if (scattered) {
-                    for (const auto& s : *scattered) {
-                        counts.scattered_per_symbol[s.first] = s.second.get_value<size_t>();
-                    }
-                }
-
-                expected_counts_[fft_size] = counts;
             }
         }
 
@@ -106,24 +67,18 @@ const PilotPatternDef* ModeConfig::get_pilot_pattern(const std::string& name) co
 }
 
 const PilotPatternDef* ModeConfig::get_pilot_pattern(int index) const {
-    if (index < 1 || index > 8) {
-        return nullptr;
+    // Pilot patterns are keyed by name; the code is the index into the table.
+    for (const auto& entry : pilot_patterns_) {
+        if (entry.second.code == index) {
+            return &entry.second;
+        }
     }
-    std::string name = "PP" + std::to_string(index);
-    return get_pilot_pattern(name);
+    return nullptr;
 }
 
 const FftSizeConfig* ModeConfig::get_fft_config(size_t fft_size) const {
     auto it = fft_configs_.find(fft_size);
     if (it != fft_configs_.end()) {
-        return &it->second;
-    }
-    return nullptr;
-}
-
-const ExpectedPilotCounts* ModeConfig::get_expected_counts(size_t fft_size) const {
-    auto it = expected_counts_.find(fft_size);
-    if (it != expected_counts_.end()) {
         return &it->second;
     }
     return nullptr;

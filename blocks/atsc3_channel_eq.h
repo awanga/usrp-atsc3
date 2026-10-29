@@ -22,11 +22,12 @@ public:
     /*!
      * \brief Create ATSC 3.0 channel equalizer block
      * \param fft_size FFT size
-     * \param pilot_pattern Pilot pattern (1-8)
+     * \param pilot_pattern Pilot pattern, the A/322 L1D_scattered_pilot_pattern code (0-15; 5 =
+     * SP6_4)
      * \param use_mmse Use MMSE equalization (vs ZF)
      * \return Shared pointer to new instance
      */
-    static sptr make(int fft_size = 8192, int pilot_pattern = 3, bool use_mmse = true);
+    static sptr make(int fft_size = 8192, int pilot_pattern = 5, bool use_mmse = true);
 
     /*!
      * \brief Set pilot pattern
