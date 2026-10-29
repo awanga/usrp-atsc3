@@ -1162,3 +1162,14 @@ below holds the same bit-exact bar against its C++ reference.
 - FrameSync ACQUIRING now bounds only the correlation start (`offset + fft <= n && offset < end`), model and RTL; mutant fsync_acquiring_window_ends_preamble.
 - Pilot model rewritten to A/322:2018 8.1/Annex D (16 SPa_b patterns, CP32 + derived 16K/8K, additional CPs, carrier reduction, 13-bit reference); verified vs Tables 7.3/7.4 (185 combos). RTL ported (ROM + generated LUT), formal pass (yices, ~32 min), 15 pilot mutant pairs killed.
 - GCC 15 alp_demux test and cppcheck returnByReference fixed.
+
+## 2026-10-29 — rebase, pilot codes, UHD toolchain
+
+- Rebased `feature/hdl-port-foundations` onto `develop` (clean, 83 commits).
+- PP1-PP8 retired: config enum = A/322 codes 0-15, ofdm alias, mode table
+  keyed by SPa_b, channel_eq takes the code, L1-Pre index 7 reserved.
+- GR blocks/bindings are float-build only (fixed-point cannot compile them).
+- UHD 3.15 built with GCC 15 / Boost 1.90 / CMake 4 patches into /opt/uhd;
+  recipe in `docs/uhd_build.md`; patch kept in ~/uhd-patches.
+- HDL gate: lint 15, synth 13, sim 28; formal needs FORMAL_TIMEOUT=4000 for
+  pilot_extractor (~32 min). Pilot mutants 15/15 killed.

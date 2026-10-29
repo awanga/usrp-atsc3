@@ -23,15 +23,21 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Status
 
-- Branch `feature/hdl-port-foundations`, pushed (incl. capture LFS
-  objects) 2026-10-01; not yet rebased onto `develop`.
+- Branch `feature/hdl-port-foundations` rebased onto `develop` 2026-10-29
+  (backup: local `backup/pre-rebase`); remote still has the old history, a
+  force-push of the feature branch is pending approval.
 - `lib/`: float and fixed-point builds 656/656 ctest, including the 11
   capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
   clean locally.
-- Closed 2026-10-22: FrameSync ACQUIRING window fix (model+RTL), GCC 15
-  alp_demux, cppcheck returnByReference, pilot model+RTL now A/322-exact
-  (gate 4/4, fxp ctest 654/654, 15/15 pilot mutants killed). Local only,
-  not pushed.
+- Closed 2026-10-22: FrameSync ACQUIRING window fix, GCC 15 alp_demux,
+  cppcheck returnByReference, pilot model+RTL A/322-exact. Closed
+  2026-10-29: scattered pilot patterns numbered by A/322 codes in config,
+  L1 decoder (3-bit field, index 7 reserved), mode table, GR blocks, GRC;
+  SPDX headers on the HDL tree; gate sizes re-baselined
+  (`hdl/docs/synth_baseline.md`); CI builds fixed-point and runs the HDL
+  gate (unrun: needs GitHub). GNU Radio 3.10.12 and UHD 3.15 (`/opt/uhd`,
+  `docs/uhd_build.md`) installed: blocks, bindings and UHD source build,
+  float ctest 662 (9 hardware skips), fxp 654.
 - RTL done through 9.6 (2026-10-18): frame_sync (chunk buffer + FSM +
   correlator + isqrt_seq) meets the done bar; the front-end bench now
   taps the corrected stream into it. Golden change: the fixed-point
@@ -71,8 +77,6 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - frame_sync_fsm formal is bounded (BMC depth 30, cover depth 60), not
   unbounded; blends/products are cut. The correlator's arithmetic is
   covered by bit-exact simulation and mutants only.
-- Gate sizes/timings of blocks before frame_sync were not re-baselined on
-  Yosys 0.52.
 
 - Throughput (9.17): bootstrap detector ~150 cycles/sample,
   freq_correction 18 cycles/sample (one iterative CORDIC per sample),
@@ -80,31 +84,22 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   16 cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
   `realtime_budget_8k` is an expected failure until this closes (it
   measures 514,051 source-stall cycles over two 8K symbols).
-- Legacy PP1-PP8 numbering remains in config::PilotPattern, the L1 decoder,
-  config/atsc3_modes.json and the GRC block yml (channel_eq maps it via
-  pilot_pattern_from_legacy(); PP8 throws; GR block uncompiled, no GNU Radio
-  here). Move to A/322 L1D_scattered_pilot_pattern codes 0-15 with the L1
-  decode work (9.13). The register map, README and compliance doc already
-  use the A/322 codes (approved 2026-10-22).
+- The L1-Pre pilot pattern field is still a 3-bit index into seven
+  patterns (not the A/331 field); replace it with the 9.13 L1 decode.
 - Formal harnesses other than pilot_extractor have not been re-timed
   with yices (qualified 2026-10-02; z3 stays their default).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
   SymbiYosys 0.68 is a source install here. Needs an ubuntu-24.04 job
   (or the CI container) pinned to `hdl/docs/toolchain.md` versions.
-- Before merging this branch: rebase onto `develop`, then add SPDX headers to this branch's new files
-  (`hdl/rtl/**` CERN-OHL-W-2.0, rest MPL-2.0), rename its remaining
-  gr-atsc3 mentions to OpenATSC3, and replace the
-  nuc_tables license notes in `hdl/docs/placeholder_status.md` and
-  `config/hdl_register_map.json`. No `reuse lint` yet (pip install stalled).
+- Before merging this branch: no `reuse lint` run yet (not installed).
 - `develop` itself: fixed-point test build fails (`test_metrics.cc`
   narrowing, fixed here in 747ec8e); fixed-point NUC/demapper tests (8)
   fail; capture tests fail on stale LFS pointers. All fixed on this branch.
-- GNU Radio and UHD are not installed here: `blocks/` and the UHD
-  source build only in CI (`ci.yml`, float build only).
+- N210 offline and UHD images not downloaded (`uhd_images_downloader`);
+  hardware tests skip. CI float build only.
 - `config/hdl_register_map.json`: `angle_tbd` register format should
   adopt CORDIC's Q1.15 turns-over-pi when the phase tracker is ported.
-- `docs/compliance.md` is stale (calls the frequency deinterleaver
-  "LFSR"; its pass counts predate the NUC tables and test fixes).
+- `docs/compliance.md` pass counts predate the NUC tables and test fixes.
 - From plan 0-8: branch protection (manual GitHub setting); LDPC min-sum
   vectorization partial; end-to-end playback from a real capture never
   run.
