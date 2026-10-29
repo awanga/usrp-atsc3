@@ -94,4 +94,6 @@ jobs:
             black==24.1.1 flake8==7.0.0
 
       - name: HDL gate (lint, synthesis, formal, simulation)
+        env:
+          FORMAL_TIMEOUT: 4000
         run: hdl/run_all.sh
