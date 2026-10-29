@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +54,44 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build -L unit --output-on-failure -j$(nproc)
 
+      - name: Fixed-point build and tests
+        run: |
+          cmake -B build-fxp -DCMAKE_BUILD_TYPE=Release -DATSC3_FIXED_POINT=ON \
+            -DATSC3_BUILD_TESTS=ON
+          cmake --build build-fxp -j$(nproc)
+          ctest --test-dir build-fxp --output-on-failure -j$(nproc)
+
       - name: Integration tests (IQ replay)
         run: ctest --test-dir build -L integration --output-on-failure
 
+
+  hdl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install HDL toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            verilator iverilog yosys sby z3 yices2 \
+            cmake libboost-dev python3-venv
+
+      - name: Build the fixed-point golden CLIs
+        run: |
+          cmake -B build-fxp -DCMAKE_BUILD_TYPE=Release -DATSC3_FIXED_POINT=ON \
+            -DATSC3_BUILD_TESTS=ON
+          cmake --build build-fxp -j$(nproc)
+
+      - name: Python environment
+        run: |
+          python3 -m venv hdl/sim/.venv
+          hdl/sim/.venv/bin/pip install -r hdl/sim/cocotb/requirements.txt \
+            black==24.1.1 flake8==7.0.0
+
+      - name: HDL gate (lint, synthesis, formal, simulation)
+        run: hdl/run_all.sh
