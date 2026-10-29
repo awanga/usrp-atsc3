@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # run_formal.sh — run every formal harness under hdl/formal/
 #
 # smtbmc jobs run all tasks of their .sby file (prove + cover); the

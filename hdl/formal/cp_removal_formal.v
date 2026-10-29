@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cp_removal_formal.v — Formal harness for cp_removal
 //
 // Main property (data integrity vs a ghost model): the output stream is

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # run_all.sh — the full HDL gate: lint, synthesis, formal, simulation
 #
 # Runs every stage even if an earlier one fails, prints each stage's

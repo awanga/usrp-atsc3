@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_engine_bare.v — Trivial single-instance wrapper, used only to seed
 // the flatten+expose step in fft_engine.sby's [script] that promotes
 // fft_engine's internal state/stage/bfly_idx/sample_cnt/log2_n_r/

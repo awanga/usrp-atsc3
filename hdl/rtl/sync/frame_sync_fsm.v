@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_fsm.v — frame synchronizer state machine and chunk procedure
 //
 // Bit-exact port of FrameSync::process(), set_bootstrap_offset() and the

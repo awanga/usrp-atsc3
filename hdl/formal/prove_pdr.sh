@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # prove_pdr.sh — unbounded proof of a .sby job's `prove` task with ABC PDR,
 # or a bounded counterexample search for mutant (non-vacuity) checks
 #

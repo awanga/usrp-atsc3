@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cp_removal_gen.cc — golden-vector CLI for hdl/rtl/ofdm/cp_removal.v
 //
 // Links the real atsc3_lib (lib/ofdm/cp_removal.h/.cc, built with

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/sync/frame_correlator.v
 (tb/frame_correlator_tb.v: the correlator and the RAM it reads).
 

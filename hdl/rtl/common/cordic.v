@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cordic.v — Shared fixed-point CORDIC core (rotation + vectoring modes)
 //
 // Iterative, not spatially pipelined: one iteration's worth of

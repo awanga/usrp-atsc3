@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # qualify_solvers.sh — check which formal engines are usable here
 #
 # For each engine: the trivial harness in qualify.v must PASS when correct

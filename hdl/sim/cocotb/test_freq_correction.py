@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/sync/freq_correction.v
 
 Bit-exact comparison against the real golden model

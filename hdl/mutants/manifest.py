@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """RTL mutants: deliberately broken copies of hdl/rtl/ that the named
 checkers must reject. Each mutant replaces exactly one occurrence of
 `find` in `file` (relative to hdl/rtl/) with `replace`; a `find` that no

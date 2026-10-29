@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // ofdm_frontend_tb.v — integration top: freq_correction -> cp_removal ->
 // fft_engine -> pilot_extractor, with frame_sync tapping the frequency-
 // corrected stream

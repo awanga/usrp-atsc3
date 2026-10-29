@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cp_removal_bare.v — Trivial single-instance wrapper, used only to seed
 // the flatten+expose step in cp_removal.sby's [script] that promotes
 // cp_removal's internal cnt/cp_length/symbol_len/in_cp registers and

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // status_words.vh — Bit-packed layouts for fixed-size sideband/status
 // structs ported from lib/. IEEE 1364-2001 Verilog (`define only, same
 // reasoning as axi4s_types.vh: top-level `parameter` isn't legal outside a

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_gen.cc — golden-vector CLI for hdl/rtl/sync/frame_sync.v
 //
 // Links the real atsc3_lib (lib/sync/frame_sync.h/.cc, built with

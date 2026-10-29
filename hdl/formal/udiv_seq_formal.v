@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // udiv_seq_formal.v — Formal harness for hdl/rtl/common/udiv_seq.v
 //
 // Main property (data integrity vs a ghost model): a ghost copy of the

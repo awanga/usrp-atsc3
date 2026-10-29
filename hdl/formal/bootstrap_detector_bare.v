@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bootstrap_detector_bare.v — Trivial single-instance wrapper, used only to
 // seed the flatten+expose step in bootstrap_detector.sby's [script] (see
 // cordic_bare.v and hdl/docs/formal_conventions.md for why white-box

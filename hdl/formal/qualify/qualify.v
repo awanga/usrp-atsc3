@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // qualify.v — trivial harness for qualifying formal solvers
 //
 // A 2-bit counter that wraps at 3. With SHOULD_FAIL=0 the assertion

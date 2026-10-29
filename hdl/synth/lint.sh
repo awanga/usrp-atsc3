@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lint.sh — Verilog-2001 lint gate for hdl/rtl/
 #
 # Every rtl/ file must produce no output at all from each of:

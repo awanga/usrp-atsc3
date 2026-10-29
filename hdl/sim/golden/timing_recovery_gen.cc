@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // timing_recovery_gen.cc — golden-vector CLI for hdl/rtl/sync/timing_recovery.v
 //
 // Links the real atsc3_lib (lib/sync/timing_recovery.h/.cc, built with

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // axi4s_skid_buffer_formal.v — Formal harness for axi4s_skid_buffer
 //
 // Main property (data integrity vs a ghost model): beats leave in the

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_correction_formal.v — Formal harness for freq_correction
 //
 // Main property (data integrity vs a ghost model of the NCO phase): a

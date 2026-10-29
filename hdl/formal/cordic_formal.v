@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cordic_formal.v — Formal harness for hdl/rtl/common/cordic.v
 //
 // Main property (handshake and data integrity vs a ghost model): the

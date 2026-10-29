@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_correlator_stubs.v — formal-only stand-ins for the shared cores
 // frame_correlator instantiates
 //

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cordic_types.vh — Shared constants for hdl/rtl/common/cordic.v
 //
 // IEEE 1364-2001 Verilog. Mirrors lib/dsp/cordic.h's mode selection and

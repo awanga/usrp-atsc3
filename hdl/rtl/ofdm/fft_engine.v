@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_engine.v — Memory-based in-place radix-2 DIT FFT
 //
 // Bit-exact port of lib/ofdm/fft_engine.cc's ATSC3_FIXED_POINT

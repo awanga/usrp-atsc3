@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bootstrap_gen.cc — golden-vector CLI for hdl/rtl/sync/bootstrap_detector.v
 //
 // Links the real atsc3_lib (lib/sync/bootstrap_detector.h/.cc, built with

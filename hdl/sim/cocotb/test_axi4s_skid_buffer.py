@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/common/axi4s_skid_buffer.v
 
 Randomized backpressure test: drives a stream of tagged beats into the skid

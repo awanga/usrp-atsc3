@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cordic_gen.cc — golden-vector CLI for hdl/rtl/common/cordic.v
 //
 // Links the real atsc3_lib (lib/dsp/cordic.h/.cc) so cocotb's bit-exact

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # synth.sh — technology-independent Yosys synthesis check for every RTL top
 #
 # Generic gates only (no vendor library): proves each block elaborates and

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """generate_register_map.py — renders config/hdl_register_map.json into
 hdl/docs/axi4lite_register_map.md.
 

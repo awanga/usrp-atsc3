@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync.v — frame synchronizer: chunk buffer, correlator and state machine
 //
 // Bit-exact port of lib/sync/frame_sync.cc (ATSC3_FIXED_POINT=ON). The

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_extractor.v — scattered, continual and edge pilot extraction
 //
 // Bit-exact port of lib/ofdm/pilot_extractor.cc's PilotExtractor::extract()

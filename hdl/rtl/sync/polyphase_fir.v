@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // polyphase_fir.v — 16-bank x 32-tap polyphase FIR interpolator core
 //
 // Bit-exact port of lib/sync/timing_recovery.h's

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // timing_recovery.v — Symbol timing recovery: polyphase interpolator +
 // Gardner TED + second-order loop filter
 //

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # run_sim.sh — run every cocotb testbench on Verilator and Icarus
 #
 # One job per (block or integration bench, simulator), collected from

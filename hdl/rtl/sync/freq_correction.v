@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_correction.v — carrier-frequency-offset correction NCO
 //
 // Bit-exact port of lib/sync/freq_correction.cc's FreqCorrection::process()

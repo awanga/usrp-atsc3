@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # lib/dsp/ - Shared fixed-point DSP primitives (RTL-portable)
 # CORDIC core: no multiplier, shift-add + table lookup only.
 

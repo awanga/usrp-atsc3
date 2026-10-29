@@ -16,3 +16,15 @@ path = [
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Alfred Wanga"
 SPDX-License-Identifier = "MPL-2.0"
+
+[[annotations]]
+path = ["hdl/rtl/**.hex"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Alfred Wanga"
+SPDX-License-Identifier = "CERN-OHL-W-2.0"
+
+[[annotations]]
+path = ["hdl/sim/cocotb/requirements.txt"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Alfred Wanga"
+SPDX-License-Identifier = "MPL-2.0"

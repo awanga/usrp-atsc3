@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_extractor_bare.v — single-instance wrapper that seeds the
 // flatten+expose step in pilot_extractor.sby (see
 // hdl/docs/formal_conventions.md). No parameter override: the real

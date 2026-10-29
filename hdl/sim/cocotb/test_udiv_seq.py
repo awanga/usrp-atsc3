@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/common/udiv_seq.v (built at WIDTH=16).
 
 Reference: Python integer floor division, independent of the RTL's

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // timing_recovery_coeffs.vh -- Polyphase interpolator coefficient ROM
 //
 // GENERATED FILE -- do not hand-edit. Produced by dumping

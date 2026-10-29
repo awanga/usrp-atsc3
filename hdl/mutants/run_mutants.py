@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """Apply each RTL mutant from manifest.py to a private copy of hdl/rtl/
 and check that every checker listed for it fails.
 

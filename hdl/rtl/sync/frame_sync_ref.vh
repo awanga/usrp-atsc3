@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_ref.vh -- Preamble reference table, one period
 //
 // GENERATED FILE -- do not hand-edit. Produced from the running model

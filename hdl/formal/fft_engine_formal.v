@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_engine_formal.v — Formal harness for fft_engine
 //
 // Main property (data integrity vs a ghost model, load path): input beat

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_correlator_tb.v — frame_correlator with the chunk RAM it reads
 //
 // Testbench-only wiring for test_frame_correlator.py: a write port for the

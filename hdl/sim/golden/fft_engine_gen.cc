@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_engine_gen.cc — golden-vector CLI for hdl/rtl/ofdm/fft_engine.v
 //
 // Links the real atsc3_lib (lib/ofdm/fft_engine.h/.cc, built with

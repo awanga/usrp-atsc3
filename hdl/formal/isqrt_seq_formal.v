@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // isqrt_seq_formal.v — Formal harness for hdl/rtl/common/isqrt_seq.v
 //
 // Main property (data integrity vs a ghost model): the operand is captured

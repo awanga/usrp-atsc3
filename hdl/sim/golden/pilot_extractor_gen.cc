@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_extractor_gen.cc — golden-vector CLI for hdl/rtl/ofdm/pilot_extractor.v
 //
 // Links the real atsc3_lib (lib/ofdm/pilot_extractor.h/.cc, built with

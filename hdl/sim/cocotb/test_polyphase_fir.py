@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/sync/polyphase_fir.v.
 
 Reference: PolyphaseInterpolator::interpolate() itself, through the

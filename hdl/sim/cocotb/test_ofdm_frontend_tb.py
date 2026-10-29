@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """Integration testbench: freq_correction -> cp_removal -> fft_engine ->
 pilot_extractor, with frame_sync on the corrected stream
 (tb/ofdm_frontend_tb.v).

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // axi4s_skid_buffer.v — AXI4-Stream register slice ("skid buffer")
 //
 // AXI4-S: TDATA=<DATA_WIDTH bits, opaque> TVALID TREADY TLAST

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_correlator_formal.v — Formal harness for hdl/rtl/sync/frame_correlator.v
 //
 // The shared cores it drives are replaced by stubs (frame_correlator_stubs.v)

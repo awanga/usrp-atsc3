@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """pytest entry point: builds each RTL block with Verilator and with Icarus
 and runs its cocotb testbench on both. This is the file pytest collects;
 the actual `@cocotb.test` coroutines live in the test_<block>.py modules

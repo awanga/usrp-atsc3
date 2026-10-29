@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cp_removal.v — Cyclic Prefix removal for OFDM symbols
 //
 // Bit-exact (by construction, not by a numeric equivalence check -- see

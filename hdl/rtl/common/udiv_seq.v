@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // udiv_seq.v — Sequential unsigned restoring divider
 //
 // quotient = floor(dividend / divisor), one quotient bit per cycle, WIDTH

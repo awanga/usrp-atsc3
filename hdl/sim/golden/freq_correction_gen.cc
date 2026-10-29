@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_correction_gen.cc — golden-vector CLI for hdl/rtl/sync/freq_correction.v
 //
 // Links the real atsc3_lib (lib/sync/freq_correction.h/.cc, built with

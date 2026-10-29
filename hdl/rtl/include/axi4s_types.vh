@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // axi4s_types.vh — Shared AXI4-Stream constants and port-list macros
 //
 // IEEE 1364-2001 Verilog only. Include at the top of any module that needs

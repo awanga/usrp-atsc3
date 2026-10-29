@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/sync/frame_sync.v (built at ADDR_W=11: a
 2048-sample chunk RAM).
 

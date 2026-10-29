@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # Run via hdl/formal/run_formal.sh frame_sync_fsm. Black-box harness: every
 # property is on ports plus a ghost record, so no flatten+expose stage.
 # Bounded (see the harness header): the prove task is BMC, not induction.

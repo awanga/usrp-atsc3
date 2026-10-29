@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // fft_twiddle_gen.cc — twiddle-ROM generator for hdl/rtl/ofdm/fft_engine.v
 //
 // lib/ofdm/fft_engine.cc's FixedPointFftEngine::compute_twiddles() is a

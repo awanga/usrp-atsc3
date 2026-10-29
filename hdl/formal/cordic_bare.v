@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // cordic_bare.v — Trivial single-instance wrapper, used only to seed the
 // flatten+expose step in cordic.sby's [script] that promotes cordic's
 // internal state/iter/mode_r/special_zero_r registers to top-level ports

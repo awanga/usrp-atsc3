@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_stubs.v — formal-only stand-ins for the state machine and the
 // correlator inside frame_sync.v
 //

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // timing_recovery_bare.v — Trivial single-instance wrapper, used only to
 // seed the flatten+expose step in timing_recovery.sby's [script] that
 // promotes timing_recovery's internal state/mu_q16 registers to

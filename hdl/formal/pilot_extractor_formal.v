@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_extractor_formal.v — Formal harness for pilot_extractor
 //
 // Main property (data integrity vs a ghost model): the cycle after every

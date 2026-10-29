@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // isqrt_seq.v — Sequential unsigned integer square root
 //
 // root = floor(sqrt(x)) by binary digit recurrence, one result bit per

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // bootstrap_detector.v — ATSC 3.0 bootstrap detection + coarse CFO estimate
 //
 // Bit-exact port of lib/sync/bootstrap_detector.cc's ATSC3_FIXED_POINT path

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // test_cordic.cc — Unit tests for lib/dsp/cordic.h
 //
 // Acceptance bar (per the HDL port plan's fixed-point rewrite work): >=40 dB SNR against

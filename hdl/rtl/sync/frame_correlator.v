@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: CERN-OHL-W-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_correlator.v — normalized preamble correlation magnitude
 //
 // Bit-exact port of FrameSync::correlate_preamble() in

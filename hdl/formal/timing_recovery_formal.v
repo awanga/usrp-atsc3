@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // timing_recovery_formal.v — Formal harness for timing_recovery
 //
 // Main property (data integrity vs a ghost model, input path): every

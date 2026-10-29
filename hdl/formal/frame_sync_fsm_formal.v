@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_fsm_formal.v — Formal harness for hdl/rtl/sync/frame_sync_fsm.v
 //
 // The correlator is abstracted away: corr_done / corr_ratio are free inputs

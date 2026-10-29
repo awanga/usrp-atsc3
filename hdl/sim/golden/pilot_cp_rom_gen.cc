@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // pilot_cp_rom_gen.cc — common continual-pilot ROM generator for
 // hdl/rtl/ofdm/pilot_extractor.v
 //

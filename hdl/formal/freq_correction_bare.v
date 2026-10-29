@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // freq_correction_bare.v — single-instance wrapper that seeds the
 // flatten+expose step in freq_correction.sby (see
 // hdl/docs/formal_conventions.md).

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # Run via hdl/formal/run_formal.sh isqrt_seq. Black-box harness: every
 # property is on ports plus a ghost model, so no flatten+expose stage.
 

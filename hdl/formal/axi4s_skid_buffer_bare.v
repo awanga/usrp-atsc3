@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // axi4s_skid_buffer_bare.v — Trivial single-instance wrapper, used only to
 // seed the flatten+expose step in axi4s_skid_buffer.sby's [script] that
 // promotes axi4s_skid_buffer's internal skid_valid/skid_tdata/skid_tlast

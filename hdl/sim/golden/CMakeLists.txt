@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 # hdl/sim/golden/ - Golden-vector CLIs, one per RTL block under test.
 #
 # Each target links the real atsc3_lib so cocotb's bit-exact comparison is

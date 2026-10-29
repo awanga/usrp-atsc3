@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
 """cocotb testbench for hdl/rtl/common/cordic.v
 
 Bit-exact comparison against the real golden model (lib/dsp/cordic.h/.cc),

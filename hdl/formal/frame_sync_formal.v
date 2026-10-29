@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Alfred Wanga
+//
 // frame_sync_formal.v — Formal harness for hdl/rtl/sync/frame_sync.v
 //
 // The state machine and the correlator are replaced by contract-obeying
