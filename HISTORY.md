@@ -128,6 +128,30 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   z3 and ABC PDR could not close the pilot proof, yices did in ~90 s.
 - **Next (as of then):** frame sync RTL (9.6).
 
+## 2026-11-15 — Channel estimator RTL (plan 9.7)
+
+- **Decision:** port what `ChannelEstimator::estimate()` does in the
+  fixed-point build: LS divide, linear interpolation, optional IIR
+  smoothing. Interpolation divides once per segment and steps the
+  quotient/remainder per carrier (same truncation toward zero as the C++
+  `/`). Wiener and the SNR/phase metrics are not ported: the estimator
+  falls back to linear for WIENER, and `WienerInterpolator`'s fixed path
+  uses float weights and a float normalising divide.
+- **Reason:** the C++ is the reference; porting float arithmetic has no
+  bit-exact definition.
+- **Status:** golden fix first: `safe_complex_divide` wrapped int32 at the
+  Q1.15 corners (-32768 operands); now int64, new unit test failed on the
+  old code. Both blocks on Verilator and Icarus bit-exact (corners and
+  guard, real pilot layouts, sparse sets at 8K/16K/32K with carrier
+  reduction, smoothing alphas, stalls, malformed pilot streams, reset);
+  13 mutants killed (one equivalent mutant found and its dead guard
+  removed); lint, synth, front-end bench extended. Formal lessons: BMC time
+  doubled per step with free per-cycle stalls and a 17-bit divider
+  unrolled; fixing the handshake and shrinking the divider (now a
+  parameter) closed it in 21 min. `-y` library lookup breaks the AXI4-S
+  port macros in Icarus, so instantiated submodules spell their ports.
+- **Next:** 9.8 equalizer.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

@@ -23,52 +23,48 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Status
 
-- Branch `feature/hdl-port-foundations` rebased onto `develop` 2026-10-29
-  (backup: local `backup/pre-rebase`); remote still has the old history, a
-  force-push of the feature branch is pending approval.
+- Branch `feature/hdl-port-foundations` is rebased onto `develop` and
+  force-pushed (2026-10-29; backup: local `backup/pre-rebase`).
+- RTL done through 9.7 (2026-11-15): `hdl/rtl/channel/` = complex_divider
+  (LS divide), linear_interp (one division per segment, incremental
+  remainder), h_average (IIR smoothing, RAM), channel_estimator top;
+  bit-exact vs `ChannelEstimator::estimate()` (`channel_estimator_gen`),
+  on both simulators, 13 mutants killed, formal (divider with a udiv
+  stub; interpolation vs a ghost at 6 carriers, BMC 40), lint, synth,
+  and the front-end bench now runs pilot_extractor -> channel_estimator.
+  Golden fix: `safe_complex_divide` wrapped int32 at the Q1.15 corners
+  (now int64; new unit test failed before). Not ported: SNR/phase
+  metrics, Wiener (`placeholder_status.md` #9). Supported span: first
+  pilot at relative 0 (always true after pilot_extractor); else
+  `span_error`.
 - `lib/`: float and fixed-point builds 656/656 ctest, including the 11
   capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
   clean locally.
-- Closed 2026-10-22: FrameSync ACQUIRING window fix, GCC 15 alp_demux,
-  cppcheck returnByReference, pilot model+RTL A/322-exact. Closed
-  2026-10-29: scattered pilot patterns numbered by A/322 codes in config,
-  L1 decoder (3-bit field, index 7 reserved), mode table, GR blocks, GRC;
-  SPDX headers on the HDL tree; gate sizes re-baselined
-  (`hdl/docs/synth_baseline.md`); CI builds fixed-point and runs the HDL
-  gate (unrun: needs GitHub). GNU Radio 3.10.12 and UHD 3.15 (`/opt/uhd`,
-  `docs/uhd_build.md`) installed: blocks, bindings and UHD source build,
-  float ctest 662 (9 hardware skips), fxp 654.
-- RTL done through 9.6 (2026-10-18): frame_sync (chunk buffer + FSM +
-  correlator + isqrt_seq) meets the done bar; the front-end bench now
-  taps the corrected stream into it. Golden change: the fixed-point
-  state machine runs on Q1.15 integer scores/thresholds/confidence
-  (float build unchanged). Host moved to Ubuntu 26.04 (Verilator 5.032,
-  Yosys 0.52, Python 3.14, GCC 15, Boost 1.90): lint/synth scripts and
-  the venv adapted, Boost.System made header-only; see
-  `hdl/docs/toolchain.md`.
-- Earlier, through 9.5 (2026-10-02): pilot_extractor and freq_correction
-  meet the done bar; integration bench is now freq_correction ->
-  cp_removal -> fft_engine -> pilot_extractor. Golden fix: pilot dedup
-  precedence pinned (SCATTERED > CONTINUAL > EDGE; `std::sort` let an
-  EDGE record win). Formal for pilot_extractor uses yices (z3 and PDR
-  could not close it); yices 2.6.5 qualified.
-- Licensing and rename merged to `develop` (PR #1, CI green
-  2026-10-01): project is now OpenATSC3; MPL-2.0 / CERN-OHL-W-2.0 (RTL) /
-  CC-BY-4.0 (docs); NUC tables generated from A/322; FFTW preferred when
-  found (`ATSC3_USE_FFTW=AUTO|ON|OFF`) with a built-in fallback FFT.
+- Closed 2026-10-22 / 10-29 (details in HISTORY.md): FrameSync window,
+  GCC 15 alp_demux, cppcheck, A/322-exact pilots and pilot codes, SPDX
+  headers, gate sizes (`hdl/docs/synth_baseline.md`), CI HDL gate (unrun:
+  needs GitHub), GNU Radio 3.10.12 + UHD 3.15 in `/opt/uhd`
+  (`docs/uhd_build.md`); ctest float 662 (9 hardware skips), fxp 666.
+- Through 9.6 (2026-10-18): frame_sync, pilot_extractor, freq_correction
+  and the earlier blocks meet the done bar; host is Ubuntu 26.04
+  (`hdl/docs/toolchain.md`).
 
 ## Next
 
 1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; hardware
    firmware deferred by user; schematics obtained; Vivado in /opt/Xilinx
    usable for synth/resource estimates).
-2. 9.7 Channel estimator, 9.8 equalizer, 9.9 constellation demapper,
+2. 9.8 equalizer, 9.9 constellation demapper,
    9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
    end-to-end pipeline test, 9.17 throughput/timing closure. Scope notes
    per block: HISTORY.md archive, "Phase 9".
 
 ## Open
+
+- linear_interp formal needs ~21 min (yices) and a 4000 s limit; its
+  proof is shrunk (6 carriers, 4-bit divider, always-ready handshake);
+  3+ pilot lists, stalls and the flags are simulation-only.
 
 - frame_sync throughput: one correlation is fft_size + ~170 cycles and a
   chunk runs up to search_window+1 of them with the input held off
