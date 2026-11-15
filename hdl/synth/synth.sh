@@ -35,6 +35,10 @@ declare -A SOURCES=(
     [freq_correction]="sync/freq_correction.v common/cordic.v"
     [pilot_extractor]="ofdm/pilot_extractor.v ofdm/pilot_additional_cp_lut.v"
     [isqrt_seq]="common/isqrt_seq.v"
+    [complex_divider]="channel/complex_divider.v common/udiv_seq.v"
+    [linear_interp]="channel/linear_interp.v common/udiv_seq.v"
+    [h_average]="channel/h_average.v"
+    [channel_estimator]="channel/channel_estimator.v channel/complex_divider.v channel/linear_interp.v channel/h_average.v common/udiv_seq.v"
     [frame_correlator]="sync/frame_correlator.v common/isqrt_seq.v common/cordic.v common/udiv_seq.v"
     [frame_sync]="sync/frame_sync.v sync/frame_sync_fsm.v sync/frame_correlator.v common/isqrt_seq.v common/cordic.v common/udiv_seq.v"
 )
@@ -45,7 +49,7 @@ declare -A SETUP=(
 )
 TOPS=(axi4s_skid_buffer udiv_seq cordic bootstrap_detector polyphase_fir
     timing_recovery cp_removal fft_engine freq_correction pilot_extractor isqrt_seq
-    frame_correlator frame_sync)
+    frame_correlator frame_sync complex_divider linear_interp h_average channel_estimator)
 [[ $# -gt 0 ]] && TOPS=("$@")
 
 pass=0

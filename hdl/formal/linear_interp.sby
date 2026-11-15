@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# Run via hdl/formal/run_formal.sh linear_interp. Black-box harness: every
+# property is on ports plus a ghost model. Bounded: the prove task is BMC.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 40
+cover: mode cover
+cover: depth 40
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -I. linear_interp.v
+read_verilog -formal -I. udiv_seq.v
+read_verilog -formal -I. linear_interp_formal.v
+prep -top linear_interp_formal
+
+[files]
+linear_interp.v ../rtl/channel/linear_interp.v
+udiv_seq.v ../rtl/common/udiv_seq.v
+linear_interp_formal.v
+axi4s_types.vh ../rtl/include/axi4s_types.vh

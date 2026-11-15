@@ -57,6 +57,13 @@ module ofdm_frontend_tb #(
     output wire        s_axis_tready,
     input  wire        s_axis_tlast,
 
+    output wire        ce_span_error,
+    output wire        ce_order_error,
+    output wire [31:0] ce_tdata,          // channel_estimator output
+    output wire        ce_tvalid,
+    input  wire        ce_tready,
+    output wire        ce_tlast,
+
     output wire [95:0] m_axis_tdata,
     output wire        m_axis_tvalid,
     input  wire        m_axis_tready,
@@ -182,6 +189,10 @@ module ofdm_frontend_tb #(
         .mon_sample_counter        (fs_mon_sample_counter)
     );
 
+    wire [95:0] pe_tdata;
+    wire        pe_tvalid, pe_tready, pe_tlast;
+    wire        ce_fft_size_invalid_unused, ce_num_active_invalid_unused, ce_alpha_invalid_unused;
+
     reg [3:0] symbol_index;  // mod 16: the pilot extractor uses symbol mod Dy
 
     pilot_extractor #(.CP_ROM_HEX(CP_ROM_HEX)) u_pe (
@@ -199,10 +210,40 @@ module ofdm_frontend_tb #(
         .s_axis_tready           (fft_tready),
         .s_axis_tlast            (fft_tlast),
         .s_axis_tuser            (symbol_index),
-        .m_axis_tdata            (m_axis_tdata),
-        .m_axis_tvalid           (m_axis_tvalid),
-        .m_axis_tready           (m_axis_tready),
-        .m_axis_tlast            (m_axis_tlast)
+        .m_axis_tdata            (pe_tdata),
+        .m_axis_tvalid           (pe_tvalid),
+        .m_axis_tready           (pe_tready),
+        .m_axis_tlast            (pe_tlast)
+    );
+
+    // The pilot records fork to the bench's pilot sink and the channel
+    // estimator; a record moves only when both accept it.
+    wire ce_s_ready;
+    assign pe_tready     = m_axis_tready && ce_s_ready;
+    assign m_axis_tdata  = pe_tdata;
+    assign m_axis_tlast  = pe_tlast;
+    assign m_axis_tvalid = pe_tvalid && ce_s_ready;
+
+    channel_estimator u_ce (
+        .clk                     (clk),
+        .rst                     (rst),
+        .cfg_fft_size            (cfg_fft_size),
+        .cfg_num_active_carriers (16'd0),
+        .cfg_avg_enable          (1'b0),
+        .cfg_avg_alpha_q15       (16'd0),
+        .cfg_fft_size_invalid    (ce_fft_size_invalid_unused),
+        .cfg_num_active_invalid  (ce_num_active_invalid_unused),
+        .cfg_alpha_invalid       (ce_alpha_invalid_unused),
+        .span_error              (ce_span_error),
+        .order_error             (ce_order_error),
+        .s_axis_tdata            (pe_tdata),
+        .s_axis_tvalid           (pe_tvalid && m_axis_tready),
+        .s_axis_tready           (ce_s_ready),
+        .s_axis_tlast            (pe_tlast),
+        .m_axis_tdata            (ce_tdata),
+        .m_axis_tvalid           (ce_tvalid),
+        .m_axis_tready           (ce_tready),
+        .m_axis_tlast            (ce_tlast)
     );
 
     assign fft_tdata = fft_tdata_w;

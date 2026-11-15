@@ -51,6 +51,7 @@ from test_frame_correlator_tb import model_reference
 from test_frame_sync import ev_field, run_golden as fs_golden
 from test_freq_correction import run_golden as fc_golden
 from test_pilot_extractor import run_golden as pe_golden, unpack_pilot
+from test_channel_estimator import run_golden as ce_golden, s16
 
 FULL = os.environ.get("HDL_FULL") == "1"
 RATIO = 16
@@ -96,9 +97,12 @@ def golden_chain(fft_size, cp_num, pattern, samples, inc):
         symbols.append((len(symbols), res))
 
     pilots = []
+    ce_input = []
     for recs in pe_golden(fft_size, pattern, 0, symbols):
         pilots += [(r, i == len(recs) - 1) for i, r in enumerate(recs)]
-    return bins, pilots, fs_results
+        ce_input.append([(r[0], (r[2], r[3]), (r[4], r[5])) for r in recs])
+    estimates = ce_golden(fft_size, 0, False, 0, ce_input)
+    return bins, pilots, fs_results, estimates
 
 
 async def reset(dut, inc, fft_size, cp_num, pattern):
@@ -115,6 +119,7 @@ async def reset(dut, inc, fft_size, cp_num, pattern):
     dut.s_axis_tdata.value = 0
     dut.s_axis_tlast.value = 0
     dut.m_axis_tready.value = 1
+    dut.ce_tready.value = 1
     for _ in range(3):
         await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -165,6 +170,26 @@ async def sink(dut, expected, rnd):
             dut.m_axis_tready.value = int(rnd.random() < 0.7)
 
 
+async def ce_sink(dut, estimates):
+    """channel_estimator output: every carrier of every symbol against the
+    model's estimate() run on the extractor's records, TLAST on the last."""
+    for s, sym in enumerate(estimates):
+        k = 0
+        while k < len(sym):
+            await RisingEdge(dut.clk)
+            if dut.ce_tvalid.value == 1:
+                word = int(dut.ce_tdata.value)
+                got = (s16(word >> 16), s16(word))
+                assert (
+                    got == sym[k]
+                ), f"estimate symbol {s} carrier {k}: expected {sym[k]}, got {got}"
+                assert int(dut.ce_tlast.value) == int(
+                    k == len(sym) - 1
+                ), "estimate TLAST"
+                k += 1
+    assert dut.ce_span_error.value == 0 and dut.ce_order_error.value == 0
+
+
 async def fs_event_sink(dut, events):
     """frame_sync's event output is always ready, so every valid cycle is a
     transfer."""
@@ -187,7 +212,9 @@ async def run_chain(
     inc = cfo_increment()
     if n_symbols >= 2:
         samples = with_preamble(samples, 1, fft_size + cp_len, inc)
-    bins, pilots, fs_results = golden_chain(fft_size, cp_num, pattern, samples, inc)
+    bins, pilots, fs_results, estimates = golden_chain(
+        fft_size, cp_num, pattern, samples, inc
+    )
     assert len(bins) == n_symbols * fft_size
     if n_symbols >= 2:
         assert (
@@ -203,7 +230,9 @@ async def run_chain(
     cocotb.start_soon(fs_event_sink(dut, fs_events))
     src = cocotb.start_soon(source(dut, samples, stalls))
     tap = cocotb.start_soon(fft_tap(dut, bins))
+    ce = cocotb.start_soon(ce_sink(dut, estimates))
     await sink(dut, pilots, rnd if stall_output else None)
+    await ce
     await tap
     await src
     for _ in range(40):  # the tail samples clear freq_correction

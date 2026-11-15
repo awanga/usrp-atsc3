@@ -370,7 +370,11 @@ MUTANTS = [
         file="sync/frame_correlator.v",
         find="iss_left  <= {1'b0, len};",
         replace="iss_left  <= {1'b0, len} - 17'd1;",
-        killers=["bench:frame_correlator_tb", "sim:frame_sync", "formal:frame_correlator"],
+        killers=[
+            "bench:frame_correlator_tb",
+            "sim:frame_sync",
+            "formal:frame_correlator",
+        ],
     ),
     dict(
         name="fcorr_no_shift_back",
@@ -566,5 +570,95 @@ MUTANTS = [
         find="                        frame_number    <= frame_number + 32'd1;",
         replace="                        frame_number    <= frame_number + 32'd2;",
         killers=["sim:frame_sync", "formal:frame_sync_fsm"],
+    ),
+    # --- complex_divider ---------------------------------------------------
+    dict(
+        name="cd_guard_removed",
+        file="channel/complex_divider.v",
+        find="zero_div <= (mag_sq_w[31:15] == 17'd0);",
+        replace="zero_div <= 1'b0;",
+        killers=["sim:complex_divider", "formal:complex_divider"],
+    ),
+    dict(
+        name="cd_clamp_asymmetric",
+        file="channel/complex_divider.v",
+        find="wire [15:0] clamped = (div_quotient > 32'd32767) ? 16'd32767 :"
+        " div_quotient[15:0];",
+        replace="wire [15:0] clamped = (div_quotient > 32'd32768) ? 16'd32768 :"
+        " div_quotient[15:0];",
+        killers=["sim:complex_divider", "formal:complex_divider"],
+    ),
+    dict(
+        name="cd_imag_numerator_sign",
+        file="channel/complex_divider.v",
+        find="{{2{p_aim_bre[31]}}, p_aim_bre} - {{2{p_are_bim[31]}}, p_are_bim};",
+        replace="{{2{p_aim_bre[31]}}, p_aim_bre} + {{2{p_are_bim[31]}}, p_are_bim};",
+        killers=["sim:complex_divider", "formal:complex_divider"],
+    ),
+    dict(
+        name="cd_tlast_lost",
+        file="channel/complex_divider.v",
+        find="last_r   <= s_axis_tlast;",
+        replace="last_r   <= 1'b0;",
+        killers=["sim:complex_divider", "formal:complex_divider"],
+    ),
+    # --- linear_interp -----------------------------------------------------
+    dict(
+        name="li_remainder_never_wraps",
+        file="channel/linear_interp.v",
+        find="wire        wrap_re = (rsum_re >= {1'b0, seg_len});",
+        replace="wire        wrap_re = 1'b0;",
+        killers=["sim:channel_estimator", "formal:linear_interp"],
+    ),
+    dict(
+        name="li_falling_segment_sign_ignored",
+        file="channel/linear_interp.v",
+        find="neg_re  <= d_re[16];",
+        replace="neg_re  <= 1'b0;",
+        killers=["sim:channel_estimator", "formal:linear_interp"],
+    ),
+    dict(
+        name="li_imag_remainder_from_real_dividend",
+        file="channel/linear_interp.v",
+        find="div_dividend  = (state == S_IM || state == S_IM_W) ? m_im : m_re;",
+        replace="div_dividend  = (state == S_IM) ? m_im : m_re;",
+        killers=["sim:channel_estimator", "formal:linear_interp"],
+    ),
+    dict(
+        name="li_trailing_tlast_early",
+        file="channel/linear_interp.v",
+        find="m_axis_tlast  <= (k == max_pos_ok);",
+        replace="m_axis_tlast  <= (k == max_pos_ok - 16'd1);",
+        killers=["sim:channel_estimator", "formal:linear_interp"],
+    ),
+    # --- h_average ---------------------------------------------------------
+    dict(
+        name="ha_first_symbol_mixed",
+        file="channel/h_average.v",
+        find="wire        use_avg = cfg_enable && has_prev;",
+        replace="wire        use_avg = cfg_enable;",
+        killers=["sim:channel_estimator"],
+    ),
+    dict(
+        name="ha_weights_do_not_sum_to_one",
+        file="channel/h_average.v",
+        find="wire signed [16:0] one_m_a = 17'sd32768 - {1'b0, cfg_alpha};",
+        replace="wire signed [16:0] one_m_a = 17'sd32767 - {1'b0, cfg_alpha};",
+        killers=["sim:channel_estimator"],
+    ),
+    dict(
+        name="ha_rounds_with_wrong_shift",
+        file="channel/h_average.v",
+        find="wire signed [33:0] sh_im   = mix_im >>> 15;",
+        replace="wire signed [33:0] sh_im   = mix_im >>> 14;",
+        killers=["sim:channel_estimator"],
+    ),
+    # --- channel_estimator -------------------------------------------------
+    dict(
+        name="ce_divides_by_received",
+        file="channel/channel_estimator.v",
+        find="s_axis_tdata[`PILOT_SYMBOL_RECEIVED_RE_HI:`PILOT_SYMBOL_RECEIVED_RE_LO],",
+        replace="s_axis_tdata[`PILOT_SYMBOL_REFERENCE_RE_HI:`PILOT_SYMBOL_REFERENCE_RE_LO],",
+        killers=["sim:channel_estimator"],
     ),
 ]

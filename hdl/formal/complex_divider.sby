@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# Run via hdl/formal/run_formal.sh complex_divider. Black-box harness with
+# udiv_seq replaced by a stub (see the harness header). Bounded: the prove
+# task is BMC, not induction.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 40
+cover: mode cover
+cover: depth 40
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -I. complex_divider.v
+read_verilog -formal -I. complex_divider_stubs.v
+read_verilog -formal -I. complex_divider_formal.v
+prep -top complex_divider_formal
+
+[files]
+complex_divider.v ../rtl/channel/complex_divider.v
+complex_divider_stubs.v
+complex_divider_formal.v
+axi4s_types.vh ../rtl/include/axi4s_types.vh

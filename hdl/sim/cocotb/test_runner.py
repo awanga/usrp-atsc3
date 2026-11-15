@@ -66,6 +66,22 @@ BLOCKS = {
         ["sync"],
         {"ADDR_W": 11},
     ),
+    "complex_divider": (
+        ["channel/complex_divider.v", "common/udiv_seq.v"],
+        [],
+        {},
+    ),
+    "channel_estimator": (
+        [
+            "channel/channel_estimator.v",
+            "channel/complex_divider.v",
+            "channel/linear_interp.v",
+            "channel/h_average.v",
+            "common/udiv_seq.v",
+        ],
+        [],
+        {},
+    ),
     "pilot_extractor": (
         ["ofdm/pilot_extractor.v", "ofdm/pilot_additional_cp_lut.v"],
         [],
@@ -93,6 +109,10 @@ INTEGRATION = {
             "ofdm/fft_engine.v",
             "ofdm/pilot_extractor.v",
             "ofdm/pilot_additional_cp_lut.v",
+            "channel/channel_estimator.v",
+            "channel/complex_divider.v",
+            "channel/linear_interp.v",
+            "channel/h_average.v",
             "sync/frame_sync.v",
             "sync/frame_sync_fsm.v",
             "sync/frame_correlator.v",
