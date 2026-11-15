@@ -43,3 +43,6 @@ target_link_libraries(frame_sync_gen atsc3_lib)
 
 add_executable(channel_estimator_gen channel_estimator_gen.cc)
 target_link_libraries(channel_estimator_gen atsc3_lib)
+
+add_executable(equalizer_gen equalizer_gen.cc)
+target_link_libraries(equalizer_gen atsc3_lib)

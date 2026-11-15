@@ -61,8 +61,14 @@ module ofdm_frontend_tb #(
     output wire        ce_order_error,
     output wire [31:0] ce_tdata,          // channel_estimator output
     output wire        ce_tvalid,
-    input  wire        ce_tready,
+    output wire        ce_fire,           // estimate beat accepted by the equalizer
     output wire        ce_tlast,
+    output wire [31:0] eq_tdata,          // equalizer output
+    output wire        eq_tvalid,
+    input  wire        eq_tready,
+    output wire        eq_tlast,
+    output wire        eq_framing_error,
+    output wire        eq_cfg_invalid,
 
     output wire [95:0] m_axis_tdata,
     output wire        m_axis_tvalid,
@@ -242,8 +248,73 @@ module ofdm_frontend_tb #(
         .s_axis_tlast            (pe_tlast),
         .m_axis_tdata            (ce_tdata),
         .m_axis_tvalid           (ce_tvalid),
-        .m_axis_tready           (ce_tready),
+        .m_axis_tready           (eq_h_tready),
         .m_axis_tlast            (ce_tlast)
+    );
+
+    // Equalizer: H from the estimator, Y from a bench-only buffer of the
+    // active FFT bins (two banks by symbol parity). A production symbol
+    // buffer and window selector are integration work; the bench only needs
+    // the received bins to arrive in step with the estimates.
+    wire [15:0] noc = (cfg_fft_size == 18'd32768) ? 16'd27649 :
+                      (cfg_fft_size == 18'd16384) ? 16'd13825 : 16'd6913;
+    wire [17:0] first_act_w = ({1'b0, cfg_fft_size[16:0]} - {2'b00, noc}) >> 1;
+    wire [16:0] first_act = first_act_w[16:0];
+    reg [31:0] ybuf [0:65535];
+    reg [16:0] bin_idx;
+    reg        wr_bank, rd_bank;
+    reg [15:0] rd_k;
+    wire [16:0] rel_bin = bin_idx - first_act;
+    wire        in_window = (bin_idx >= first_act) && (rel_bin < {1'b0, noc});
+    wire        eq_h_tready;
+    wire [31:0] y_now = ybuf[{rd_bank, rd_k[14:0]}];
+    assign ce_fire = ce_tvalid && eq_h_tready;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            bin_idx <= 17'd0;
+            wr_bank <= 1'b0;
+            rd_bank <= 1'b0;
+            rd_k    <= 16'd0;
+        end else begin
+            if (fft_fire) begin
+                if (in_window)
+                    ybuf[{wr_bank, rel_bin[14:0]}] <= fft_tdata_w;
+                bin_idx <= fft_tlast ? 17'd0 : bin_idx + 17'd1;
+                if (fft_tlast)
+                    wr_bank <= !wr_bank;
+            end
+            if (ce_fire) begin
+                rd_k <= ce_tlast ? 16'd0 : rd_k + 16'd1;
+                if (ce_tlast)
+                    rd_bank <= !rd_bank;
+            end
+        end
+    end
+
+    wire eq_y_ready_unused;
+    wire [15:0] eq_zeroed_unused;
+    equalizer u_eq (
+        .clk                (clk),
+        .rst                (rst),
+        .cfg_mode           (1'b0),
+        .cfg_min_mag_sq_q30 (32'd107374),   // Equalizer defaults, from the model's K line
+        .cfg_noise_q30      (32'd10737418),
+        .cfg_invalid        (eq_cfg_invalid),
+        .framing_error      (eq_framing_error),
+        .zeroed_carriers    (eq_zeroed_unused),
+        .y_axis_tdata       (y_now),
+        .y_axis_tvalid      (ce_tvalid),
+        .y_axis_tready      (eq_y_ready_unused),
+        .y_axis_tlast       (ce_tlast),
+        .h_axis_tdata       (ce_tdata),
+        .h_axis_tvalid      (ce_tvalid),
+        .h_axis_tready      (eq_h_tready),
+        .h_axis_tlast       (ce_tlast),
+        .m_axis_tdata       (eq_tdata),
+        .m_axis_tvalid      (eq_tvalid),
+        .m_axis_tready      (eq_tready),
+        .m_axis_tlast       (eq_tlast)
     );
 
     assign fft_tdata = fft_tdata_w;

@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# Run via hdl/formal/run_formal.sh equalizer. Black-box harness with
+# udiv_seq replaced by a stub (see the harness header). Bounded: the prove
+# task is BMC, not induction.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 40
+cover: mode cover
+cover: depth 40
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -I. equalizer.v
+read_verilog -formal -I. complex_divider_stubs.v
+read_verilog -formal -I. equalizer_formal.v
+prep -top equalizer_formal
+
+# Products are cut (see the harness header): the properties are relations
+# between values built from the same product cells (merged first), not about
+# the products.
+flatten
+opt_merge
+cutpoint t:$mul
+opt_clean
+
+[files]
+equalizer.v ../rtl/channel/equalizer.v
+complex_divider_stubs.v
+equalizer_formal.v
+axi4s_types.vh ../rtl/include/axi4s_types.vh

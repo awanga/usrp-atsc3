@@ -19,6 +19,7 @@
 | 7 | Frequency deinterleaver permutation | `lib/ofdm/freq_deinterleaver.cc` (`:161-162`) | Bit-reversal permutation | Real ATSC A/322 frequency interleaving. `docs/compliance.md` calls this "LFSR"; the code is bit-reversal, and that doc is stale, not this one |
 | 8 | ALP ROHC decompression | `lib/framing/alp_demux.cc` (`:253-256`) | `COMPRESSED` (ROHC) ALP packets routed to the plain IPv4 handler with no actual decompression | RFC 3095-family ROHC decompression |
 | 9 | Wiener channel interpolation | `lib/channel/wiener_interpolator.cc`, `lib/channel/channel_estimator.cc` (`interpolate()`) | `ChannelEstimator` falls back to linear interpolation for `WIENER` and `CUBIC`; `WienerInterpolator`'s fixed-point path takes float filter weights, finds the nearest pilots per carrier and normalises with a float divide, so it has no bit-exact hardware definition. Not ported; the RTL does LS + linear only | Wiener filtering over pilots (Edfors et al.) |
+| 10 | Equalizer residual-phase tracking | `lib/channel/equalizer.cc` (`equalize_with_pilots()`) | Phase estimate, IIR smoothing and rotation use float `atan2`/`sin`/`cos`; the fixed-point build still computes them in float. Not ported; the RTL does the per-carrier ZF/MMSE core (`equalize_sample()`) only | Residual phase noise tracking from continual pilots |
 
 ## Also non-spec, but load-bearing rather than swappable-later
 

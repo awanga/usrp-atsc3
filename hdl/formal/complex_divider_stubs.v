@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CERN-OHL-W-2.0
 // SPDX-FileCopyrightText: 2026 Alfred Wanga
 //
-// complex_divider_stubs.v — formal-only stand-in for udiv_seq
+// complex_divider_stubs.v — formal-only stand-in for udiv_seq (complex_divider and equalizer)
 //
 // complex_divider_formal.v checks the divider's operand handling, sign and
 // clamp logic and its handshake. The restoring divider is proved on its
@@ -9,6 +9,10 @@
 // ports that obeys the contract that proof establishes -- busy from the
 // accepting edge until done, done one cycle long, quotient held between
 // results -- with an arbitrary quotient and a fixed 3-cycle latency.
+//
+// The stub also asserts the caller contract the real divider documents: a
+// division is never started with a zero divisor (the callers' guards keep
+// it at least 1).
 //
 // Verification-only. Not synthesized, not part of rtl/.
 
@@ -51,5 +55,9 @@ module udiv_seq #(
         end
     end
 
-    wire unused_ok = &{1'b0, dividend, divisor, 1'b0};
+    always @(*) begin
+        if (!rst && start && !busy) assert (divisor != {WIDTH{1'b0}});
+    end
+
+    wire unused_ok = &{1'b0, dividend, 1'b0};
 endmodule

@@ -82,6 +82,11 @@ BLOCKS = {
         [],
         {},
     ),
+    "equalizer": (
+        ["channel/equalizer.v", "common/udiv_seq.v"],
+        [],
+        {},
+    ),
     "pilot_extractor": (
         ["ofdm/pilot_extractor.v", "ofdm/pilot_additional_cp_lut.v"],
         [],
@@ -110,6 +115,7 @@ INTEGRATION = {
             "ofdm/pilot_extractor.v",
             "ofdm/pilot_additional_cp_lut.v",
             "channel/channel_estimator.v",
+            "channel/equalizer.v",
             "channel/complex_divider.v",
             "channel/linear_interp.v",
             "channel/h_average.v",

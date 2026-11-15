@@ -52,6 +52,7 @@ from test_frame_sync import ev_field, run_golden as fs_golden
 from test_freq_correction import run_golden as fc_golden
 from test_pilot_extractor import run_golden as pe_golden, unpack_pilot
 from test_channel_estimator import run_golden as ce_golden, s16
+from test_equalizer import golden as eq_golden
 
 FULL = os.environ.get("HDL_FULL") == "1"
 RATIO = 16
@@ -102,7 +103,21 @@ def golden_chain(fft_size, cp_num, pattern, samples, inc):
         pilots += [(r, i == len(recs) - 1) for i, r in enumerate(recs)]
         ce_input.append([(r[0], (r[2], r[3]), (r[4], r[5])) for r in recs])
     estimates = ce_golden(fft_size, 0, False, 0, ce_input)
-    return bins, pilots, fs_results, estimates
+    noc = {8192: 6913, 16384: 13825, 32768: 27649}[fft_size]
+    first = (fft_size - noc) // 2
+    carriers = []
+    for s, est in enumerate(estimates):
+        y = bins[s * fft_size + first : s * fft_size + first + noc]
+        carriers.append([(re, im, h[0], h[1]) for (re, im, _), h in zip(y, est)])
+    (min_q, noise_q), eq_flat = eq_golden(
+        0, "0.01", "0.01", [c for sym in carriers for c in sym]
+    )
+    assert (min_q, noise_q) == (
+        107374,
+        10737418,
+    ), "bench equalizer constants out of date"
+    equalized = [eq_flat[i * noc : (i + 1) * noc] for i in range(len(estimates))]
+    return bins, pilots, fs_results, (estimates, equalized)
 
 
 async def reset(dut, inc, fft_size, cp_num, pattern):
@@ -119,7 +134,7 @@ async def reset(dut, inc, fft_size, cp_num, pattern):
     dut.s_axis_tdata.value = 0
     dut.s_axis_tlast.value = 0
     dut.m_axis_tready.value = 1
-    dut.ce_tready.value = 1
+    dut.eq_tready.value = 1
     for _ in range(3):
         await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -177,7 +192,7 @@ async def ce_sink(dut, estimates):
         k = 0
         while k < len(sym):
             await RisingEdge(dut.clk)
-            if dut.ce_tvalid.value == 1:
+            if dut.ce_fire.value == 1:
                 word = int(dut.ce_tdata.value)
                 got = (s16(word >> 16), s16(word))
                 assert (
@@ -188,6 +203,28 @@ async def ce_sink(dut, estimates):
                 ), "estimate TLAST"
                 k += 1
     assert dut.ce_span_error.value == 0 and dut.ce_order_error.value == 0
+
+
+async def eq_sink(dut, equalized, rnd):
+    """Equalizer output: every carrier of every symbol against the model's
+    equalize_sample() on the received bins and the estimates."""
+    for s, sym in enumerate(equalized):
+        k = 0
+        while k < len(sym):
+            await FallingEdge(dut.clk)  # mid-cycle: registered outputs are stable
+            if dut.eq_tvalid.value == 1 and dut.eq_tready.value == 1:
+                word = int(dut.eq_tdata.value)
+                got = (s16(word >> 16), s16(word))
+                assert (
+                    got == sym[k]
+                ), f"equalized symbol {s} carrier {k}: expected {sym[k]}, got {got}"
+                assert int(dut.eq_tlast.value) == int(
+                    k == len(sym) - 1
+                ), "equalizer TLAST"
+                k += 1
+            if rnd is not None:
+                dut.eq_tready.value = int(rnd.random() < 0.7)
+    assert dut.eq_framing_error.value == 0 and dut.eq_cfg_invalid.value == 0
 
 
 async def fs_event_sink(dut, events):
@@ -212,7 +249,7 @@ async def run_chain(
     inc = cfo_increment()
     if n_symbols >= 2:
         samples = with_preamble(samples, 1, fft_size + cp_len, inc)
-    bins, pilots, fs_results, estimates = golden_chain(
+    bins, pilots, fs_results, (estimates, equalized) = golden_chain(
         fft_size, cp_num, pattern, samples, inc
     )
     assert len(bins) == n_symbols * fft_size
@@ -231,8 +268,10 @@ async def run_chain(
     src = cocotb.start_soon(source(dut, samples, stalls))
     tap = cocotb.start_soon(fft_tap(dut, bins))
     ce = cocotb.start_soon(ce_sink(dut, estimates))
+    eqt = cocotb.start_soon(eq_sink(dut, equalized, rnd if stall_output else None))
     await sink(dut, pilots, rnd if stall_output else None)
     await ce
+    await eqt
     await tap
     await src
     for _ in range(40):  # the tail samples clear freq_correction
