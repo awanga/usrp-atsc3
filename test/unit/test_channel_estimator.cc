@@ -658,6 +658,18 @@ TEST(ChannelEstimatorTest, SafeDivideByZero) {
 #endif
 }
 
+#ifdef ATSC3_FIXED_POINT
+// |b|^2 = 2^31 and the numerators reach 2^30 in magnitude at the Q1.15
+// corners; the products must not wrap. Expected value from the algebra:
+// 32767 / (-32768 - 32768j) = 32767 * (-1 + 1j) / (2 * 32768), i.e.
+// (-0.49998, +0.49998) = (-16383.5, +16383.5) in Q15, truncated toward zero.
+TEST(ChannelEstimatorTest, SafeDivideAtQ15CornersDoesNotOverflow) {
+    sample_t result = safe_complex_divide(sample_t(32767, 0), sample_t(-32768, -32768));
+    EXPECT_EQ(result.real(), -16383);
+    EXPECT_EQ(result.imag(), 16383);
+}
+#endif
+
 //==============================================================================
 // Integration with PilotExtractor
 //==============================================================================

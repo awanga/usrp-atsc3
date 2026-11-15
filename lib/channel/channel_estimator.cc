@@ -66,36 +66,34 @@ sample_t safe_complex_divide(sample_t a, sample_t b) {
     // Fixed-point division: a / b = a * conj(b) / |b|^2
     // Use int32_t intermediates to avoid overflow
 
-    int32_t b_re = b.real();
-    int32_t b_im = b.imag();
+    // int64 intermediates: |b|^2 reaches 2^31 and the numerators 2^31 at
+    // the Q1.15 corners (-32768), which wraps int32.
+    const int64_t b_re = b.real();
+    const int64_t b_im = b.imag();
 
     // |b|^2 in Q30 (Q15 * Q15 = Q30)
-    int32_t mag_sq = b_re * b_re + b_im * b_im;
+    const int64_t mag_sq = b_re * b_re + b_im * b_im;
 
     // Avoid division by very small numbers
     if (mag_sq < kMinMagnitudeSq) {
         return sample_t(0, 0);
     }
 
-    int32_t a_re = a.real();
-    int32_t a_im = a.imag();
+    const int64_t a_re = a.real();
+    const int64_t a_im = a.imag();
 
     // a * conj(b) in Q30
-    int32_t num_re = a_re * b_re + a_im * b_im;
-    int32_t num_im = a_im * b_re - a_re * b_im;
+    const int64_t num_re = a_re * b_re + a_im * b_im;
+    const int64_t num_im = a_im * b_re - a_re * b_im;
 
-    // Result in Q15: (Q30 / Q30) << 15 = Q15
-    // We need to scale properly: result = (num / mag_sq)
-    // Since num is Q30 and mag_sq is Q30, result would be Q0
-    // We want Q15, so we shift num left by 15 before division
-    // To avoid overflow, we shift num right by 15 first, then divide
-
-    int32_t result_re = (num_re << 0) / (mag_sq >> 15);
-    int32_t result_im = (num_im << 0) / (mag_sq >> 15);
+    // Q30 numerator over (Q30 >> 15) is Q15; C++ division truncates toward
+    // zero, as the RTL divider does on magnitudes.
+    int64_t result_re = num_re / (mag_sq >> 15);
+    int64_t result_im = num_im / (mag_sq >> 15);
 
     // Clamp to int16_t range
-    result_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, result_re));
-    result_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, result_im));
+    result_re = std::max<int64_t>(-32767, std::min<int64_t>(32767, result_re));
+    result_im = std::max<int64_t>(-32767, std::min<int64_t>(32767, result_im));
 
     return sample_t(static_cast<int16_t>(result_re), static_cast<int16_t>(result_im));
 #else
