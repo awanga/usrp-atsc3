@@ -152,6 +152,32 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   port macros in Icarus, so instantiated submodules spell their ports.
 - **Next:** 9.8 equalizer.
 
+## 2026-11-15 — Equalizer RTL (plan 9.8)
+
+- **Decision:** port `equalize_sample()` (ZF and MMSE) as one block with two
+  parallel udiv_seq instances (real and imaginary rails share the divisor);
+  the deep-fade floor and the MMSE noise term are Q30 configuration written
+  by software from `min_magnitude_sq_q30()` / `noise_q30()`. Phase
+  tracking (float trig) is not ported.
+- **Reason:** the float-to-Q30 conversions have no bit-exact hardware
+  definition, so the integers are the contract; the per-carrier core is
+  genuine integer arithmetic.
+- **Status:** golden fix first: `|H|^2` and the MMSE denominator wrapped
+  int32 at -32768 (a strong carrier was zeroed as a deep fade); the dead
+  divide-by-zero fallback was removed (the 2^15 floor keeps the divisor at
+  least 1; the formal stub asserts it). Bit-exact on both simulators
+  (corners, thresholds, clamps, stalls, TLAST and zeroed count, config
+  clamp, reset); 9 mutants killed; the front-end bench now runs
+  pilot_extractor -> channel_estimator -> equalizer. Formal lesson: the
+  proof only closed after `flatten` + `opt_merge` + `cutpoint t:$mul`
+  (ghost and RTL products must merge or the solver proves two multiplier
+  netlists equivalent); with that it takes 7 s with free stalls, so the
+  earlier tractability assumptions (always-ready) were unnecessary for this
+  block. Bench lesson: a sink coroutine must be started before the first
+  `await`; one started after the pilot sink missed 8 ms of beats and
+  reported a late beat as carrier 0.
+- **Next:** 9.9 constellation demapper.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

@@ -25,21 +25,20 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 - Branch `feature/hdl-port-foundations` is rebased onto `develop` and
   force-pushed (2026-10-29; backup: local `backup/pre-rebase`).
-- RTL done through 9.7 (2026-11-15): `hdl/rtl/channel/` = complex_divider
-  (LS divide), linear_interp (one division per segment, incremental
-  remainder), h_average (IIR smoothing, RAM), channel_estimator top;
-  bit-exact vs `ChannelEstimator::estimate()` (`channel_estimator_gen`),
-  on both simulators, 13 mutants killed, formal (divider with a udiv
-  stub; interpolation vs a ghost at 6 carriers, BMC 40), lint, synth,
-  and the front-end bench now runs pilot_extractor -> channel_estimator.
-  Golden fix: `safe_complex_divide` wrapped int32 at the Q1.15 corners
-  (now int64; new unit test failed before). Not ported: SNR/phase
-  metrics, Wiener (`placeholder_status.md` #9). Supported span: first
-  pilot at relative 0 (always true after pilot_extractor); else
-  `span_error`.
-- `lib/`: float and fixed-point builds 656/656 ctest, including the 11
-  capture-replay tests on the synthetic fixtures. cppcheck (CI flags)
-  clean locally.
+- RTL done through 9.8 (2026-11-15): equalizer (ZF/MMSE per carrier,
+  two parallel udiv_seq) bit-exact vs `equalize_sample()`
+  (`equalizer_gen`; Q30 floor/noise come from new lib accessors), 9
+  mutants killed, formal with free stalls at depth 40 (multipliers cut),
+  bench: estimator H + a bench-only buffer of the active FFT bins ->
+  equalizer. Golden fix: |H|^2 and the MMSE denominator wrapped int32 at
+  the Q1.15 corners. Phase tracking not ported (`placeholder_status.md`
+  #10). 9.7 (`hdl/rtl/channel/`: complex_divider, linear_interp,
+  h_average, channel_estimator; same bar, 13 mutants, formal BMC 40;
+  same int32-wrap fix in `safe_complex_divide`; Wiener and SNR metrics
+  not ported, `placeholder_status.md` #9; first pilot must be at
+  relative 0 else `span_error`).
+- `lib/`: fixed-point build 669/669 ctest (float 662 + new tests on
+  2026-10-29); cppcheck (CI flags) clean locally.
 - Closed 2026-10-22 / 10-29 (details in HISTORY.md): FrameSync window,
   GCC 15 alp_demux, cppcheck, A/322-exact pilots and pilot codes, SPDX
   headers, gate sizes (`hdl/docs/synth_baseline.md`), CI HDL gate (unrun:
@@ -54,13 +53,21 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; hardware
    firmware deferred by user; schematics obtained; Vivado in /opt/Xilinx
    usable for synth/resource estimates).
-2. 9.8 equalizer, 9.9 constellation demapper,
+2. 9.9 constellation demapper,
    9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
    end-to-end pipeline test, 9.17 throughput/timing closure. Scope notes
    per block: HISTORY.md archive, "Phase 9".
 
 ## Open
+
+- The equalizer needs the Q30 registers (`cfg_min_mag_sq_q30`,
+  `cfg_noise_q30`) software derives; the register map still lists
+  NOISE_VARIANCE / MIN_CHANNEL_MAGNITUDE as Q1.15 (changing it needs
+  approval; decide at the control-plane block, 9.15).
+- No production block yet selects the active window from the FFT bins or
+  buffers them until the estimate is ready (the bench uses a behavioural
+  buffer): integration work (9.16).
 
 - linear_interp formal needs ~21 min (yices) and a 4000 s limit; its
   proof is shrunk (6 carriers, 4-bit divider, always-ready handshake);
