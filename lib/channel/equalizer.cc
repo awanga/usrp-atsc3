@@ -108,41 +108,46 @@ size_t Equalizer::get_first_active_carrier() const {
     return config_.first_active_carrier;
 }
 
+int32_t Equalizer::min_magnitude_sq_q30() const {
+    return static_cast<int32_t>(config_.min_channel_magnitude * config_.min_channel_magnitude *
+                                static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
+}
+
+int32_t Equalizer::noise_q30() const {
+    return static_cast<int32_t>(config_.noise_variance *
+                                static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
+}
+
 sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     // ZF: X_hat = Y / H
     // Implemented as: X_hat = Y * conj(H) / |H|^2
 
 #ifdef ATSC3_FIXED_POINT
-    int32_t h_re = h.real();
-    int32_t h_im = h.imag();
+    // int64: |H|^2 reaches 2^31 at the Q1.15 corners (-32768), which wraps int32.
+    const int64_t h_re = h.real();
+    const int64_t h_im = h.imag();
 
     // |H|^2 in Q30
-    int32_t mag_sq = h_re * h_re + h_im * h_im;
+    const int64_t mag_sq = h_re * h_re + h_im * h_im;
 
     // Check for very small channel (deep fade)
-    int32_t min_mag_sq =
-        static_cast<int32_t>(config_.min_channel_magnitude * config_.min_channel_magnitude *
-                             static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
-    if (mag_sq < min_mag_sq || mag_sq < kMinMagnitudeSqDefault) {
+    if (mag_sq < min_magnitude_sq_q30() || mag_sq < kMinMagnitudeSqDefault) {
         return sample_t(0, 0);
     }
 
-    int32_t y_re = y.real();
-    int32_t y_im = y.imag();
+    const int64_t y_re = y.real();
+    const int64_t y_im = y.imag();
 
-    // Y * conj(H) in Q30. Each product is up to ~2^30 in magnitude
-    // (int16 x int16 promoted to int32), so their sum can exceed
-    // INT32_MAX for strong subcarriers -- accumulate in int64_t.
-    int64_t num_re = static_cast<int64_t>(y_re) * h_re + static_cast<int64_t>(y_im) * h_im;
-    int64_t num_im = static_cast<int64_t>(y_im) * h_re - static_cast<int64_t>(y_re) * h_im;
+    // Y * conj(H) in Q30; the sum of two ~2^30 products exceeds INT32_MAX.
+    const int64_t num_re = y_re * h_re + y_im * h_im;
+    const int64_t num_im = y_im * h_re - y_re * h_im;
 
     // Divide: result in Q15
     // Scale: (Q30 / Q30) needs to become Q15
     // So we compute (num << 15) / mag_sq, but to avoid overflow
     // we do num / (mag_sq >> 15)
-    int32_t denom = mag_sq >> 15;
-    if (denom == 0)
-        denom = 1;
+    // mag_sq >= 2^15 here, so denom >= 1.
+    const int64_t denom = mag_sq >> 15;
 
     int64_t out_re = num_re / denom;
     int64_t out_im = num_im / denom;
@@ -176,35 +181,29 @@ sample_t Equalizer::equalize_mmse(sample_t y, sample_t h) const {
     // The noise variance regularizes the denominator to reduce noise enhancement
 
 #ifdef ATSC3_FIXED_POINT
-    int32_t h_re = h.real();
-    int32_t h_im = h.imag();
+    const int64_t h_re = h.real();
+    const int64_t h_im = h.imag();
 
-    // |H|^2 in Q30
-    int32_t mag_sq = h_re * h_re + h_im * h_im;
+    // |H|^2 in Q30; int64 because it reaches 2^31 and the noise term is
+    // added below.
+    const int64_t mag_sq = h_re * h_re + h_im * h_im;
 
-    // Add noise variance (convert to Q30 equivalent)
-    // noise_variance is in float, scale to Q30
-    int32_t noise_q30 = static_cast<int32_t>(config_.noise_variance *
-                                             static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
-    int32_t denom_q30 = mag_sq + noise_q30;
+    const int64_t denom_q30 = mag_sq + noise_q30();
 
     // Check for very small denominator
     if (denom_q30 < kMinMagnitudeSqDefault) {
         return sample_t(0, 0);
     }
 
-    int32_t y_re = y.real();
-    int32_t y_im = y.imag();
+    const int64_t y_re = y.real();
+    const int64_t y_im = y.imag();
 
-    // Y * conj(H) in Q30. Same int64_t widening as equalize_zf -- each
-    // product is up to ~2^30, and their sum can exceed INT32_MAX.
-    int64_t num_re = static_cast<int64_t>(y_re) * h_re + static_cast<int64_t>(y_im) * h_im;
-    int64_t num_im = static_cast<int64_t>(y_im) * h_re - static_cast<int64_t>(y_re) * h_im;
+    // Y * conj(H) in Q30, int64 as in equalize_zf.
+    const int64_t num_re = y_re * h_re + y_im * h_im;
+    const int64_t num_im = y_im * h_re - y_re * h_im;
 
-    // Divide: (Q30 / Q30) → need Q15
-    int32_t denom = denom_q30 >> 15;
-    if (denom == 0)
-        denom = 1;
+    // Divide: (Q30 / Q30) -> Q15; denom_q30 >= 2^15 here, so denom >= 1.
+    const int64_t denom = denom_q30 >> 15;
 
     int64_t out_re = num_re / denom;
     int64_t out_im = num_im / denom;

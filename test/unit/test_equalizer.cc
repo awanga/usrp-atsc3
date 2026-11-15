@@ -633,6 +633,40 @@ TEST(EqualizerTest, FullEqualizationPipeline) {
 #endif
 }
 
+#ifdef ATSC3_FIXED_POINT
+// |H|^2 reaches 2^31 at the Q1.15 corner (-32768, -32768), which wrapped
+// int32 and was reported as a deep fade. Expected values from the algebra:
+// Y * conj(H) = 32767 * (-32768 + 32768j), so the numerators are
+// -/+1073709056 (Q30), truncated toward zero after the divide.
+//   ZF:   denominator 2^31 >> 15 = 65536    -> 1073709056 / 65536 = 16383
+//   MMSE: (2^31 + 10737418) >> 15 = 65863   -> 1073709056 / 65863 = 16302
+//         (65863 * 16302 = 1073698626, remainder 10430 < 65863)
+TEST(EqualizerTest, ZeroForcingAtQ15CornerDoesNotWrap) {
+    EqualizerConfig cfg;
+    cfg.mode = EqualizationMode::ZERO_FORCING;
+    Equalizer eq(cfg);
+    sample_t out = eq.equalize_sample(sample_t(32767, 0), sample_t(-32768, -32768));
+    EXPECT_EQ(out.real(), -16383);
+    EXPECT_EQ(out.imag(), 16383);
+}
+
+TEST(EqualizerTest, MmseAtQ15CornerDoesNotWrap) {
+    EqualizerConfig cfg;
+    cfg.mode = EqualizationMode::MMSE;
+    Equalizer eq(cfg);
+    sample_t out = eq.equalize_sample(sample_t(32767, 0), sample_t(-32768, -32768));
+    EXPECT_EQ(out.real(), -16302);
+    EXPECT_EQ(out.imag(), 16302);
+}
+
+// Defaults: 0.01^2 * 2^30 = 107374.18, 0.01 * 2^30 = 10737418.2
+TEST(EqualizerTest, Q30ConfigValuesFromDefaults) {
+    Equalizer eq;
+    EXPECT_EQ(eq.min_magnitude_sq_q30(), 107374);
+    EXPECT_EQ(eq.noise_q30(), 10737418);
+}
+#endif
+
 }  // namespace
 }  // namespace channel
 }  // namespace atsc3
