@@ -29,6 +29,7 @@ set(LIB_TEST_SOURCES
     test_ldpc_decoder.cc
     test_ldpc_matrix.cc
     test_bch_decoder.cc
+    test_bit_deinterleaver.cc
     test_l1_decoder.cc
     test_config_bus.cc
     test_alp_demux.cc
