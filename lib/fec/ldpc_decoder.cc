@@ -31,9 +31,10 @@ inline float clamp_llr(float llr) {
     return std::max(LLR_MIN, std::min(LLR_MAX, llr));
 }
 
-// Sign of a value (returns -1, 0, or 1)
+// Sign for min-sum: zero counts as positive (bit 0), as in the fixed-point
+// path. Returning 0 would zero every message of the check row.
 inline float sign(float x) {
-    return (x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f);
+    return (x < 0.0f) ? -1.0f : 1.0f;
 }
 
 // ATSC 3.0 LDPC code parameters
@@ -652,7 +653,8 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
     }
 
     // Fill result
-    result.iterations_used = iter + 1;
+    // iter stops at max_iterations when no early exit happened
+    result.iterations_used = std::min(iter + 1, config_.max_iterations);
     result.num_unsatisfied_checks = check_syndrome();
     result.converged = (result.num_unsatisfied_checks == 0);
 
@@ -747,9 +749,12 @@ void LdpcDecoder::min_sum_iteration() {
             float msg_mag = (idx == min1_idx) ? min2 : min1;
             float new_cn_msg = clamp_llr(msg_sign * msg_mag * scale);
 
-            // Update APP with delta (new - old)
+            // Update APP with delta (new - old). The APP is a sum of up to
+            // degree+1 messages, so it is not clamped to the message range:
+            // a clamped APP no longer equals channel + messages and the
+            // extrinsic APP - message above goes wrong.
             float old_cn_msg = llr_cn_[row][idx];
-            llr_app_[col] = clamp_llr(llr_app_[col] - old_cn_msg + new_cn_msg);
+            llr_app_[col] = llr_app_[col] - old_cn_msg + new_cn_msg;
 
             // Store new CN→VN message
             llr_cn_[row][idx] = new_cn_msg;
