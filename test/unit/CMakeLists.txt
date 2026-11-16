@@ -32,6 +32,7 @@ set(LIB_TEST_SOURCES
     test_bit_deinterleaver.cc
     test_l1_decoder.cc
     test_config_bus.cc
+    test_baseband_packet.cc
     test_alp_demux.cc
     test_route_parser.cc
     test_metrics.cc
