@@ -145,12 +145,17 @@ PR merge requires `ci.yml` green. No force-push to `main`.
 
 ## ATSC 3.0 Signal Chain (abbreviated)
 
-Bootstrap detect → Frame sync → CP removal → FFT →
-Channel estimate (LS+Wiener) → FDE equalize → LLR demap →
-De-interleave → LDPC decode → BCH decode → ALP demux →
+Bootstrap detect + decode (A/321, 6.144 MS/s) → resample to the
+post-bootstrap rate (0.384·(N+16) MS/s) → GI removal → FFT →
+Channel estimate → equalize → frequency de-interleave →
+preamble (L1) / PLP cell extraction → time de-interleave (CTI/HTI) →
+LLR demap → bit de-interleave → LDPC decode → BCH decode →
+baseband packet descramble + header → ALP demux →
 FFmpeg HEVC/AC-4 decode → GStreamer playback
 
-L1-Pre/Post preamble configures all OFDM parameters dynamically.
+This is the inverse of A/322 Figures 4.1, 6.1 and 7.1. The bootstrap
+signals the preamble structure; the L1-Basic and L1-Detail signaling
+in the preamble (A/322 Section 9) configures everything after it.
 See `README.md §Signal Chain` for full detail with lib/ references.
 
 ---
@@ -166,7 +171,7 @@ See `README.md §Signal Chain` for full detail with lib/ references.
 ## Common Pitfalls
 
 - TVRX RSSI register is read via UHD sensor API (`"rssi"`), not from baseband.
-- ATSC 3.0 bootstrap is always 4K OFDM regardless of data FFT size — do not use L1 FFT size for bootstrap correlation.
+- The ATSC 3.0 bootstrap (A/321) always uses a 2048-point FFT at a fixed 6.144 MS/s (4.5 MHz), whatever the data FFT size and sample rate. Each symbol is 3072 samples (CAB for symbol 0, BCA after it). Do not use the L1 FFT size or the post-bootstrap sample rate for bootstrap correlation.
 - LDPC H matrices are stored sparse (row, col lists); do not expand to dense — will OOM for 64800-bit codewords.
 - GStreamer pipeline must be built on the main thread; FFmpeg decode workers can be threaded.
 - UHD 3.15 `multi_usrp::make()` API differs from UHD 4.x `rfnoc_graph` API — all differences go in `hal/uhd_source.cc` only.
