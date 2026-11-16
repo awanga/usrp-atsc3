@@ -45,7 +45,10 @@ int cell_deinterleaver_impl::work(int noutput_items, gr_vector_const_void_star& 
         const int8_t* blk_in = in + blk * fft_size_;
         int8_t* blk_out = out + blk * fft_size_;
 
-        deinterleaver_->deinterleave(blk_in, blk_out, static_cast<size_t>(fft_size_));
+        // FEC Block index r within its TI Block is unknown on a plain stream;
+        // every block is treated as r = 0 until the PLP receive chain
+        // supplies TI Block boundaries.
+        deinterleaver_->deinterleave(blk_in, blk_out, 0);
 
         produced += fft_size_;
     }

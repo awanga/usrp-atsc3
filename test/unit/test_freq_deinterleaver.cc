@@ -3,503 +3,189 @@
 //
 // test_freq_deinterleaver.cc — Unit tests for lib/ofdm/freq_deinterleaver.h
 //
-// Tests frequency de-interleaving and permutation validity
+// The reference is the A/322 Section 7.3 frequency interleaver written out
+// literally from the text: bit-array registers R' and G updated by the
+// printed recurrences, the wire permutations as the two rows of Tables
+// 7.12-7.14, the H_l(p) loop with its address check, and the printed
+// input/output relations. The library must invert it.
 
-#include "freq_deinterleaver.h"
+#include "ofdm/freq_deinterleaver.h"
 
 #include <algorithm>
 #include <gtest/gtest.h>
 #include <numeric>
-#include <random>
 #include <vector>
 
 namespace atsc3 {
 namespace ofdm {
 namespace {
 
-//==============================================================================
-// Construction Tests
-//==============================================================================
+struct Spec {
+    int nr;
+    std::vector<int> r_feedback;  // R'_i[Nr-2] = XOR of these R'_{i-1} bits
+    std::vector<int> g_feedback;  // G_k[Nr-1] = XOR of these G_{k-1} bits
+    std::vector<int> r_prime_row; // "R'i bit positions" row
+    std::vector<int> even_row;    // "Ri bit positions (even)" row
+    std::vector<int> odd_row;     // "(odd)" row, or the single 32K row
+};
 
-TEST(FreqDeinterleaverTest, DefaultConstruction) {
-    FreqDeinterleaver deint;
-
-    auto config = deint.get_config();
-    EXPECT_EQ(config.fft_size, 8192u);
-    EXPECT_EQ(config.num_active_carriers, 6913u);
-    EXPECT_EQ(deint.num_carriers(), 6913u);
-}
-
-TEST(FreqDeinterleaverTest, Construct8KFFT) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 6913;
-
-    FreqDeinterleaver deint(config);
-
-    EXPECT_EQ(deint.get_permutation().size(), 6913u);
-}
-
-TEST(FreqDeinterleaverTest, Construct16KFFT) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 16384;
-    config.num_active_carriers = 13825;
-
-    FreqDeinterleaver deint(config);
-
-    EXPECT_EQ(deint.get_permutation().size(), 13825u);
-}
-
-TEST(FreqDeinterleaverTest, Construct32KFFT) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 32768;
-    config.num_active_carriers = 27649;
-
-    FreqDeinterleaver deint(config);
-
-    EXPECT_EQ(deint.get_permutation().size(), 27649u);
-}
-
-TEST(FreqDeinterleaverTest, ConstructZeroCarriersAutoComputes) {
-    // When num_active_carriers = 0, it should auto-compute from fft_size
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 0;  // Will be auto-computed
-
-    FreqDeinterleaver deint(config);
-
-    // Should auto-compute to 6913 carriers for 8K FFT
-    EXPECT_EQ(deint.get_permutation().size(), 6913u);
-    EXPECT_EQ(deint.num_carriers(), 6913u);
-}
-
-//==============================================================================
-// Permutation Validity Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, PermutationIsValidPermutation8K) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 6913;
-
-    FreqDeinterleaver deint(config);
-    const auto& perm = deint.get_permutation();
-
-    ASSERT_EQ(perm.size(), 6913u);
-
-    // Check that permutation contains each index exactly once
-    std::vector<bool> seen(6913, false);
-    for (size_t i = 0; i < 6913; ++i) {
-        ASSERT_LT(perm[i], 6913u) << "Permutation value out of range at index " << i;
-        EXPECT_FALSE(seen[perm[i]]) << "Duplicate value " << perm[i] << " in permutation";
-        seen[perm[i]] = true;
+Spec spec_for(size_t fft) {
+    if (fft == 8192) {
+        return {13,
+                {0, 1, 4, 6},
+                {0, 1, 4, 5, 9, 11},
+                {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+                {5, 11, 3, 0, 10, 8, 6, 9, 2, 4, 1, 7},
+                {8, 10, 7, 6, 0, 5, 2, 1, 3, 9, 4, 11}};
     }
+    if (fft == 16384) {
+        return {14,
+                {0, 1, 4, 5, 9, 11},
+                {0, 1, 2, 12},
+                {12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+                {8, 4, 3, 2, 0, 11, 1, 5, 12, 10, 6, 7, 9},
+                {7, 9, 5, 3, 11, 1, 4, 0, 2, 12, 10, 8, 6}};
+    }
+    return {15,
+            {0, 1, 2, 12},
+            {0, 1},
+            {13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+            {6, 5, 0, 10, 8, 1, 11, 12, 2, 9, 4, 3, 13, 7},
+            {6, 5, 0, 10, 8, 1, 11, 12, 2, 9, 4, 3, 13, 7}};
 }
 
-TEST(FreqDeinterleaverTest, PermutationIsNotIdentity) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 1000;
-
-    FreqDeinterleaver deint(config);
-    const auto& perm = deint.get_permutation();
-
-    // At least some elements should be permuted
-    bool has_non_identity = false;
-    for (size_t i = 0; i < 1000; ++i) {
-        if (perm[i] != i) {
-            has_non_identity = true;
-            break;
+std::vector<uint32_t> spec_h(size_t fft, size_t l, size_t n_data) {
+    Spec s = spec_for(fft);
+    const int nr = s.nr;
+    const size_t mmax = size_t{1} << nr;
+    // G_k, k = floor(l/2): G_0 all ones, then shift down with feedback.
+    std::vector<int> g(static_cast<size_t>(nr), 1);
+    for (size_t k = 1; k <= l / 2; k++) {
+        std::vector<int> next(static_cast<size_t>(nr));
+        for (int j = 0; j <= nr - 2; j++) {
+            next[static_cast<size_t>(j)] = g[static_cast<size_t>(j + 1)];
         }
-    }
-    EXPECT_TRUE(has_non_identity) << "Permutation should not be identity";
-}
-
-TEST(FreqDeinterleaverTest, PermutationIsDeterministic) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 1000;
-
-    FreqDeinterleaver deint1(config);
-    FreqDeinterleaver deint2(config);
-
-    EXPECT_EQ(deint1.get_permutation(), deint2.get_permutation());
-}
-
-//==============================================================================
-// De-interleaving Tests (Out-of-place)
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, DeinterleaveOutOfPlace) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 100;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> input(100);
-    std::iota(input.begin(), input.end(), 0);
-
-    std::vector<int8_t> output(100);
-    deint.deinterleave(input.data(), output.data());
-
-    // Verify output is a permutation of input
-    std::vector<int8_t> sorted_output = output;
-    std::sort(sorted_output.begin(), sorted_output.end());
-    EXPECT_EQ(sorted_output, input);
-}
-
-TEST(FreqDeinterleaverTest, DeinterleaveNullInputReturnsEarly) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 100;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> output(100, -1);
-    deint.deinterleave(nullptr, output.data());
-
-    // Output should be unchanged
-    for (int8_t val : output) {
-        EXPECT_EQ(val, -1);
-    }
-}
-
-TEST(FreqDeinterleaverTest, DeinterleaveNullOutputReturnsEarly) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 100;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> input(100);
-    std::iota(input.begin(), input.end(), 0);
-
-    // Should not crash
-    deint.deinterleave(input.data(), nullptr);
-}
-
-//==============================================================================
-// De-interleaving Tests (In-place)
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, DeinterleaveInPlace) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 100;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> data(100);
-    std::iota(data.begin(), data.end(), 0);
-
-    std::vector<int8_t> original = data;
-
-    deint.deinterleave_inplace(data.data());
-
-    // Verify result is a permutation
-    std::vector<int8_t> sorted_data = data;
-    std::sort(sorted_data.begin(), sorted_data.end());
-    EXPECT_EQ(sorted_data, original);
-}
-
-TEST(FreqDeinterleaverTest, DeinterleaveInPlaceNullInput) {
-    FreqDeinterleaver deint;
-
-    // Should not crash
-    deint.deinterleave_inplace(nullptr);
-}
-
-TEST(FreqDeinterleaverTest, InPlaceMatchesOutOfPlace) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 500;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> input(500);
-    std::iota(input.begin(), input.end(), -50);
-
-    // Out-of-place
-    std::vector<int8_t> out_of_place(500);
-    deint.deinterleave(input.data(), out_of_place.data());
-
-    // In-place
-    std::vector<int8_t> in_place = input;
-    deint.deinterleave_inplace(in_place.data());
-
-    EXPECT_EQ(in_place, out_of_place);
-}
-
-//==============================================================================
-// Round-trip Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, RoundTripRecovery) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 200;
-
-    FreqDeinterleaver deint(config);
-
-    // Original data
-    std::vector<int8_t> original(200);
-    std::iota(original.begin(), original.end(), -100);
-
-    // Build forward permutation from inverse
-    const auto& inv_perm = deint.get_permutation();
-    std::vector<size_t> fwd_perm(200);
-    for (size_t i = 0; i < 200; ++i) {
-        fwd_perm[inv_perm[i]] = i;
-    }
-
-    // Interleave
-    std::vector<int8_t> interleaved(200);
-    for (size_t i = 0; i < 200; ++i) {
-        interleaved[fwd_perm[i]] = original[i];
-    }
-
-    // De-interleave
-    std::vector<int8_t> recovered(200);
-    deint.deinterleave(interleaved.data(), recovered.data());
-
-    // Verify recovery
-    EXPECT_EQ(recovered, original);
-}
-
-TEST(FreqDeinterleaverTest, RoundTripWithRandomData) {
-    std::mt19937 rng(54321);
-    std::uniform_int_distribution<int> dist(-128, 127);
-
-    for (size_t fft_size : {8192, 16384}) {
-        size_t num_carriers = fft_size == 8192 ? 6913 : 13825;
-
-        FreqDeinterleaverConfig config;
-        config.fft_size = fft_size;
-        config.num_active_carriers = num_carriers;
-
-        FreqDeinterleaver deint(config);
-
-        // Random original data
-        std::vector<int8_t> original(num_carriers);
-        for (size_t i = 0; i < num_carriers; ++i) {
-            original[i] = static_cast<int8_t>(dist(rng));
+        int fb = 0;
+        for (int t : s.g_feedback) {
+            fb ^= g[static_cast<size_t>(t)];
         }
-
-        // Build forward permutation
-        const auto& inv_perm = deint.get_permutation();
-        std::vector<size_t> fwd_perm(num_carriers);
-        for (size_t i = 0; i < num_carriers; ++i) {
-            fwd_perm[inv_perm[i]] = i;
-        }
-
-        // Interleave
-        std::vector<int8_t> interleaved(num_carriers);
-        for (size_t i = 0; i < num_carriers; ++i) {
-            interleaved[fwd_perm[i]] = original[i];
-        }
-
-        // De-interleave
-        std::vector<int8_t> recovered(num_carriers);
-        deint.deinterleave(interleaved.data(), recovered.data());
-
-        EXPECT_EQ(recovered, original)
-            << "Round-trip failed for fft_size=" << fft_size << ", num_carriers=" << num_carriers;
+        next[static_cast<size_t>(nr - 1)] = fb;
+        g = next;
     }
-}
+    const std::vector<int>& to_row = (fft != 32768 && l % 2 == 1) ? s.odd_row : s.even_row;
 
-//==============================================================================
-// Configuration Update Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, SetConfig) {
-    FreqDeinterleaver deint;
-
-    EXPECT_EQ(deint.num_carriers(), 6913u);
-
-    FreqDeinterleaverConfig config;
-    config.fft_size = 16384;
-    config.num_active_carriers = 13825;
-    deint.set_config(config);
-
-    EXPECT_EQ(deint.num_carriers(), 13825u);
-    EXPECT_EQ(deint.get_permutation().size(), 13825u);
-}
-
-TEST(FreqDeinterleaverTest, SetConfigDifferentFFTSize) {
-    FreqDeinterleaverConfig config1;
-    config1.fft_size = 8192;
-    config1.num_active_carriers = 6913;
-    FreqDeinterleaver deint(config1);
-
-    auto perm_8k = deint.get_permutation();
-
-    FreqDeinterleaverConfig config2;
-    config2.fft_size = 16384;
-    config2.num_active_carriers = 13825;  // Different carrier count for different FFT
-    deint.set_config(config2);
-
-    auto perm_16k = deint.get_permutation();
-
-    // Permutations should have different sizes for different carrier counts
-    EXPECT_NE(perm_8k.size(), perm_16k.size());
-}
-
-//==============================================================================
-// ATSC 3.0 Standard Configurations
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, ATSC3Standard8K) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 6913;
-
-    FreqDeinterleaver deint(config);
-    const auto& perm = deint.get_permutation();
-
-    EXPECT_EQ(perm.size(), 6913u);
-
-    // Verify valid permutation
-    std::vector<bool> seen(6913, false);
-    for (size_t p : perm) {
-        ASSERT_LT(p, 6913u);
-        seen[p] = true;
-    }
-    for (bool s : seen) {
-        EXPECT_TRUE(s);
-    }
-}
-
-TEST(FreqDeinterleaverTest, ATSC3Standard16K) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 16384;
-    config.num_active_carriers = 13825;
-
-    FreqDeinterleaver deint(config);
-    const auto& perm = deint.get_permutation();
-
-    EXPECT_EQ(perm.size(), 13825u);
-}
-
-TEST(FreqDeinterleaverTest, ATSC3Standard32K) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 32768;
-    config.num_active_carriers = 27649;
-
-    FreqDeinterleaver deint(config);
-    const auto& perm = deint.get_permutation();
-
-    EXPECT_EQ(perm.size(), 27649u);
-}
-
-//==============================================================================
-// Utility Function Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, ComputeFreqInterleaverPosition) {
-    // Test utility function returns valid positions
-    size_t fft_size = 8192;
-    size_t num_carriers = 100;
-
-    std::vector<bool> seen(num_carriers, false);
-    for (size_t i = 0; i < num_carriers; ++i) {
-        size_t pos = compute_freq_interleaver_position(i, fft_size, num_carriers);
-        ASSERT_LT(pos, num_carriers) << "Position out of range for input " << i;
-        // Note: positions may be duplicated if LFSR doesn't cover all values
-        seen[pos] = true;
-    }
-
-    // At minimum, some positions should be filled
-    size_t filled = std::count(seen.begin(), seen.end(), true);
-    EXPECT_GT(filled, 0u);
-}
-
-TEST(FreqDeinterleaverTest, ComputeFreqInterleaverPositionOutOfRange) {
-    // Out-of-range input should return input unchanged
-    EXPECT_EQ(compute_freq_interleaver_position(100, 8192, 100), 100u);
-    EXPECT_EQ(compute_freq_interleaver_position(50, 8192, 0), 50u);
-}
-
-//==============================================================================
-// Reset Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, Reset) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 100;
-
-    FreqDeinterleaver deint(config);
-
-    // Reset should not change permutation
-    auto perm_before = deint.get_permutation();
-    deint.reset();
-    auto perm_after = deint.get_permutation();
-
-    EXPECT_EQ(perm_before, perm_after);
-}
-
-//==============================================================================
-// Performance Stress Tests
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, MultipleSymbolsProcessing) {
-    FreqDeinterleaverConfig config;
-    config.fft_size = 8192;
-    config.num_active_carriers = 6913;
-
-    FreqDeinterleaver deint(config);
-
-    std::vector<int8_t> input(6913);
-    std::vector<int8_t> output(6913);
-    std::iota(input.begin(), input.end(), 0);
-
-    // Process 100 OFDM symbols
-    for (int sym = 0; sym < 100; ++sym) {
-        deint.deinterleave(input.data(), output.data());
-    }
-
-    // Verify output is still a valid permutation of input
-    std::vector<int8_t> sorted_output = output;
-    std::sort(sorted_output.begin(), sorted_output.end());
-
-    std::vector<int8_t> sorted_input = input;
-    std::sort(sorted_input.begin(), sorted_input.end());
-    EXPECT_EQ(sorted_output, sorted_input);
-}
-
-//==============================================================================
-// Various Carrier Counts
-//==============================================================================
-
-TEST(FreqDeinterleaverTest, VariousCarrierCounts) {
-    // Test with various carrier counts within 8K FFT
-    std::vector<size_t> carrier_counts = {100, 500, 1000, 3000, 5000, 6913};
-
-    for (size_t n : carrier_counts) {
-        FreqDeinterleaverConfig config;
-        config.fft_size = 8192;
-        config.num_active_carriers = n;
-
-        EXPECT_NO_THROW({
-            FreqDeinterleaver deint(config);
-            EXPECT_EQ(deint.get_permutation().size(), n);
-
-            // Verify valid permutation
-            const auto& perm = deint.get_permutation();
-            std::vector<bool> seen(n, false);
-            bool all_valid = true;
-            for (size_t i = 0; i < n && all_valid; ++i) {
-                if (perm[i] >= n) {
-                    all_valid = false;
-                } else {
-                    seen[perm[i]] = true;
-                }
+    std::vector<int> rp(static_cast<size_t>(nr - 1), 0);
+    std::vector<uint32_t> h;
+    for (size_t i = 0; i < mmax; i++) {
+        if (i == 2) {
+            rp.assign(rp.size(), 0);
+            rp[0] = 1;
+        } else if (i > 2) {
+            std::vector<int> next(rp.size());
+            for (int j = 0; j <= nr - 3; j++) {
+                next[static_cast<size_t>(j)] = rp[static_cast<size_t>(j + 1)];
             }
-            EXPECT_TRUE(all_valid) << "Invalid permutation for n=" << n;
-        }) << "Failed for num_active_carriers="
-           << n;
+            int fb = 0;
+            for (int t : s.r_feedback) {
+                fb ^= rp[static_cast<size_t>(t)];
+            }
+            next[static_cast<size_t>(nr - 2)] = fb;
+            rp = next;
+        }
+        std::vector<int> r(static_cast<size_t>(nr - 1), 0);
+        for (size_t c = 0; c < s.r_prime_row.size(); c++) {
+            r[static_cast<size_t>(to_row[c])] = rp[static_cast<size_t>(s.r_prime_row[c])];
+        }
+        uint32_t addr = static_cast<uint32_t>(i % 2) << (nr - 1);
+        for (int j = 0; j <= nr - 2; j++) {
+            addr += static_cast<uint32_t>(r[static_cast<size_t>(j)]) << j;
+        }
+        uint32_t goff = 0;
+        for (int j = 0; j <= nr - 1; j++) {
+            goff += static_cast<uint32_t>(g[static_cast<size_t>(j)]) << j;
+        }
+        addr ^= goff;
+        if (addr < n_data) {
+            h.push_back(addr);
+        }
     }
+    return h;
+}
+
+// Transmitter: x (input cells) -> a (output cells) for symbol l.
+std::vector<uint32_t> spec_interleave(const std::vector<uint32_t>& x, size_t fft, size_t l) {
+    auto h = spec_h(fft, l, x.size());
+    std::vector<uint32_t> a(x.size());
+    for (size_t p = 0; p < x.size(); p++) {
+        if (fft == 32768 && l % 2 == 0) {
+            a[h[p]] = x[p];
+        } else {
+            a[p] = x[h[p]];
+        }
+    }
+    return a;
+}
+
+class FreqDeinterleaverSpec : public ::testing::TestWithParam<std::tuple<size_t, size_t>> {};
+
+TEST_P(FreqDeinterleaverSpec, SequenceMatchesSpecForFirstSymbols) {
+    auto [fft, n_data] = GetParam();
+    FreqDeinterleaver d({fft});
+    ASSERT_TRUE(d.is_configured());
+    std::vector<uint32_t> h(n_data);
+    // Early symbols, then later ones where the symbol offset registers have
+    // run long enough to separate the feedback taps.
+    for (size_t l : {0u, 1u, 2u, 3u, 4u, 5u, 41u, 128u, 255u}) {
+        d.interleaving_sequence(l, n_data, h.data());
+        ASSERT_EQ(h, spec_h(fft, l, n_data)) << "symbol " << l;
+        std::vector<uint32_t> sorted(h);
+        std::sort(sorted.begin(), sorted.end());
+        for (size_t p = 0; p < n_data; p++) {
+            ASSERT_EQ(sorted[p], p) << "H_" << l << " is not a permutation";
+        }
+    }
+}
+
+TEST_P(FreqDeinterleaverSpec, InvertsSpecInterleaverOverSymbols) {
+    auto [fft, n_data] = GetParam();
+    FreqDeinterleaver d({fft});
+    std::vector<uint32_t> x(n_data), out(n_data);
+    for (size_t l = 0; l < 5; l++) {
+        std::iota(x.begin(), x.end(), static_cast<uint32_t>(l * 100000));
+        auto a = spec_interleave(x, fft, l);
+        ASSERT_EQ(d.symbol_index(), l);
+        d.deinterleave(a.data(), out.data(), n_data);
+        ASSERT_EQ(out, x) << "symbol " << l;
+    }
+    d.reset();
+    EXPECT_EQ(d.symbol_index(), 0u);
+}
+
+// Data cell counts from Tables 7.2/7.3 style values plus the full Mmax-1
+// edge; any N_data <= Mmax is legal input to the address check.
+INSTANTIATE_TEST_SUITE_P(Sizes, FreqDeinterleaverSpec,
+                         ::testing::Values(std::make_tuple(8192u, 6432u),
+                                           std::make_tuple(8192u, 8191u),
+                                           std::make_tuple(16384u, 13004u),
+                                           std::make_tuple(32768u, 26304u),
+                                           std::make_tuple(32768u, 27000u)));
+
+TEST(FreqDeinterleaverTest, RejectsSizesOutsideTable711) {
+    FreqDeinterleaver d({4096});
+    EXPECT_FALSE(d.is_configured());
+    EXPECT_TRUE(d.set_config({16384}));
+    EXPECT_TRUE(d.is_configured());
+}
+
+TEST(FreqDeinterleaverTest, FirstSymbolIsNotIdentity) {
+    FreqDeinterleaver d({8192});
+    std::vector<uint32_t> h(6000);
+    d.interleaving_sequence(0, h.size(), h.data());
+    size_t fixed = 0;
+    for (size_t p = 0; p < h.size(); p++) {
+        fixed += h[p] == p;
+    }
+    EXPECT_LT(fixed, 100u);
 }
 
 }  // namespace

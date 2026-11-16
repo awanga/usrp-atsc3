@@ -147,12 +147,11 @@ TEST_F(SignalChainBenchmark, Profile8K) {
     ofdm::ConstellationDemapper demapper(demap_cfg);
 
     ofdm::CellDeinterleaverConfig cell_cfg;
-    cell_cfg.num_cells = num_llr_bits;
+    cell_cfg.num_cells = 10800;  // one 64QAM FEC Block (Table 6.14)
     ofdm::CellDeinterleaver cell_deint(cell_cfg);
 
     ofdm::FreqDeinterleaverConfig freq_cfg;
     freq_cfg.fft_size = fft_size;
-    freq_cfg.num_active_carriers = num_carriers;
     ofdm::FreqDeinterleaver freq_deint(freq_cfg);
 
     // Skip LDPC for this benchmark - profiled separately
@@ -185,12 +184,12 @@ TEST_F(SignalChainBenchmark, Profile8K) {
         demap_cycles += (t2 - t1);
 
         // Cell de-interleaving
-        cell_deint.deinterleave(llr_out.data(), deint_out.data(), num_llr_bits);
+        cell_deint.deinterleave(llr_out.data(), deint_out.data(), 0);
         uint64_t t3 = rdtsc();
         cell_deint_cycles += (t3 - t2);
 
         // Frequency de-interleaving
-        freq_deint.deinterleave(llr_out.data(), deint_out.data());
+        freq_deint.deinterleave(llr_out.data(), deint_out.data(), num_carriers);
         uint64_t t4 = rdtsc();
         freq_deint_cycles += (t4 - t3);
 

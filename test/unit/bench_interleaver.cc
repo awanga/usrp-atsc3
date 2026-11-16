@@ -107,14 +107,8 @@ protected:
 
 // Cell deinterleaver benchmark
 TEST_F(InterleaverBenchmark, CellDeinterleaver) {
-    // Test sizes matching ATSC 3.0 cell counts
-    std::vector<size_t> sizes = {
-        1000,   // Small block
-        10800,  // 64800 bits / 6 bits per QAM64
-        16200,  // Short LDPC codeword
-        32400,  // Larger block
-        64800   // Full LDPC codeword
-    };
+    // FEC Block sizes of A/322 Table 6.14
+    std::vector<size_t> sizes = {2025, 5400, 10800, 16200, 32400};
 
     printf("Cell De-interleaver Performance:\n");
     printf("================================\n");
@@ -137,7 +131,7 @@ TEST_F(InterleaverBenchmark, CellDeinterleaver) {
 
         // Warm up
         for (int i = 0; i < 10; ++i) {
-            deint.deinterleave(input.data(), output.data(), num_cells);
+            deint.deinterleave(input.data(), output.data(), 0);
         }
 
         // Benchmark
@@ -146,7 +140,7 @@ TEST_F(InterleaverBenchmark, CellDeinterleaver) {
         auto start_time = std::chrono::high_resolution_clock::now();
 
         for (size_t i = 0; i < iterations; ++i) {
-            deint.deinterleave(input.data(), output.data(), num_cells);
+            deint.deinterleave(input.data(), output.data(), 0);
         }
 
         uint64_t end_cycles = rdtsc();
@@ -189,7 +183,6 @@ TEST_F(InterleaverBenchmark, FrequencyDeinterleaver) {
     for (const auto& tc : cases) {
         FreqDeinterleaverConfig config;
         config.fft_size = tc.fft_size;
-        config.num_active_carriers = tc.num_carriers;
         FreqDeinterleaver deint(config);
 
         // Create input/output buffers
@@ -205,7 +198,7 @@ TEST_F(InterleaverBenchmark, FrequencyDeinterleaver) {
 
         // Warm up
         for (int i = 0; i < 10; ++i) {
-            deint.deinterleave(input.data(), output.data());
+            deint.deinterleave(input.data(), output.data(), tc.num_carriers);
         }
 
         // Benchmark
@@ -214,7 +207,7 @@ TEST_F(InterleaverBenchmark, FrequencyDeinterleaver) {
         auto start_time = std::chrono::high_resolution_clock::now();
 
         for (size_t i = 0; i < iterations; ++i) {
-            deint.deinterleave(input.data(), output.data());
+            deint.deinterleave(input.data(), output.data(), tc.num_carriers);
         }
 
         uint64_t end_cycles = rdtsc();
@@ -241,29 +234,20 @@ TEST_F(InterleaverBenchmark, FrequencyDeinterleaver) {
 
 // Time deinterleaver benchmark
 TEST_F(InterleaverBenchmark, TimeDeinterleaver) {
-    // Test different TI depths
+    // L1D_plp_CTI_depth codes of Table 9.26
     struct TestCase {
         uint8_t depth;
         size_t cells_per_block;
     };
 
-    std::vector<TestCase> cases = {
-        {0, 10000},  // No interleaving
-        {2, 10000},  // Depth 2
-        {4, 10000},  // Depth 4
-        {8, 10000},  // Depth 8
-        {15, 10000}  // Maximum depth
-    };
+    std::vector<TestCase> cases = {{0, 10000}, {1, 10000}, {2, 10000}, {3, 10000}};
 
     printf("Time De-interleaver Performance:\n");
     printf("================================\n");
 
     for (const auto& tc : cases) {
-        TimeDeinterleaverConfig config;
-        config.mode = config::TimeInterleaveMode::CTI;
-        config.depth = tc.depth;
-        config.cells_per_block = tc.cells_per_block;
-        TimeDeinterleaver deint(config);
+        CtiDeinterleaver<int8_t> deint;
+        deint.configure(cti_num_rows(tc.depth, false));
 
         // Create input/output buffers
         simd::aligned_vector<int8_t> input(tc.cells_per_block);
@@ -277,7 +261,7 @@ TEST_F(InterleaverBenchmark, TimeDeinterleaver) {
         }
 
         // Warm up (also fills delay lines)
-        for (size_t i = 0; i < deint.get_settling_blocks() + 10; ++i) {
+        for (size_t i = 0; i < deint.delay() / tc.cells_per_block + 10; ++i) {
             deint.process(input.data(), output.data(), tc.cells_per_block);
         }
 
@@ -328,7 +312,7 @@ TEST_F(InterleaverBenchmark, PerformanceTargets) {
 
     // Warm up
     for (int i = 0; i < 100; ++i) {
-        cell_deint.deinterleave(input.data(), output.data(), 10800);
+        cell_deint.deinterleave(input.data(), output.data(), 0);
     }
 
     // Measure
@@ -336,7 +320,7 @@ TEST_F(InterleaverBenchmark, PerformanceTargets) {
     uint64_t start_cycles = rdtsc();
 
     for (size_t i = 0; i < iterations; ++i) {
-        cell_deint.deinterleave(input.data(), output.data(), 10800);
+        cell_deint.deinterleave(input.data(), output.data(), 0);
     }
 
     uint64_t end_cycles = rdtsc();

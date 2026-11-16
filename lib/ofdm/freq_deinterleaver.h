@@ -3,23 +3,30 @@
 
 #pragma once
 
-// Frequency De-interleaver — ATSC 3.0 frequency-domain de-interleaving
+// Frequency De-interleaver — inverse of the A/322 Section 7.3 frequency
+// interleaver
 //
-// Reverses the frequency interleaving applied at the transmitter, which
-// spreads data across OFDM subcarriers to improve frequency-selective
-// fading resilience.
+// The interleaver permutes the N_data data cells of one OFDM symbol with an
+// address sequence H_l(p) built from three generators (Figures 7.27-7.29):
+//   - an (Nr-1)-bit interleaving-sequence LFSR R'_i, restarted every symbol,
+//     wired to R_i by Tables 7.12-7.14 (8K/16K: separate wirings for even
+//     and odd symbols; 32K: one wiring),
+//   - a toggle bit (i mod 2) at bit Nr-1,
+//   - an Nr-bit symbol offset G_k (k = floor(l/2)), XORed onto the address,
+// with Nr = log2(Mmax) and addresses >= N_data skipped (address check).
+// The transmitter writes a[p] = x[H_l(p)] (8K, 16K and odd 32K symbols) or
+// a[H_l(p)] = x[p] (even 32K symbols); this class applies the inverse.
 //
-// The permutation is based on a pseudo-random sequence that depends on
-// FFT size and number of active carriers per ATSC A/322 Section 8.3.
+// l counts the symbols of the first Subframe from the first Preamble symbol,
+// and of each later Subframe from its first symbol; reset() restarts it.
+// Preamble symbols are always interleaved; data and Subframe Boundary
+// symbols only when L1D_frequency_interleaver is set for the Subframe.
 //
 // AXI4-S Interface Contract:
-//   Input:  TDATA=int8_t (interleaved LLR cells, one OFDM symbol)
-//   Output: TDATA=int8_t (de-interleaved LLR cells)
-//           TVALID TREADY TLAST(symbol boundary)
+//   Input:  TDATA=cell (interleaved data cells of one symbol) TVALID TREADY TLAST(symbol)
+//   Output: TDATA=cell (de-interleaved data cells)          TVALID TREADY TLAST(symbol)
 //
-// Reference: ATSC A/322 Section 8.3 (Frequency Interleaving)
-
-#include "simd/simd_types.h"
+// Reference: ATSC A/322 Section 7.3, Tables 7.11-7.14
 
 #include <cstddef>
 #include <cstdint>
@@ -28,94 +35,74 @@
 namespace atsc3 {
 namespace ofdm {
 
-// Frequency de-interleaver configuration
 struct FreqDeinterleaverConfig {
-    // FFT size (8192, 16384, or 32768)
+    // FFT size: 8192, 16384 or 32768 (Mmax of Table 7.11)
     size_t fft_size = 8192;
-
-    // Number of active (data + pilot) carriers
-    // If 0 or unset, will be computed from fft_size:
-    //   8K  -> 6913 carriers
-    //   16K -> 13825 carriers
-    //   32K -> 27649 carriers
-    size_t num_active_carriers = 0;
 };
 
-// Frequency De-interleaver
-//
-// Applies inverse frequency permutation to recover original carrier ordering.
-// Permutation is pre-computed at construction for efficiency.
-//
-// The interleaver uses a pseudo-random permutation based on:
-//   - FFT size (determines maximum addressable carriers)
-//   - Number of active carriers (actual data carriers used)
-//
-// Usage:
-//   FreqDeinterleaverConfig config;
-//   config.fft_size = 8192;
-//   config.num_active_carriers = 6913;
-//   FreqDeinterleaver deint(config);
-//
-//   // De-interleave one OFDM symbol
-//   deint.deinterleave(input, output);
-//
 class FreqDeinterleaver {
 public:
     explicit FreqDeinterleaver(const FreqDeinterleaverConfig& config = FreqDeinterleaverConfig());
-    ~FreqDeinterleaver();
 
-    // De-interleave one OFDM symbol (out-of-place)
-    // input: Interleaved carriers (num_active_carriers elements)
-    // output: De-interleaved carriers (num_active_carriers elements)
-    void deinterleave(const int8_t* input, int8_t* output) const;
+    // Returns false for an FFT size outside Table 7.11 (the de-interleaver
+    // is then unconfigured and deinterleave() copies nothing).
+    bool set_config(const FreqDeinterleaverConfig& config);
 
-    // De-interleave in-place
-    // carriers: Array of carriers to de-interleave
-    void deinterleave_inplace(int8_t* carriers);
-
-    // Get current configuration
     const FreqDeinterleaverConfig& get_config() const {
         return config_;
     }
 
-    // Update configuration (recomputes permutation)
-    void set_config(const FreqDeinterleaverConfig& config);
-
-    // Get the inverse permutation table
-    const simd::aligned_vector<size_t>& get_permutation() const {
-        return inv_permutation_;
+    bool is_configured() const {
+        return !raw_even_.empty();
     }
 
-    // Get number of active carriers
-    size_t num_carriers() const {
-        return config_.num_active_carriers;
+    // Restart at symbol l = 0: first Preamble symbol of a Frame, or first
+    // symbol of each later Subframe.
+    void reset() {
+        symbol_ = 0;
     }
 
-    // Reset internal state
-    void reset();
+    size_t symbol_index() const {
+        return symbol_;
+    }
+
+    // De-interleave the num_cells data cells of the current symbol and
+    // advance to the next. num_cells must be at most fft_size. T is any
+    // copyable cell type (complex samples, or per-cell LLR groups).
+    template <typename T>
+    void deinterleave(const T* in, T* out, size_t num_cells);
+
+    // H_l(p) for p < num_cells into h (num_cells entries).
+    void interleaving_sequence(size_t l, size_t num_cells, uint32_t* h) const;
 
 private:
     FreqDeinterleaverConfig config_;
+    size_t nr_ = 0;
+    size_t symbol_ = 0;
+    // (i mod 2) 2^(Nr-1) + R_i for i < Mmax, per wiring.
+    std::vector<uint32_t> raw_even_;
+    std::vector<uint32_t> raw_odd_;
+    std::vector<uint32_t> h_;  // current symbol's sequence
 
-    // Inverse permutation: inv_permutation_[i] = source index for output position i
-    // Cache-line aligned for optimal memory access
-    simd::aligned_vector<size_t> inv_permutation_;
-
-    // Temporary buffer for in-place de-interleaving
-    // Cache-line aligned for SIMD operations
-    simd::aligned_vector<int8_t> temp_buffer_;
-
-    // Compute the permutation for given configuration
-    void compute_permutation();
-
-    // ATSC A/322 frequency interleaver pseudo-random sequence generator
-    // Returns the interleaved position for a given input position
-    size_t interleaver_permutation(size_t input_pos) const;
+    uint32_t symbol_offset(size_t k) const;
 };
 
-// Compute the frequency interleaver output position for testing
-// Returns the output position for a given input position
-size_t compute_freq_interleaver_position(size_t input_pos, size_t fft_size, size_t num_carriers);
+template <typename T>
+void FreqDeinterleaver::deinterleave(const T* in, T* out, size_t num_cells) {
+    if (!is_configured() || num_cells > config_.fft_size) {
+        return;
+    }
+    interleaving_sequence(symbol_, num_cells, h_.data());
+    bool write_mode = config_.fft_size == 32768 && symbol_ % 2 == 0;
+    for (size_t p = 0; p < num_cells; p++) {
+        if (write_mode) {
+            out[p] = in[h_[p]];  // a[H(p)] = x[p]
+        } else {
+            out[h_[p]] = in[p];  // a[p] = x[H(p)]
+        }
+    }
+    symbol_++;
+}
 
 }  // namespace ofdm
 }  // namespace atsc3

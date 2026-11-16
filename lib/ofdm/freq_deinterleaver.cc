@@ -1,309 +1,138 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 Alfred Wanga
 //
-// freq_deinterleaver.cc — ATSC 3.0 frequency-domain de-interleaving
+// freq_deinterleaver.cc — inverse A/322 frequency interleaver
 //
-// Reverses frequency interleaving to recover original carrier ordering.
-// Includes SIMD-optimized paths for SSSE3 and AVX2 tiers.
-//
-// Reference: ATSC A/322 Section 8.3 (Frequency Interleaving)
+// Reference: ATSC A/322 Section 7.3, Tables 7.11-7.14
 
 #include "freq_deinterleaver.h"
 
-#include "simd/cpu_features.h"
-#include "simd/simd_types.h"
-
-#include <algorithm>
-#include <cmath>
-#include <stdexcept>
+#include <initializer_list>
 
 namespace atsc3 {
 namespace ofdm {
 
 namespace {
 
-// Find the smallest power of 2 >= n
-inline size_t next_power_of_two(size_t n) {
-    if (n == 0)
-        return 1;
-    n--;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-    return n + 1;
-}
+struct FiParams {
+    size_t nr;                 // log2(Mmax)
+    uint32_t r_taps;           // R'_{i-1} bits XORed into R'_i[Nr-2]
+    uint32_t g_taps;           // G_{k-1} bits XORed into G_k[Nr-1]
+    const uint8_t* wire_even;  // R_i bit position for R'_i bit Nr-2 .. 0
+    const uint8_t* wire_odd;
+};
 
-// Count bits needed to represent n-1
-inline size_t count_bits(size_t n) {
-    size_t count = 0;
-    while (n > 0) {
-        n >>= 1;
-        ++count;
+constexpr uint32_t bits(std::initializer_list<int> positions) {
+    uint32_t v = 0;
+    for (int p : positions) {
+        v |= 1u << p;
     }
-    return count;
+    return v;
 }
 
-// Bit-reversal of an n-bit number
-inline size_t bit_reverse(size_t x, size_t num_bits) {
-    size_t result = 0;
-    for (size_t i = 0; i < num_bits; ++i) {
-        result = (result << 1) | (x & 1);
-        x >>= 1;
+// Tables 7.12-7.14, listed for R'_i bit positions from Nr-2 down to 0.
+constexpr uint8_t kWire8kEven[] = {5, 11, 3, 0, 10, 8, 6, 9, 2, 4, 1, 7};
+constexpr uint8_t kWire8kOdd[] = {8, 10, 7, 6, 0, 5, 2, 1, 3, 9, 4, 11};
+constexpr uint8_t kWire16kEven[] = {8, 4, 3, 2, 0, 11, 1, 5, 12, 10, 6, 7, 9};
+constexpr uint8_t kWire16kOdd[] = {7, 9, 5, 3, 11, 1, 4, 0, 2, 12, 10, 8, 6};
+constexpr uint8_t kWire32k[] = {6, 5, 0, 10, 8, 1, 11, 12, 2, 9, 4, 3, 13, 7};
+
+bool params_for(size_t fft_size, FiParams* p) {
+    switch (fft_size) {
+        case 8192:
+            *p = {13, bits({0, 1, 4, 6}), bits({0, 1, 4, 5, 9, 11}), kWire8kEven, kWire8kOdd};
+            return true;
+        case 16384:
+            *p = {14, bits({0, 1, 4, 5, 9, 11}), bits({0, 1, 2, 12}), kWire16kEven, kWire16kOdd};
+            return true;
+        case 32768:
+            *p = {15, bits({0, 1, 2, 12}), bits({0, 1}), kWire32k, kWire32k};
+            return true;
+        default:
+            return false;
     }
-    return result;
 }
 
-// SIMD-optimized gather for int8_t data (same as cell_deinterleaver.cc)
+uint32_t parity(uint32_t v) {
+    uint32_t p = 0;
+    while (v) {
+        p ^= v & 1u;
+        v >>= 1;
+    }
+    return p;
+}
 
-#if defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
-
-inline void gather_i8_avx2(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
-    using namespace atsc3::simd;
-    const size_t simd_width = 32;
-    size_t i = 0;
-
-    for (; i + simd_width <= n; i += simd_width) {
-        simd_prefetch_read(&indices[i + simd_width]);
-        ATSC3_ALIGN_32 int8_t temp[32];
-        for (size_t j = 0; j < simd_width; ++j) {
-            temp[j] = src[indices[i + j]];
+// Section 7.3: (i mod 2) 2^(Nr-1) + R_i, i < Mmax, for one wiring.
+std::vector<uint32_t> raw_sequence(const FiParams& fp, const uint8_t* wire) {
+    const size_t mmax = size_t{1} << fp.nr;
+    const size_t rbits = fp.nr - 1;
+    std::vector<uint32_t> raw(mmax);
+    uint32_t r_prime = 0;
+    for (size_t i = 0; i < mmax; i++) {
+        if (i == 2) {
+            r_prime = 1;
+        } else if (i > 2) {
+            uint32_t feedback = parity(r_prime & fp.r_taps);
+            r_prime = (r_prime >> 1) | (feedback << (rbits - 1));
         }
-        simd_i8x32 v = simd_load_i8x32(temp);
-        simd_storeu_i8x32(&dst[i], v);
-    }
-
-    for (; i < n; ++i) {
-        dst[i] = src[indices[i]];
-    }
-}
-
-#endif  // ATSC3_SIMD_AVX2
-
-#if defined(ATSC3_SIMD_SSSE3) || defined(ATSC3_SIMD_AVX2) || defined(ATSC3_SIMD_NATIVE)
-
-inline void gather_i8_ssse3(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
-    using namespace atsc3::simd;
-    const size_t simd_width = 16;
-    size_t i = 0;
-
-    for (; i + simd_width <= n; i += simd_width) {
-        simd_prefetch_read(&indices[i + simd_width]);
-        ATSC3_ALIGN_16 int8_t temp[16];
-        for (size_t j = 0; j < simd_width; ++j) {
-            temp[j] = src[indices[i + j]];
+        uint32_t r = 0;
+        for (size_t k = 0; k < rbits; k++) {
+            size_t from = rbits - 1 - k;
+            r |= ((r_prime >> from) & 1u) << wire[k];
         }
-        simd_i8x16 v = simd_load_i8x16(temp);
-        simd_storeu_i8x16(&dst[i], v);
+        raw[i] = static_cast<uint32_t>((i % 2) << rbits) | r;
     }
-
-    for (; i < n; ++i) {
-        dst[i] = src[indices[i]];
-    }
-}
-
-#endif  // ATSC3_SIMD_SSSE3
-
-inline void gather_i8_scalar(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
-    for (size_t i = 0; i < n; ++i) {
-        dst[i] = src[indices[i]];
-    }
-}
-
-inline void gather_i8_dispatch(const int8_t* src, int8_t* dst, const size_t* indices, size_t n) {
-#if defined(ATSC3_SIMD_AVX2)
-    gather_i8_avx2(src, dst, indices, n);
-#elif defined(ATSC3_SIMD_SSSE3)
-    gather_i8_ssse3(src, dst, indices, n);
-#elif defined(ATSC3_SIMD_NATIVE)
-    using namespace atsc3::simd;
-    if (CpuFeatures::has_avx2_support()) {
-        gather_i8_avx2(src, dst, indices, n);
-    } else if (CpuFeatures::has_ssse3_support()) {
-        gather_i8_ssse3(src, dst, indices, n);
-    } else {
-        gather_i8_scalar(src, dst, indices, n);
-    }
-#else
-    gather_i8_scalar(src, dst, indices, n);
-#endif
+    return raw;
 }
 
 }  // namespace
 
-FreqDeinterleaver::FreqDeinterleaver(const FreqDeinterleaverConfig& config) : config_(config) {
-    compute_permutation();
+FreqDeinterleaver::FreqDeinterleaver(const FreqDeinterleaverConfig& config) {
+    set_config(config);
 }
 
-FreqDeinterleaver::~FreqDeinterleaver() = default;
-
-void FreqDeinterleaver::compute_permutation() {
-    // Compute num_active_carriers from fft_size if not explicitly set
-    size_t n = config_.num_active_carriers;
-    if (n == 0) {
-        switch (config_.fft_size) {
-            case 8192:
-                n = 6913;
-                break;
-            case 16384:
-                n = 13825;
-                break;
-            case 32768:
-                n = 27649;
-                break;
-            default:
-                inv_permutation_.clear();
-                temp_buffer_.clear();
-                return;
-        }
-        config_.num_active_carriers = n;
-    }
-
-    // Use bit-reversal permutation based on carrier count
-    // Same algorithm as cell deinterleaver for reliable bijection
-    size_t n_padded = next_power_of_two(n);
-    size_t num_bits = count_bits(n_padded - 1);
-    if (num_bits == 0)
-        num_bits = 1;
-
-    std::vector<size_t> fwd_perm(n);
-
-    if (n == n_padded) {
-        // Power-of-2: simple bit reversal
-        for (size_t i = 0; i < n; ++i) {
-            fwd_perm[i] = bit_reverse(i, num_bits);
-        }
-    } else {
-        // Non-power-of-2: use valid-pair matching algorithm
-        std::vector<std::pair<size_t, size_t>> valid_pairs;
-        for (size_t i = 0; i < n_padded; ++i) {
-            size_t rev = bit_reverse(i, num_bits);
-            if (i < n && rev < n) {
-                valid_pairs.push_back({i, rev});
-            }
-        }
-
-        std::vector<bool> src_used(n, false);
-        std::vector<bool> dst_used(n, false);
-
-        for (const auto& p : valid_pairs) {
-            size_t src = p.first;
-            size_t dst = p.second;
-            if (!src_used[src] && !dst_used[dst]) {
-                fwd_perm[src] = dst;
-                src_used[src] = true;
-                dst_used[dst] = true;
-            }
-        }
-
-        // Fill remaining positions
-        std::vector<size_t> unused_dst;
-        for (size_t i = 0; i < n; ++i) {
-            if (!dst_used[i]) {
-                unused_dst.push_back(i);
-            }
-        }
-
-        size_t unused_idx = 0;
-        for (size_t i = 0; i < n; ++i) {
-            if (!src_used[i]) {
-                fwd_perm[i] = unused_dst[unused_idx++];
-            }
-        }
-    }
-
-    // Compute mathematical inverse for de-interleaving
-    inv_permutation_.resize(n);
-    for (size_t i = 0; i < n; ++i) {
-        inv_permutation_[fwd_perm[i]] = i;
-    }
-
-    // Pre-allocate temp buffer
-    temp_buffer_.resize(n);
-}
-
-size_t FreqDeinterleaver::interleaver_permutation(size_t input_pos) const {
-    if (input_pos >= config_.num_active_carriers) {
-        return input_pos;
-    }
-
-    // Return the forward permutation value
-    // This is the inverse of inv_permutation_
-    // Since fwd[i] = j means inv[j] = i, we need to find j where inv[j] = input_pos
-    for (size_t j = 0; j < inv_permutation_.size(); ++j) {
-        if (inv_permutation_[j] == input_pos) {
-            return j;
-        }
-    }
-
-    return input_pos;
-}
-
-void FreqDeinterleaver::deinterleave(const int8_t* input, int8_t* output) const {
-    if (input == nullptr || output == nullptr) {
-        return;
-    }
-
-    size_t n = config_.num_active_carriers;
-    if (n == 0 || inv_permutation_.size() != n) {
-        return;
-    }
-
-    // Apply inverse permutation using SIMD-optimized gather
-    gather_i8_dispatch(input, output, inv_permutation_.data(), n);
-}
-
-void FreqDeinterleaver::deinterleave_inplace(int8_t* carriers) {
-    if (carriers == nullptr) {
-        return;
-    }
-
-    size_t n = config_.num_active_carriers;
-    if (n == 0 || inv_permutation_.size() != n) {
-        return;
-    }
-
-    // Copy to temp buffer
-    std::copy(carriers, carriers + n, temp_buffer_.begin());
-
-    // Apply inverse permutation using SIMD-optimized gather
-    gather_i8_dispatch(temp_buffer_.data(), carriers, inv_permutation_.data(), n);
-}
-
-void FreqDeinterleaver::set_config(const FreqDeinterleaverConfig& config) {
+bool FreqDeinterleaver::set_config(const FreqDeinterleaverConfig& config) {
     config_ = config;
-    compute_permutation();
-}
-
-void FreqDeinterleaver::reset() {
-    // No state to reset beyond permutation tables
-}
-
-size_t compute_freq_interleaver_position(size_t input_pos, size_t fft_size, size_t num_carriers) {
-    if (input_pos >= num_carriers || num_carriers == 0) {
-        return input_pos;
+    symbol_ = 0;
+    raw_even_.clear();
+    raw_odd_.clear();
+    FiParams fp{};
+    if (!params_for(config_.fft_size, &fp)) {
+        nr_ = 0;
+        h_.clear();
+        return false;
     }
+    nr_ = fp.nr;
+    raw_even_ = raw_sequence(fp, fp.wire_even);
+    raw_odd_ = raw_sequence(fp, fp.wire_odd);
+    h_.assign(config_.fft_size, 0);
+    return true;
+}
 
-    // Create a temporary deinterleaver to get the permutation
-    FreqDeinterleaverConfig config;
-    config.fft_size = fft_size;
-    config.num_active_carriers = num_carriers;
+uint32_t FreqDeinterleaver::symbol_offset(size_t k) const {
+    FiParams fp{};
+    params_for(config_.fft_size, &fp);
+    uint32_t g = (1u << nr_) - 1;
+    for (size_t step = 0; step < k; step++) {
+        uint32_t feedback = parity(g & fp.g_taps);
+        g = (g >> 1) | (feedback << (nr_ - 1));
+    }
+    return g;
+}
 
-    FreqDeinterleaver deint(config);
-
-    // The forward permutation is the inverse of what's stored
-    // inv_perm[j] = i means input[i] goes to output[j]
-    // So we need to find j where inv_perm[j] = input_pos
-    const auto& inv_perm = deint.get_permutation();
-    for (size_t j = 0; j < inv_perm.size(); ++j) {
-        if (inv_perm[j] == input_pos) {
-            return j;
+void FreqDeinterleaver::interleaving_sequence(size_t l, size_t num_cells, uint32_t* h) const {
+    if (!is_configured()) {
+        return;
+    }
+    const std::vector<uint32_t>& raw = (l % 2 == 0) ? raw_even_ : raw_odd_;
+    const uint32_t g = symbol_offset(l / 2);
+    size_t p = 0;
+    for (size_t i = 0; i < raw.size() && p < num_cells; i++) {
+        uint32_t addr = raw[i] ^ g;
+        if (addr < num_cells) {
+            h[p++] = addr;
         }
     }
-
-    return input_pos;
 }
 
 }  // namespace ofdm

@@ -9,7 +9,6 @@
 set(COMPLIANCE_TEST_SOURCES
     test_bootstrap_variants.cc
     test_l1_compliance.cc
-    test_interleaver_compliance.cc
     test_nuc_compliance.cc
     test_ldpc_waterfall.cc
 )

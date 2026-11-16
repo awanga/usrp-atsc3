@@ -5,7 +5,9 @@
 
 #include "atsc3_time_deinterleaver_impl.h"
 
+#include <algorithm>
 #include <gnuradio/io_signature.h>
+#include <stdexcept>
 
 namespace gr {
 namespace atsc3 {
@@ -36,13 +38,17 @@ time_deinterleaver_impl::time_deinterleaver_impl(int ti_mode, int ti_depth)
 time_deinterleaver_impl::~time_deinterleaver_impl() = default;
 
 void time_deinterleaver_impl::reconfigure() {
-    ::atsc3::ofdm::TimeDeinterleaverConfig config;
-    config.mode = static_cast<::atsc3::config::TimeInterleaveMode>(ti_mode_);
-    config.depth = static_cast<uint8_t>(ti_depth_);
-    config.cells_per_block = static_cast<size_t>(cells_per_block_);
-    config.num_ti_blocks = 0;  // Not used for CTI
-
-    deinterleaver_ = std::make_unique<::atsc3::ofdm::TimeDeinterleaver>(config);
+    // ti_mode: 0 none, 1 CTI, 2 HTI; ti_depth: L1D_plp_CTI_depth (Table 9.26).
+    cells_processed_ = 0;
+    if (ti_mode_ == 2) {
+        throw std::invalid_argument("atsc3_time_deinterleaver: HTI needs TI Block framing");
+    }
+    if (ti_mode_ == 1) {
+        size_t rows = ::atsc3::ofdm::cti_num_rows(static_cast<uint8_t>(ti_depth_), false);
+        if (!cti_.configure(rows)) {
+            throw std::invalid_argument("atsc3_time_deinterleaver: reserved CTI depth");
+        }
+    }
 
     // Process one TI block at a time
     set_output_multiple(cells_per_block_);
@@ -60,7 +66,12 @@ int time_deinterleaver_impl::work(int noutput_items, gr_vector_const_void_star& 
         const int8_t* blk_in = in + blk * cells_per_block_;
         int8_t* blk_out = out + blk * cells_per_block_;
 
-        deinterleaver_->process(blk_in, blk_out, static_cast<size_t>(cells_per_block_));
+        if (ti_mode_ == 1) {
+            cti_.process(blk_in, blk_out, static_cast<size_t>(cells_per_block_));
+        } else {
+            std::copy(blk_in, blk_in + cells_per_block_, blk_out);
+        }
+        cells_processed_ += static_cast<uint64_t>(cells_per_block_);
 
         produced += cells_per_block_;
     }

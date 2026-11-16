@@ -42,7 +42,6 @@ void freq_deinterleaver_impl::reconfigure() {
 
     ::atsc3::ofdm::FreqDeinterleaverConfig config;
     config.fft_size = static_cast<size_t>(fft_size_);
-    config.num_active_carriers = static_cast<size_t>(num_carriers_);
 
     deinterleaver_ = std::make_unique<::atsc3::ofdm::FreqDeinterleaver>(config);
 
@@ -62,7 +61,7 @@ int freq_deinterleaver_impl::work(int noutput_items, gr_vector_const_void_star& 
         const int8_t* sym_in = in + sym * num_carriers_;
         int8_t* sym_out = out + sym * num_carriers_;
 
-        deinterleaver_->deinterleave(sym_in, sym_out);
+        deinterleaver_->deinterleave(sym_in, sym_out, static_cast<size_t>(num_carriers_));
 
         produced += num_carriers_;
     }

@@ -22,7 +22,10 @@ private:
     int cells_per_block_;
     int plp_id_;
 
-    std::unique_ptr<::atsc3::ofdm::TimeDeinterleaver> deinterleaver_;
+    // CTI only: HTI needs TI Block boundaries a plain cell stream does not
+    // carry, so reconfigure() rejects it.
+    ::atsc3::ofdm::CtiDeinterleaver<int8_t> cti_;
+    uint64_t cells_processed_ = 0;
 
     // Message ports
     pmt::pmt_t port_reset_in_;
@@ -43,13 +46,16 @@ public:
     void set_ti_mode(int ti_mode) override;
     void set_ti_depth(int ti_depth) override;
     bool is_settled() const override {
-        return deinterleaver_->is_settled();
+        return ti_mode_ == 0 || cells_processed_ >= cti_.delay();
     }
     int get_settling_blocks() const override {
-        return static_cast<int>(deinterleaver_->get_settling_blocks());
+        if (ti_mode_ == 0) {
+            return 0;
+        }
+        return static_cast<int>((cti_.delay() + cells_per_block_ - 1) / cells_per_block_);
     }
     void reset() override {
-        deinterleaver_->reset();
+        reconfigure();
     }
     void set_plp_id(int plp_id) override;
     int get_plp_id() const override {
