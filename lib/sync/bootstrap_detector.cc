@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 Alfred Wanga
 //
-// bootstrap_detector.cc — Bootstrap Detector implementation
+// bootstrap_detector.cc — A/321 CAB-structure bootstrap detection
 //
-// Schmidl-Cox autocorrelation for ATSC 3.0 bootstrap detection
+// Reference: ATSC A/321:2026 Sections 5.1, 5.4
 
 #include "bootstrap_detector.h"
 
@@ -18,379 +18,291 @@ namespace sync {
 
 namespace {
 
-// EWMA decay for both P and R: x - x/1024 per sample (a power of two, so
-// the fixed-point update is one shift). With P's per-sample input
-// 2 * corr and R's (|x|^2 + |x_d|^2), the steady-state scale of both is
-// that of a 2048-sample (kHalfSymbol) window, and |P| <= R holds exactly
-// because |corr| <= (|x|^2 + |x_d|^2) / 2 term by term.
-constexpr int kEwmaShift = 10;
+constexpr long kLagC = static_cast<long>(BootstrapDetector::kLagC);
+constexpr long kLagB = static_cast<long>(BootstrapDetector::kLagB);
+constexpr long kWinC = static_cast<long>(kBootstrapPartC);
+constexpr long kWinB = static_cast<long>(kBootstrapPartB);
+// The last sample of symbol 0 is where both windows line up.
+constexpr size_t kPeakToStart = kBootstrapSymbolLength - 1;
 
-// Near-silence floor on R, below which the metric is forced to 0. In raw
-// Q1.15 x Q1.15 product units (the fixed-point R's scale): R ~= 1024 *
-// (|x|^2 + |x_d|^2) at steady state, so 2^16 corresponds to an rms
-// amplitude of about 4 LSB (~-78 dBFS) -- far below any real input,
-// including a receiver's own noise floor after AGC. Without a floor,
-// exact silence leaves both EWMAs decaying into their truncation
-// residuals, whose ratio is arbitrary and can look like a correlation
-// peak.
+// Near-silence floor on each R (sum of |x|^2 + |x_d|^2 over ~512 samples,
+// raw Q1.15 x Q1.15 units): 2^16 is an rms amplitude of about 8 LSB
+// (~-72 dBFS), far below any real input after AGC. Without it, exact
+// silence leaves 0/0 ratios.
 constexpr int64_t kMinCorrelatorEnergyQ30 = int64_t{1} << 16;
 
-// SNR estimate from the peak metric, shared by both builds. On a
-// converged repeated structure P -> S and R -> S + N (signal and noise
-// power per sample; see the header comment), so M = |P|^2 / R^2 -> rho^2
-// with rho = S / (S + N), and SNR = S / N = rho / (1 - rho). Clamped to
-// [kSnrFloorDb, kSnrCeilDb]. Biased low when the EWMAs have not converged
-// over a short structure (one 2048-sample repetition reaches ~86% of the
-// plateau metric), since the metric is then below rho^2.
 constexpr double kSnrFloorDb = -10.0;
 constexpr double kSnrCeilDb = 30.0;
 
-double snr_db_from_metric(double metric) {
-    double rho = std::sqrt(std::max(0.0, metric));
+// On a repeated structure P -> S and R -> S + N per sample, so
+// m = |P|^2 / R^2 -> rho^2 with rho = S / (S + N) and SNR = rho / (1 - rho).
+double snr_db_from_m(double m) {
+    double rho = std::sqrt(std::max(0.0, m));
     if (rho <= 0.0) {
         return kSnrFloorDb;
     }
     if (rho >= 1.0) {
         return kSnrCeilDb;
     }
-    double snr_db = 10.0 * std::log10(rho / (1.0 - rho));
-    return std::min(kSnrCeilDb, std::max(kSnrFloorDb, snr_db));
+    return std::min(kSnrCeilDb, std::max(kSnrFloorDb, 10.0 * std::log10(rho / (1.0 - rho))));
 }
 
 #ifdef ATSC3_FIXED_POINT
 int16_t saturate_i16(int64_t v) {
-    if (v > 32767) {
-        return 32767;
-    }
-    if (v < -32767) {
-        return -32767;
-    }
-    return static_cast<int16_t>(v);
+    return static_cast<int16_t>(std::min<int64_t>(32767, std::max<int64_t>(-32767, v)));
+}
+// angle (Q1.15, pi = 32768) x Fs / (2 pi x 2048) = angle x Fs >> 27.
+double cfo_from_angle(int16_t angle) {
+    int64_t fs = static_cast<int64_t>(kBootstrapSampleRateHz);
+    return static_cast<double>((static_cast<int64_t>(angle) * fs) >> 27);
 }
 #else
-// The same floor in the float build's units (samples in [-1, 1), so
-// Q1.15 x Q1.15 products are scaled by 2^-30).
 constexpr double kMinCorrelatorEnergy = static_cast<double>(kMinCorrelatorEnergyQ30) / 1073741824.0;
-constexpr double kEwmaDecay = 1.0 / static_cast<double>(1 << kEwmaShift);
+double cfo_from_phase(double phase) {
+    return phase * kBootstrapSampleRateHz / (2.0 * M_PI * static_cast<double>(kLagC));
+}
 #endif
 
 }  // namespace
 
 #ifdef ATSC3_FIXED_POINT
-BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
-    : config_(config),
-      p_sum_re_(0),
-      p_sum_im_(0),
-      r_sum_(0),
-      delay_buffer_(kHalfSymbol, sample_t(0, 0)),
-      delay_idx_(0),
-      metric_history_(std::max<size_t>(1, config.averaging_window), 0),
-      metric_sum_(0),
-      metric_idx_(0),
-      sample_count_(0),
-      in_detection_(false),
-      rearm_blocked_(false),
-      peak_metric_(0),
-      peak_angle_q15_(0),
-      peak_sample_(0),
-      last_smoothed_metric_q15_(0),
-      last_angle_q15_(0) {}
+struct BootstrapDetector::Terms {
+    int64_t re = 0;
+    int64_t im = 0;
+    int64_t energy = 0;
+};
 #else
-BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
-    : config_(config),
-      p_sum_(0.0, 0.0),
-      r_sum_(0.0),
-      delay_buffer_(kHalfSymbol, sample_t(0, 0)),
-      delay_idx_(0),
-      metric_history_(std::max<size_t>(1, config.averaging_window), 0.0),
-      metric_sum_(0.0),
-      metric_idx_(0),
-      sample_count_(0),
-      in_detection_(false),
-      rearm_blocked_(false),
-      peak_metric_(0.0),
-      peak_correlation_(0.0, 0.0),
-      peak_sample_(0),
-      last_smoothed_metric_(0.0),
-      last_phase_(0.0) {}
+struct BootstrapDetector::Terms {
+    std::complex<double> corr{};
+    double energy = 0.0;
+};
 #endif
+
+BootstrapDetector::BootstrapDetector(const BootstrapConfig& config)
+    : config_(config), history_(kHistory + 1), nco_(kBootstrapFftSize) {
+    for (size_t i = 0; i < kBootstrapFftSize; i++) {
+        double a = -2.0 * M_PI * static_cast<double>(i) / static_cast<double>(kBootstrapFftSize);
+#ifdef ATSC3_FIXED_POINT
+        nco_[i] = sample_t(float_to_q15(static_cast<float>(std::cos(a))),
+                           float_to_q15(static_cast<float>(std::sin(a))));
+#else
+        nco_[i] = std::complex<double>(std::cos(a), std::sin(a));
+#endif
+    }
+    reset();
+}
 
 BootstrapDetector::~BootstrapDetector() = default;
 
 void BootstrapDetector::reset() {
-#ifdef ATSC3_FIXED_POINT
-    p_sum_re_ = 0;
-    p_sum_im_ = 0;
-    r_sum_ = 0;
-    std::fill(metric_history_.begin(), metric_history_.end(), 0);
-    metric_sum_ = 0;
-    peak_metric_ = 0;
-    peak_angle_q15_ = 0;
-    last_smoothed_metric_q15_ = 0;
-    last_angle_q15_ = 0;
-#else
-    p_sum_ = std::complex<double>(0.0, 0.0);
-    r_sum_ = 0.0;
-    std::fill(metric_history_.begin(), metric_history_.end(), 0.0);
-    metric_sum_ = 0.0;
-    peak_metric_ = 0.0;
-    peak_correlation_ = std::complex<double>(0.0, 0.0);
-    last_smoothed_metric_ = 0.0;
-    last_phase_ = 0.0;
-#endif
-    std::fill(delay_buffer_.begin(), delay_buffer_.end(), sample_t(0, 0));
-    delay_idx_ = 0;
-    metric_idx_ = 0;
+    std::fill(history_.begin(), history_.end(), sample_t(0, 0));
     sample_count_ = 0;
+#ifdef ATSC3_FIXED_POINT
+    pc_re_ = pc_im_ = rc_ = 0;
+    pb_re_ = pb_im_ = rb_ = 0;
+    metric_ = mc_ = 0;
+    nc_re_ = nc_im_ = 0;
+    peak_metric_ = peak_mc_ = 0;
+    peak_nc_re_ = peak_nc_im_ = 0;
+#else
+    pc_ = pb_ = 0.0;
+    rc_ = rb_ = 0.0;
+    metric_ = mc_ = 0.0;
+    nc_ = peak_nc_ = 0.0;
+    peak_metric_ = peak_mc_ = 0.0;
+#endif
     in_detection_ = false;
-    rearm_blocked_ = false;
     peak_sample_ = 0;
+    holdoff_end_ = 0;
 }
 
 void BootstrapDetector::set_config(const BootstrapConfig& config) {
     config_ = config;
-
-    // Resize metric history if needed. averaging_window is clamped to a
-    // minimum of 1: a size-0 metric_history_ makes check_detection()'s
-    // modulo-by-size and vector index into it undefined behavior.
-    size_t window = std::max<size_t>(1, config.averaging_window);
-    if (metric_history_.size() != window) {
-#ifdef ATSC3_FIXED_POINT
-        metric_history_.resize(window, 0);
-        metric_idx_ = 0;
-        metric_sum_ = 0;
-#else
-        metric_history_.resize(window, 0.0);
-        metric_idx_ = 0;
-        metric_sum_ = 0.0;
-#endif
-    }
 }
 
-void BootstrapDetector::process_sample(sample_t sample) {
-    sample_t delayed_sample = delay_buffer_[delay_idx_];
+sample_t BootstrapDetector::at(size_t u) const {
+    return history_[u % history_.size()];
+}
 
+// x[v - 504] conj(x[v - 2552]): part C against the end of part A, delayed
+// so the window ends with part B's.
+BootstrapDetector::Terms BootstrapDetector::terms_c(size_t v) const {
+    Terms t;
+    if (v < static_cast<size_t>(kLagB + kLagC)) {
+        return t;
+    }
+    sample_t a = at(v - kLagB);
+    sample_t b = at(v - kLagB - kLagC);
 #ifdef ATSC3_FIXED_POINT
-    int64_t x_re = sample.real();
-    int64_t x_im = sample.imag();
-    int64_t xd_re = delayed_sample.real();
-    int64_t xd_im = delayed_sample.imag();
-
-    // x[n] * conj(x[n-L]) and |x[n]|^2 + |x[n-L]|^2, kept as raw
-    // (unshifted) Q1.15 x Q1.15 products: P and R share this scale, so it
-    // cancels exactly in check_detection()'s P/R ratio.
-    int64_t corr_re = x_re * xd_re + x_im * xd_im;
-    int64_t corr_im = x_im * xd_re - x_re * xd_im;
-    int64_t energy = x_re * x_re + x_im * x_im + xd_re * xd_re + xd_im * xd_im;
-
-    // Both EWMAs decay by x >> 10 (floor division, identically for both);
-    // P's input is 2 * corr and R's is the two-half energy, so |P| <= R.
-    // Bounds: |corr| <= 2^31 and energy <= 2^32 per sample, so both
-    // accumulators stay below ~2^43.
-    p_sum_re_ = p_sum_re_ - (p_sum_re_ >> kEwmaShift) + 2 * corr_re;
-    p_sum_im_ = p_sum_im_ - (p_sum_im_ >> kEwmaShift) + 2 * corr_im;
-    r_sum_ = r_sum_ - (r_sum_ >> kEwmaShift) + energy;
+    t.re = int64_t{a.real()} * b.real() + int64_t{a.imag()} * b.imag();
+    t.im = int64_t{a.imag()} * b.real() - int64_t{a.real()} * b.imag();
+    t.energy = int64_t{a.real()} * a.real() + int64_t{a.imag()} * a.imag() +
+               int64_t{b.real()} * b.real() + int64_t{b.imag()} * b.imag();
 #else
-    std::complex<double> x(sample.real(), sample.imag());
-    std::complex<double> x_delayed(delayed_sample.real(), delayed_sample.imag());
-
-    std::complex<double> corr = x * std::conj(x_delayed);
-    double energy = std::norm(x) + std::norm(x_delayed);
-
-    p_sum_ = p_sum_ - p_sum_ * kEwmaDecay + 2.0 * corr;
-    r_sum_ = r_sum_ - r_sum_ * kEwmaDecay + energy;
+    std::complex<double> ad(a.real(), a.imag()), bd(b.real(), b.imag());
+    t.corr = ad * std::conj(bd);
+    t.energy = std::norm(ad) + std::norm(bd);
 #endif
+    return t;
+}
 
-    delay_buffer_[delay_idx_] = sample;
-    delay_idx_ = (delay_idx_ + 1) % kHalfSymbol;
+// x[v] conj(x[v - 504]) exp(-j 2 pi v / 2048): part B against the end of
+// part A, with B's one-subcarrier shift removed.
+BootstrapDetector::Terms BootstrapDetector::terms_b(size_t v) const {
+    Terms t;
+    if (v < static_cast<size_t>(kLagB)) {
+        return t;
+    }
+    sample_t a = at(v);
+    sample_t b = at(v - kLagB);
+    const auto& w = nco_[v % kBootstrapFftSize];
+#ifdef ATSC3_FIXED_POINT
+    int64_t re = int64_t{a.real()} * b.real() + int64_t{a.imag()} * b.imag();
+    int64_t im = int64_t{a.imag()} * b.real() - int64_t{a.real()} * b.imag();
+    t.re = (re * w.real() - im * w.imag()) >> 15;
+    t.im = (re * w.imag() + im * w.real()) >> 15;
+    t.energy = int64_t{a.real()} * a.real() + int64_t{a.imag()} * a.imag() +
+               int64_t{b.real()} * b.real() + int64_t{b.imag()} * b.imag();
+#else
+    std::complex<double> ad(a.real(), a.imag()), bd(b.real(), b.imag());
+    t.corr = ad * std::conj(bd) * w;
+    t.energy = std::norm(ad) + std::norm(bd);
+#endif
+    return t;
+}
 
-    ++sample_count_;
+BootstrapDetection BootstrapDetector::process(sample_t sample) {
+    const size_t u = sample_count_;
+    history_[u % history_.size()] = sample;
+    sample_count_++;
+
+    // Sliding sums: add the newest term, drop the one that left the
+    // window (recomputed from the history, so the integer sums cancel
+    // exactly).
+    Terms c_in = terms_c(u);
+    Terms b_in = terms_b(u);
+    Terms c_out = u >= static_cast<size_t>(kWinC) ? terms_c(u - kWinC) : Terms{};
+    Terms b_out = u >= static_cast<size_t>(kWinB) ? terms_b(u - kWinB) : Terms{};
+#ifdef ATSC3_FIXED_POINT
+    pc_re_ += c_in.re - c_out.re;
+    pc_im_ += c_in.im - c_out.im;
+    rc_ += c_in.energy - c_out.energy;
+    pb_re_ += b_in.re - b_out.re;
+    pb_im_ += b_in.im - b_out.im;
+    rb_ += b_in.energy - b_out.energy;
+#else
+    pc_ += c_in.corr - c_out.corr;
+    rc_ += c_in.energy - c_out.energy;
+    pb_ += b_in.corr - b_out.corr;
+    rb_ += b_in.energy - b_out.energy;
+#endif
+    return check_detection();
 }
 
 BootstrapDetection BootstrapDetector::check_detection() {
     BootstrapDetection result;
+    const size_t u = sample_count_ - 1;
 
 #ifdef ATSC3_FIXED_POINT
-    // |P|/R in Q1.15. |P| <= R by construction (see process_sample()), so
-    // the quotient fits Q1.15 up to the EWMAs' truncation rounding, which
-    // the saturation absorbs. P * 32768 < 2^58, no overflow. Below the
-    // energy floor the vector is (0, 0): CORDIC then returns magnitude 0
-    // and angle 0, so the metric is 0 without a separate path.
-    int16_t norm_re_q15 = 0;
-    int16_t norm_im_q15 = 0;
-    if (r_sum_ >= kMinCorrelatorEnergyQ30) {
-        norm_re_q15 = saturate_i16((p_sum_re_ * 32768) / r_sum_);
-        norm_im_q15 = saturate_i16((p_sum_im_ * 32768) / r_sum_);
+    // 2P/R in Q1.15 (|P| <= R/2 with R summing both halves' energy).
+    // |P| < 2^41, so 2P * 32768 < 2^57: no overflow.
+    int16_t nb_re = 0, nb_im = 0;
+    nc_re_ = nc_im_ = 0;
+    if (rc_ >= kMinCorrelatorEnergyQ30 && rb_ >= kMinCorrelatorEnergyQ30) {
+        nc_re_ = saturate_i16((2 * pc_re_ * 32768) / rc_);
+        nc_im_ = saturate_i16((2 * pc_im_ * 32768) / rc_);
+        nb_re = saturate_i16((2 * pb_re_ * 32768) / rb_);
+        nb_im = saturate_i16((2 * pb_im_ * 32768) / rb_);
     }
-
-    dsp::CordicVectorResult vec = dsp::cordic_vector(norm_re_q15, norm_im_q15);
-
-    // metric = (|P|/R)^2 in Q1.15. magnitude <= ~46341 (both rails at
-    // +-32767), so metric <= 65536: no overflow anywhere.
-    int64_t magnitude = vec.magnitude;
-    int32_t metric = static_cast<int32_t>((magnitude * magnitude) >> 15);
-
-    // Smooth metric with moving average
-    metric_sum_ -= metric_history_[metric_idx_];
-    metric_sum_ += metric;
-    metric_history_[metric_idx_] = metric;
-    metric_idx_ = (metric_idx_ + 1) % metric_history_.size();
-
-    int64_t smoothed_metric = metric_sum_ / static_cast<int64_t>(metric_history_.size());
-    int32_t threshold_q15 = float_to_q15(static_cast<float>(config_.threshold));
-
-    // Stash for get_current_metric()/get_current_cfo_hz(), independent of
-    // whether the detection FSM below fires this call.
-    last_smoothed_metric_q15_ = smoothed_metric;
-    last_angle_q15_ = vec.angle_q15;
-
-    if (!in_detection_) {
-        if (rearm_blocked_) {
-            if (smoothed_metric <= threshold_q15) {
-                rearm_blocked_ = false;
-            }
-        } else if (smoothed_metric > threshold_q15) {
-            in_detection_ = true;
-            peak_metric_ = static_cast<int32_t>(smoothed_metric);
-            peak_sample_ = sample_count_;
-            peak_angle_q15_ = vec.angle_q15;
-        }
-    } else {
-        if (smoothed_metric > peak_metric_) {
-            peak_metric_ = static_cast<int32_t>(smoothed_metric);
-            peak_sample_ = sample_count_;
-            peak_angle_q15_ = vec.angle_q15;
-        }
-
-        // Falling edge: smoothed_metric < peak_metric_ * 0.8
-        int64_t falling_threshold = (static_cast<int64_t>(peak_metric_) * float_to_q15(0.8f)) >> 15;
-        if (smoothed_metric < falling_threshold) {
-            result.detected = true;
-            result.sample_index = peak_sample_;
-            result.metric = static_cast<double>(peak_metric_) / 32768.0;
-
-            // CFO from the CORDIC phase at the peak. The pi in
-            // "phase = 2*pi*CFO*L/Fs" cancels exactly because the CORDIC
-            // angle format is already radians/pi-scaled (see
-            // lib/dsp/cordic.h), so this is a plain integer multiply plus
-            // a power-of-2 shift -- no floating-point trig, no division
-            // by pi, anywhere in this path:
-            //   cfo_hz = phase_rad * Fs / (2*pi*L)
-            //          = (angle_q15/32768*pi) * Fs / (2*pi*L)
-            //          = angle_q15 * Fs / (65536*L)
-            //          = (angle_q15 * Fs_int) >> 27      [65536*2048 == 2^27]
-            int64_t sample_rate_hz_int = static_cast<int64_t>(config_.sample_rate_hz);
-            int64_t cfo_hz_int = (static_cast<int64_t>(peak_angle_q15_) * sample_rate_hz_int) >> 27;
-            result.cfo_hz = static_cast<double>(cfo_hz_int);
-
-            // snr_db is std::log10-based, which this milestone's CORDIC
-            // core does not cover (rotation/vectoring modes only --
-            // log10 needs hyperbolic mode, a separate design; see
-            // hdl/docs/placeholder_status.md and
-            // hdl/rtl/include/status_words.vh, which excludes this same
-            // field from the RTL wire layout for the same reason).
-            // Computed in double from the already-fixed-point
-            // peak_metric_, at this one output boundary only.
-            result.snr_db = snr_db_from_metric(static_cast<double>(peak_metric_) / 32768.0);
-
-            in_detection_ = false;
-            rearm_blocked_ = true;
-            peak_metric_ = 0;
-        }
-    }
+    mc_ = (int32_t{nc_re_} * nc_re_ + int32_t{nc_im_} * nc_im_) >> 15;
+    int32_t mb = (int32_t{nb_re} * nb_re + int32_t{nb_im} * nb_im) >> 15;
+    metric_ = static_cast<int32_t>((int64_t{mc_} * mb) >> 15);
+    const int32_t threshold = float_to_q15(static_cast<float>(config_.threshold));
 #else
-    bool energetic = r_sum_ >= kMinCorrelatorEnergy;
-    double metric = energetic ? std::norm(p_sum_) / (r_sum_ * r_sum_) : 0.0;
-    std::complex<double> p_eff = energetic ? p_sum_ : std::complex<double>(0.0, 0.0);
-
-    // Smooth metric with moving average
-    metric_sum_ -= metric_history_[metric_idx_];
-    metric_sum_ += metric;
-    metric_history_[metric_idx_] = metric;
-    metric_idx_ = (metric_idx_ + 1) % metric_history_.size();
-
-    double smoothed_metric = metric_sum_ / static_cast<double>(metric_history_.size());
-
-    // Stash for get_current_metric()/get_current_cfo_hz(), independent of
-    // whether the detection FSM below fires this call.
-    last_smoothed_metric_ = smoothed_metric;
-    last_phase_ = std::arg(p_eff);
-
-    if (!in_detection_) {
-        if (rearm_blocked_) {
-            if (smoothed_metric <= config_.threshold) {
-                rearm_blocked_ = false;
-            }
-        } else if (smoothed_metric > config_.threshold) {
-            in_detection_ = true;
-            peak_metric_ = smoothed_metric;
-            peak_sample_ = sample_count_;
-            peak_correlation_ = p_eff;
-        }
-    } else {
-        if (smoothed_metric > peak_metric_) {
-            peak_metric_ = smoothed_metric;
-            peak_sample_ = sample_count_;
-            peak_correlation_ = p_eff;
-        }
-
-        // Falling edge detection (peak passed)
-        if (smoothed_metric < peak_metric_ * 0.8) {
-            result.detected = true;
-            result.sample_index = peak_sample_;
-            result.metric = peak_metric_;
-
-            // Phase = 2 * pi * CFO * L / Fs  =>  CFO = phase * Fs / (2 * pi * L)
-            double phase = std::arg(peak_correlation_);
-            result.cfo_hz = phase * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
-            result.snr_db = snr_db_from_metric(peak_metric_);
-
-            in_detection_ = false;
-            rearm_blocked_ = true;
-            peak_metric_ = 0.0;
-        }
+    double mb = 0.0;
+    nc_ = 0.0;
+    if (rc_ >= kMinCorrelatorEnergy && rb_ >= kMinCorrelatorEnergy) {
+        nc_ = 2.0 * pc_ / rc_;
+        mb = std::norm(2.0 * pb_ / rb_);
     }
+    mc_ = std::norm(nc_);
+    metric_ = mc_ * mb;
+    const double threshold = config_.threshold;
 #endif
 
+    if (!in_detection_) {
+        if (u < holdoff_end_ || !(metric_ > threshold)) {
+            return result;
+        }
+        in_detection_ = true;
+        peak_metric_ = 0;
+    }
+    if (metric_ > peak_metric_) {
+        peak_metric_ = metric_;
+        peak_mc_ = mc_;
+        peak_sample_ = u;
+#ifdef ATSC3_FIXED_POINT
+        peak_nc_re_ = nc_re_;
+        peak_nc_im_ = nc_im_;
+#else
+        peak_nc_ = nc_;
+#endif
+    }
+
+#ifdef ATSC3_FIXED_POINT
+    bool fell = metric_ < ((int64_t{peak_metric_} * float_to_q15(0.8f)) >> 15);
+#else
+    bool fell = metric_ < 0.8 * peak_metric_;
+#endif
+    if (!fell) {
+        return result;
+    }
+    in_detection_ = false;
+    if (peak_sample_ < kPeakToStart) {
+        return result;  // too early to hold a whole symbol 0
+    }
+    result.detected = true;
+    result.sample_index = peak_sample_ - kPeakToStart;
+    holdoff_end_ = result.sample_index + kHoldoff;
+#ifdef ATSC3_FIXED_POINT
+    result.metric = static_cast<double>(peak_metric_) / 32768.0;
+    result.cfo_hz = cfo_from_angle(dsp::cordic_vector(peak_nc_re_, peak_nc_im_).angle_q15);
+    // log10 has no fixed-point counterpart here (see
+    // hdl/docs/placeholder_status.md); computed in double at this output only.
+    result.snr_db = snr_db_from_m(static_cast<double>(peak_mc_) / 32768.0);
+#else
+    result.metric = peak_metric_;
+    result.cfo_hz = cfo_from_phase(std::arg(peak_nc_));
+    result.snr_db = snr_db_from_m(peak_mc_);
+#endif
     return result;
 }
 
-BootstrapDetection BootstrapDetector::process(sample_t sample) {
-    process_sample(sample);
-    return check_detection();
+BootstrapDetection BootstrapDetector::process(const sample_t* samples, size_t n) {
+    BootstrapDetection last;
+    for (size_t i = 0; i < n; ++i) {
+        BootstrapDetection det = process(samples[i]);
+        if (det.detected) {
+            last = det;
+        }
+    }
+    return last;
 }
 
 double BootstrapDetector::get_current_metric() const {
 #ifdef ATSC3_FIXED_POINT
-    return static_cast<double>(last_smoothed_metric_q15_) / 32768.0;
+    return static_cast<double>(metric_) / 32768.0;
 #else
-    return last_smoothed_metric_;
+    return metric_;
 #endif
 }
 
 double BootstrapDetector::get_current_cfo_hz() const {
 #ifdef ATSC3_FIXED_POINT
-    // Same pi-cancels-out derivation as the peak CFO in check_detection().
-    int64_t sample_rate_hz_int = static_cast<int64_t>(config_.sample_rate_hz);
-    int64_t cfo_hz_int = (static_cast<int64_t>(last_angle_q15_) * sample_rate_hz_int) >> 27;
-    return static_cast<double>(cfo_hz_int);
+    return cfo_from_angle(dsp::cordic_vector(nc_re_, nc_im_).angle_q15);
 #else
-    return last_phase_ * config_.sample_rate_hz / (2.0 * M_PI * kHalfSymbol);
+    return cfo_from_phase(std::arg(nc_));
 #endif
-}
-
-BootstrapDetection BootstrapDetector::process(const sample_t* samples, size_t n) {
-    BootstrapDetection last_detection;
-
-    for (size_t i = 0; i < n; ++i) {
-        process_sample(samples[i]);
-        BootstrapDetection det = check_detection();
-        if (det.detected) {
-            last_detection = det;
-        }
-    }
-
-    return last_detection;
 }
 
 }  // namespace sync

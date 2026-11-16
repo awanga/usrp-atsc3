@@ -8,16 +8,22 @@
 // the actual golden model. Same stdin/stdout text-protocol approach as
 // cordic_gen.cc.
 //
+// The golden model now follows A/321 (CAB-structure detection at 6.144
+// MS/s, see lib/sync/bootstrap_detector.h); hdl/rtl/sync/bootstrap_detector.v
+// still implements the earlier Schmidl-Cox model and has to be re-ported.
+// The config line changed with the model, so the existing cocotb bench
+// fails at its first line instead of comparing against the wrong model.
+//
 // Input (stdin):
-//   C <sample_rate_hz> <threshold_q15> <averaging_window>   -- first line
-//   <re> <im>                                              -- one per sample
+//   C <threshold_q15>     -- first line
+//   <re> <im>             -- one per sample
 //
 // threshold_q15 is the raw register value; it is passed to the C++ as
 // threshold_q15 / 32768.0, which float_to_q15() maps back to exactly the
 // same integer (both conversions are exact for any int16 value).
 //
 // Output (stdout), per input sample, in order:
-//   M <smoothed_metric> <cfo_hz>
+//   M <metric> <cfo_hz>
 //       get_current_metric() * 32768 and get_current_cfo_hz(), both exact
 //       integers -- matches the RTL's mon_metric/mon_cfo_hz outputs.
 //   D <sample_index> <cfo_hz> <metric>
@@ -46,18 +52,15 @@ int main() {
     }
     std::istringstream cfg_in(line);
     char tag = 0;
-    uint32_t sample_rate_hz = 0;
     int threshold_q15 = 0;
-    uint32_t averaging_window = 0;
-    if (!(cfg_in >> tag >> sample_rate_hz >> threshold_q15 >> averaging_window) || tag != 'C') {
+    std::string extra;
+    if (!(cfg_in >> tag >> threshold_q15) || tag != 'C' || (cfg_in >> extra)) {
         std::cerr << "bootstrap_gen: bad config line: " << line << '\n';
         return 1;
     }
 
     BootstrapConfig config;
-    config.sample_rate_hz = static_cast<double>(sample_rate_hz);
     config.threshold = static_cast<double>(threshold_q15) / 32768.0;
-    config.averaging_window = averaging_window;
     BootstrapDetector detector(config);
 
     while (std::getline(std::cin, line)) {

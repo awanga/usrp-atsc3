@@ -31,10 +31,8 @@ namespace {
 #endif
 const std::string kCapturesDir = std::string(SOURCE_DIR) + "/test/captures";
 
-// Sample rate for captures (from SigMF metadata)
-// Note: ch35_20sec uses 6.25 MS/s, ch35_10sec uses 12.5 MS/s
-// We auto-detect from filename or default to 6.25 MS/s
-constexpr double kDefaultSampleRate = 6.25e6;
+// Both fixtures are at the A/321 bootstrap rate (see their .sigmf-meta).
+constexpr double kDefaultSampleRate = 6.144e6;
 
 // IQSource::read() always fills std::complex<float> (see iq_source.h) --
 // reinterpret_cast-ing a sample_t* buffer to std::complex<float>* and
@@ -148,17 +146,11 @@ TEST_F(SignalChainTest, BootstrapDetectionOnCapture) {
     auto source = hal::create_file_source(capture_file_, kDefaultSampleRate, false);
     ASSERT_NE(source, nullptr);
 
-    // Configure bootstrap detector
-    sync::BootstrapConfig config;
-    config.sample_rate_hz = kDefaultSampleRate;
-    config.threshold = 0.6;
-    config.averaging_window = 64;
-
-    sync::BootstrapDetector detector(config);
+    sync::BootstrapDetector detector;
 
     // Read and process samples looking for bootstrap
     constexpr size_t kChunkSize = 10000;
-    constexpr size_t kMaxSamples = 1000000;  // ~80ms at 12.5 MS/s
+    constexpr size_t kMaxSamples = 1000000;  // ~163 ms at 6.144 MS/s
     std::vector<sample_t> buf(kChunkSize);
 
     bool detected = false;

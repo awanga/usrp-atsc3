@@ -3,199 +3,154 @@
 
 #pragma once
 
-// Bootstrap Detector — ATSC 3.0 frame detection and coarse CFO estimation
+// Bootstrap Detector — ATSC 3.0 frame detection and fractional CFO
 //
-// Uses Schmidl-Cox autocorrelation to detect the bootstrap signal.
-// Bootstrap is always 4096 samples regardless of data FFT size.
-// Reference: ATSC A/322 Section 5.2
-//
-// Metric: M = |P|^2 / R^2, with P an exponentially weighted sum of
-// x[n] * conj(x[n-L]) and R the identically weighted sum of
-// (|x[n]|^2 + |x[n-L]|^2) / 2 -- the energy of *both* halves, not just the
-// delayed one. By Cauchy-Schwarz |P| <= R for identically weighted sums,
-// so M is bounded by 1 and a strong signal arriving while the delay line
-// still holds weak noise cannot produce a spurious peak. M peaks at the
-// end of the repeated half-symbol structure. Below a minimum correlator
+// Finds the first bootstrap symbol (A/321 Section 5.4.1, CAB structure)
+// in a 6.144 MS/s stream from its two internal repetitions, so it needs no
+// knowledge of the sequence and is insensitive to frequency offset:
+//   - part C (520 samples) is a copy of the end of part A, 2048 samples
+//     later: correlator P_C = sum x[u] conj(x[u - 2048]) over 520 samples;
+//   - part B (504 samples) is a copy of the end of part A shifted up by
+//     one subcarrier (3 kHz), 504 samples later: correlator
+//     P_B = sum x[u] conj(x[u - 504]) exp(-j 2 pi u / 2048) over 504
+//     samples (the free-running phase of the shift only rotates P_B).
+// P_C is delayed by 504 samples so both windows end together at the last
+// sample of symbol 0. Each is normalized by the energy of both its
+// halves, R = sum (|x[u]|^2 + |x[u - D]|^2) / 2, so m = |P|^2 / R^2 is in
+// [0, 1] (Cauchy-Schwarz). The detection metric is M = m_C x m_B, near
+// zero on noise (each m ~ 1 / window length). Below a minimum correlator
 // energy (near-silence) M is forced to 0.
 //
-// Detection: arm when the smoothed M exceeds threshold, track the peak,
-// report on the falling edge below 0.8 x peak; then stay disarmed until
-// the smoothed M drops back to the threshold, so one bootstrap yields
-// exactly one detection.
+// The BCA symbols that follow also have both repetitions (C/A at lag
+// 2048, and C following B at lag 504 with the same +3 kHz relation,
+// A/321 5.4.2), but their lag-504 window ends 504 samples away from where
+// it would line up with their C/A window, so M only reaches about 1/16 of
+// the symbol-0 peak there, at any SNR.
+//
+// Detection: arm when M exceeds threshold, track the peak, report on the
+// falling edge below 0.8 x peak, then ignore the rest of the bootstrap
+// (kHoldoff samples from the start of symbol 0). A bootstrap whose
+// symbol 0 is missed can still trigger on its BCA symbols;
+// BootstrapDecoder rejects those, as they do not correlate with symbol 0's
+// sequence.
+//
+// The reported sample index is the start of symbol 0 (peak
+// sample - 3071); the CFO is the phase of P_C at the peak, unambiguous to
+// +-1.5 kHz (half the subcarrier spacing); BootstrapDecoder resolves the
+// integer part and refines timing.
+//
+// With the default threshold the detector needs about -2 dB SNR; the
+// metric scales as (SNR / (1 + SNR))^4.
 //
 // AXI4-S Interface Contract:
-//   Input:  TDATA=cf32, TVALID, TREADY (streaming IQ samples)
+//   Input:  TDATA=cf32 (ci16 fixed-point), TVALID, TREADY (6.144 MS/s IQ)
 //   Output: Detection event with sample index and CFO estimate
+//
+// Reference: ATSC A/321:2026 Sections 5.1, 5.4
 
+#include "sync/bootstrap_signal.h"
 #include "types.h"
 
 #include <complex>
 #include <cstddef>
-#include <functional>
+#include <vector>
 
 namespace atsc3 {
 namespace sync {
 
-// Detection result from bootstrap detector
 struct BootstrapDetection {
     bool detected = false;
 
-    // Sample index where bootstrap was detected
-    // (relative to start of processing)
+    // Index (since reset) of the first sample of bootstrap symbol 0
     size_t sample_index = 0;
 
-    // Coarse CFO estimate in Hz
-    // Derived from phase of autocorrelation
+    // Fractional CFO estimate in Hz, within +-1.5 kHz
     double cfo_hz = 0.0;
 
-    // Detection metric M = |P|^2 / R^2 (0-1; see the file comment)
-    // Higher = stronger detection
+    // Peak detection metric M = m_C x m_B (0-1)
     double metric = 0.0;
 
-    // Estimated SNR at detection point (dB), from the peak metric
-    // (rho = sqrt(metric) = S / (S + N)); clamped to [-10, 30] dB, and
-    // biased low for a single short repetition (see bootstrap_detector.cc)
+    // SNR estimate from m_C at the peak (sqrt(m_C) = S / (S + N)),
+    // clamped to [-10, 30] dB
     double snr_db = 0.0;
 };
 
-// Bootstrap Detector configuration
 struct BootstrapConfig {
-    // Sample rate in Hz (needed to convert CFO to Hz)
-    double sample_rate_hz = 6.25e6;
-
-    // Detection threshold (0-1)
-    // Higher = fewer false detections but may miss weak signals
-    double threshold = 0.7;
-
-    // Averaging window for metric smoothing (samples)
-    size_t averaging_window = 64;
+    // Detection threshold on M (0-1)
+    double threshold = 0.02;
 };
 
-// Bootstrap Detector
-//
-// Usage:
-//   BootstrapConfig config;
-//   config.sample_rate_hz = 6.25e6;
-//   BootstrapDetector detector(config);
-//
-//   // Process streaming samples
-//   while (has_samples) {
-//       BootstrapDetection det = detector.process(sample);
-//       if (det.detected) {
-//           // Found bootstrap at det.sample_index
-//           // Apply CFO correction of det.cfo_hz
-//       }
-//   }
-//
 class BootstrapDetector {
 public:
-    // Bootstrap symbol length (fixed by ATSC 3.0 spec)
-    static constexpr size_t kBootstrapLength = 4096;
-
-    // Half-symbol length for Schmidl-Cox
-    static constexpr size_t kHalfSymbol = kBootstrapLength / 2;
+    static constexpr size_t kLagC = kBootstrapPartA;  // 2048
+    static constexpr size_t kLagB = kBootstrapPartB;  // 504
+    // History needed by the delayed C window: 504 + 520 + 2048.
+    static constexpr size_t kHistory = kLagB + kBootstrapPartC + kLagC;
+    // One symbol past the end of a version 0.0 bootstrap, covering the
+    // BCA windows' trailing edges.
+    static constexpr size_t kHoldoff = (kBootstrapSymbols + 1) * kBootstrapSymbolLength;
 
     explicit BootstrapDetector(const BootstrapConfig& config = BootstrapConfig());
     ~BootstrapDetector();
 
-    // Process one sample
-    // Returns detection result (detected=false if no detection this sample)
+    // Process one sample. detected=false unless a detection completes here.
     BootstrapDetection process(sample_t sample);
 
-    // Process buffer of samples
-    // Returns last detection result
+    // Process a buffer; returns the last detection in it.
     BootstrapDetection process(const sample_t* samples, size_t n);
 
-    // Reset detector state
     void reset();
 
-    // Get current configuration
     const BootstrapConfig& get_config() const {
         return config_;
     }
-
-    // Update configuration
     void set_config(const BootstrapConfig& config);
 
-    // Get current sample count (since reset)
     size_t get_sample_count() const {
         return sample_count_;
     }
 
-    // Current (most recent) smoothed detection metric and CFO estimate,
-    // updated every process()/process_sample() call regardless of
-    // detection FSM state (unlike BootstrapDetection::metric/cfo_hz,
-    // which are only meaningful when detected == true). Useful for
-    // link-quality monitoring, and for the fixed-point-vs-reference
-    // equivalence test (test_bootstrap_detector.cc), which
-    // needs same-instant comparisons rather than only the FSM-gated
-    // "detected" event -- two independently-evolving EWMAs (different
-    // alpha) can trigger their peak/falling-edge detection on slightly
-    // different samples even when tracking the same underlying signal.
+    // Metric M and P_C-based CFO for the most recent sample, whatever the
+    // detection state (monitoring, equivalence tests).
     double get_current_metric() const;
     double get_current_cfo_hz() const;
 
 private:
-    BootstrapConfig config_;
-
-    // Schmidl-Cox state (see the file comment), both EWMAs with
-    // alpha = 1/1024:
-    //   P: x[n] * conj(x[n - L])
-    //   R: (|x[n]|^2 + |x[n - L]|^2) / 2
-#ifdef ATSC3_FIXED_POINT
-    // Raw (unshifted) Q1.15 x Q1.15 products; see bootstrap_detector.cc.
-    int64_t p_sum_re_;
-    int64_t p_sum_im_;
-    int64_t r_sum_;
-#else
-    std::complex<double> p_sum_;
-    double r_sum_;
-#endif
-
-    // Circular buffer for delayed samples (size = kHalfSymbol)
-    std::vector<sample_t> delay_buffer_;
-    size_t delay_idx_;
-
-    // Metric history for smoothing
-#ifdef ATSC3_FIXED_POINT
-    // Q1.15-scaled squared correlation ratio (see check_detection()).
-    std::vector<int32_t> metric_history_;
-    int64_t metric_sum_;
-#else
-    std::vector<double> metric_history_;
-    double metric_sum_;
-#endif
-    size_t metric_idx_;
-
-    // Detection state
-    size_t sample_count_;
-    bool in_detection_;
-    bool rearm_blocked_;  // set by a detection, cleared once M <= threshold
-#ifdef ATSC3_FIXED_POINT
-    int32_t peak_metric_;
-    int16_t
-        peak_angle_q15_;  // CORDIC angle format (dsp::cordic_vector); replaces peak_correlation_
-#else
-    double peak_metric_;
-    std::complex<double> peak_correlation_;
-#endif
-    size_t peak_sample_;
-
-    // Backing state for get_current_metric()/get_current_cfo_hz(),
-    // stashed at the top of check_detection() every call.
-#ifdef ATSC3_FIXED_POINT
-    int64_t last_smoothed_metric_q15_;
-    int16_t last_angle_q15_;
-#else
-    double last_smoothed_metric_;
-    double last_phase_;
-#endif
-
-    // Process one sample (internal)
-    void process_sample(sample_t sample);
-
-    // Check for detection peak
+    struct Terms;
+    Terms terms_c(size_t u) const;
+    Terms terms_b(size_t u) const;
+    sample_t at(size_t u) const;  // x[u], u within the last kHistory + 1 samples
     BootstrapDetection check_detection();
+
+    BootstrapConfig config_;
+    std::vector<sample_t> history_;  // circular, kHistory + 1 samples
+    size_t sample_count_ = 0;
+
+#ifdef ATSC3_FIXED_POINT
+    std::vector<sample_t> nco_;  // exp(-j 2 pi i / 2048), Q1.15
+    // Raw Q1.15 x Q1.15 product sums (B terms rescaled by the Q1.15 NCO).
+    int64_t pc_re_ = 0, pc_im_ = 0, rc_ = 0;
+    int64_t pb_re_ = 0, pb_im_ = 0, rb_ = 0;
+    int32_t metric_ = 0;             // Q1.15
+    int32_t mc_ = 0;                 // Q1.15
+    int16_t nc_re_ = 0, nc_im_ = 0;  // P_C / R_C, Q1.15
+    int32_t peak_metric_ = 0;
+    int32_t peak_mc_ = 0;
+    int16_t peak_nc_re_ = 0, peak_nc_im_ = 0;
+#else
+    std::vector<std::complex<double>> nco_;
+    std::complex<double> pc_{}, pb_{};
+    double rc_ = 0.0, rb_ = 0.0;
+    double metric_ = 0.0;
+    double mc_ = 0.0;
+    std::complex<double> nc_{};
+    double peak_metric_ = 0.0;
+    double peak_mc_ = 0.0;
+    std::complex<double> peak_nc_{};
+#endif
+    bool in_detection_ = false;
+    size_t peak_sample_ = 0;
+    size_t holdoff_end_ = 0;  // no arming before this sample index
 };
 
 }  // namespace sync

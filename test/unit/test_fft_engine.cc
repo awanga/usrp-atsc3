@@ -212,25 +212,24 @@ TEST(FftEngineTest, SampleTInterface) {
 }
 #endif
 
-// Test 4K FFT (bootstrap size)
-// Note: Uses 1.0f which overflows Q15 format
+// 2048-point FFT (A/321 bootstrap size): a tone on bin 5 lands on bin 5.
 #ifndef ATSC3_FIXED_POINT
-TEST(FftEngineTest, Fft4KBootstrap) {
+TEST(FftEngineTest, Fft2KBootstrap) {
     FftConfig config;
-    config.size = FftSize::k4K;
+    config.size = FftSize::k2K;
     config.direction = FftDirection::kForward;
 
     auto engine = FftEngine::create(config);
-    EXPECT_EQ(engine->get_size(), 4096u);
+    EXPECT_EQ(engine->get_size(), 2048u);
 
-    // Simple functionality test
-    std::vector<std::complex<float>> in(4096, std::complex<float>(1.0f, 0.0f));
-    std::vector<std::complex<float>> out(4096);
-
+    std::vector<std::complex<float>> in(2048), out(2048);
+    for (size_t t = 0; t < in.size(); t++) {
+        in[t] = std::polar(1.0f, static_cast<float>(2.0 * M_PI * 5.0 * t / 2048.0));
+    }
     engine->process(in.data(), out.data());
 
-    // DC bin should have energy
-    EXPECT_GT(std::abs(out[0]), 0.0f);
+    EXPECT_NEAR(std::abs(out[5]), 2048.0f, 0.1f);
+    EXPECT_LT(std::abs(out[6]), 0.1f);
 }
 #endif
 

@@ -27,7 +27,7 @@ namespace {
 
 // Validate FFT size
 bool is_valid_fft_size(size_t n) {
-    return n == 4096 || n == 8192 || n == 16384 || n == 32768;
+    return n == 2048 || n == 4096 || n == 8192 || n == 16384 || n == 32768;
 }
 
 [[maybe_unused]] std::vector<size_t> bit_reversal_table(size_t n) {

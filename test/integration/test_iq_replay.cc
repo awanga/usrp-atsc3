@@ -3,12 +3,15 @@
 //
 // test_iq_replay.cc — IQ capture replay integration test
 //
-// Tests ATSC 3.0 receiver signal chain components with real IQ captures.
-// This test focuses on verifiable stages: bootstrap detection, FFT, and
-// basic signal quality metrics.
+// Tests ATSC 3.0 receiver signal chain components on the IQ fixtures in
+// test/captures/ (synthetic A/321 bootstraps at 6.144 MS/s; see the README
+// there): bootstrap detection and decoding against the positions and
+// fields recorded in the .sigmf-meta, frequency correction, FFT, and basic
+// signal quality metrics.
 //
 // Requires: test/captures/*.sigmf-data files (via git-lfs)
 
+#include "bootstrap_decoder.h"
 #include "bootstrap_detector.h"
 #include "config_bus.h"
 #include "fft_engine.h"
@@ -36,10 +39,7 @@ namespace {
 const std::string kCapturesDir = std::string(SOURCE_DIR) + "/test/captures";
 const std::string kPreferredCapture = "ch35_20sec_20260724_050312.sigmf-data";
 
-// ATSC 3.0 parameters
-constexpr size_t kBootstrapFftSize = 4096;
 constexpr size_t kDataFftSize = 8192;
-constexpr size_t kCpLength = 1024;  // Default 8K FFT CP
 
 // IQSource::read() always fills std::complex<float> (see iq_source.h) --
 // reinterpret_cast-ing a sample_t* buffer to std::complex<float>* and
@@ -92,6 +92,35 @@ std::string find_capture_file() {
     return "";
 }
 
+std::string read_meta(const std::string& capture_file) {
+    namespace fs = std::filesystem;
+    std::ifstream f(fs::path(capture_file).replace_extension(".sigmf-meta").string());
+    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+// The integers following the first occurrence of key (a JSON number or
+// array of numbers), up to count of them; empty if the key is missing.
+std::vector<long> meta_integers(const std::string& meta, const std::string& key, size_t count) {
+    std::vector<long> out;
+    size_t pos = meta.find("\"" + key + "\"");
+    if (pos == std::string::npos) {
+        return out;
+    }
+    pos += key.size() + 2;
+    while (out.size() < count && pos < meta.size()) {
+        if (std::isdigit(static_cast<unsigned char>(meta[pos]))) {
+            size_t end = pos;
+            out.push_back(std::stol(meta.substr(pos), &end));
+            pos += end;
+        } else if (meta[pos] == '}') {
+            break;
+        } else {
+            pos++;
+        }
+    }
+    return out;
+}
+
 // Parse sample rate from SigMF metadata
 double get_sample_rate(const std::string& capture_file) {
     namespace fs = std::filesystem;
@@ -104,9 +133,10 @@ double get_sample_rate(const std::string& capture_file) {
 
     // Simple JSON parsing for sample_rate
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    size_t pos = content.find("\"core:sample_rate\"");
+    const std::string key = "\"core:sample_rate\"";
+    size_t pos = content.find(key);
     if (pos != std::string::npos) {
-        pos = content.find(":", pos);
+        pos = content.find(":", pos + key.size());  // not the colon inside the key
         if (pos != std::string::npos) {
             // Skip whitespace and find the number
             pos++;
@@ -142,12 +172,25 @@ protected:
                          << " (git-lfs pointer files are ignored; run `git lfs pull`)";
         }
         sample_rate_ = get_sample_rate(capture_file_);
+        std::string meta = read_meta(capture_file_);
+        size_t ann = meta.find("\"annotations\"");
+        ASSERT_NE(ann, std::string::npos) << "no annotations in the .sigmf-meta";
+        std::vector<long> start = meta_integers(meta.substr(ann), "core:sample_start", 1);
+        std::vector<long> fields = meta_integers(meta.substr(ann), "atsc3:bootstrap_fields", 3);
+        ASSERT_EQ(start.size(), 1u) << "no bootstrap annotation in the .sigmf-meta";
+        ASSERT_EQ(fields.size(), 3u) << "no atsc3:bootstrap_fields in the .sigmf-meta";
+        first_bootstrap_ = static_cast<size_t>(start[0]);
+        for (size_t i = 0; i < 3; i++) {
+            fields_[i] = static_cast<uint8_t>(fields[i]);
+        }
         std::cout << "Using capture: " << capture_file_ << std::endl;
         std::cout << "Sample rate: " << sample_rate_ / 1e6 << " MS/s" << std::endl;
     }
 
     std::string capture_file_;
     double sample_rate_ = 6.25e6;
+    size_t first_bootstrap_ = 0;
+    uint8_t fields_[3] = {};
 };
 
 // Test: Bootstrap detection with timing
@@ -155,15 +198,11 @@ TEST_F(IqReplayTest, BootstrapDetectionTiming) {
     auto source = hal::create_file_source(capture_file_, sample_rate_, false);
     ASSERT_NE(source, nullptr);
 
-    sync::BootstrapConfig config;
-    config.sample_rate_hz = sample_rate_;
-    config.threshold = 0.6;
-    config.averaging_window = 64;
-
-    sync::BootstrapDetector detector(config);
+    ASSERT_DOUBLE_EQ(sample_rate_, sync::kBootstrapSampleRateHz);
+    sync::BootstrapDetector detector;
 
     constexpr size_t kChunkSize = 10000;
-    constexpr size_t kMaxSamples = 2000000;  // ~320ms at 6.25 MS/s
+    constexpr size_t kMaxSamples = 2000000;  // ~325 ms at 6.144 MS/s
     std::vector<sample_t> buf(kChunkSize);
 
     bool detected = false;
@@ -199,9 +238,10 @@ TEST_F(IqReplayTest, BootstrapDetectionTiming) {
     std::cout << "  CFO estimate: " << detection.cfo_hz << " Hz" << std::endl;
     std::cout << "  Metric: " << detection.metric << std::endl;
 
-    // Validate expected CFO range for Ch35 captures (~973 Hz)
-    EXPECT_NEAR(std::abs(detection.cfo_hz), 973.0, 100.0)
-        << "CFO estimate outside expected range for Ch35";
+    // The fixture's offset is ~973 Hz, inside the +-1.5 kHz fractional range.
+    EXPECT_NEAR(detection.cfo_hz, 973.0, 30.0);
+    EXPECT_NEAR(static_cast<double>(detection.sample_index),
+                static_cast<double>(first_bootstrap_), 8.0);
     EXPECT_GT(detection.metric, 0.9) << "Bootstrap metric too low";
 }
 
@@ -211,10 +251,7 @@ TEST_F(IqReplayTest, FrequencyCorrectionReducesCfo) {
     ASSERT_NE(source, nullptr);
 
     // First detect bootstrap
-    sync::BootstrapConfig bconfig;
-    bconfig.sample_rate_hz = sample_rate_;
-    bconfig.threshold = 0.6;
-    sync::BootstrapDetector detector(bconfig);
+    sync::BootstrapDetector detector;
 
     std::vector<sample_t> buf(50000);
     size_t n = read_samples(*source, buf.data(), buf.size());
@@ -234,13 +271,13 @@ TEST_F(IqReplayTest, FrequencyCorrectionReducesCfo) {
     corrector.process(buf.data(), corrected.data(), n);
 
     // Verify correction by running detection again on corrected signal
-    sync::BootstrapDetector detector2(bconfig);
+    sync::BootstrapDetector detector2;
     auto det2 = detector2.process(corrected.data(), n);
 
     std::cout << "Residual CFO after correction: " << det2.cfo_hz << " Hz" << std::endl;
 
     EXPECT_TRUE(det2.detected) << "Bootstrap not detected after correction";
-    EXPECT_LT(std::abs(det2.cfo_hz), 200.0) << "Residual CFO after correction too large";
+    EXPECT_LT(std::abs(det2.cfo_hz), 30.0) << "Residual CFO after correction too large";
 }
 
 // Test: FFT engine produces valid output
@@ -300,93 +337,41 @@ TEST_F(IqReplayTest, FftEngineProducesValidOutput) {
     EXPECT_GT(max_power, avg_power) << "Spectrum is perfectly flat -- FFT output looks degenerate";
 }
 
-// Test: Full bootstrap-to-FFT chain
-TEST_F(IqReplayTest, BootstrapToFftChain) {
+// Test: detection, fractional CFO correction and bootstrap decoding
+TEST_F(IqReplayTest, BootstrapDetectDecodeChain) {
     auto source = hal::create_file_source(capture_file_, sample_rate_, false);
     ASSERT_NE(source, nullptr);
 
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Read a large chunk
-    constexpr size_t kNumSamples = 500000;  // ~80ms at 6.25 MS/s
+    constexpr size_t kNumSamples = 100000;
     std::vector<sample_t> buf(kNumSamples);
     size_t total_read = read_samples(*source, buf.data(), buf.size());
     buf.resize(total_read);
 
-    // Bootstrap detection
-    sync::BootstrapConfig bconfig;
-    bconfig.sample_rate_hz = sample_rate_;
-    sync::BootstrapDetector detector(bconfig);
-    auto det = detector.process(buf.data(), total_read);
-
+    sync::BootstrapDetector detector;
+    sync::BootstrapDetection det = detector.process(buf.data(), total_read);
     ASSERT_TRUE(det.detected) << "Bootstrap not detected";
-    std::cout << "\n=== Bootstrap-to-FFT Chain Test ===" << std::endl;
-    std::cout << "Bootstrap found at sample " << det.sample_index << std::endl;
-    std::cout << "CFO: " << det.cfo_hz << " Hz, Metric: " << det.metric << std::endl;
+    ASSERT_LE(det.sample_index + sync::BootstrapDecoder::kInputLength, total_read);
 
-    // Frequency correction
     sync::FreqCorrectionConfig fc_config;
     fc_config.sample_rate_hz = sample_rate_;
     fc_config.initial_cfo_hz = det.cfo_hz;
     sync::FreqCorrection corrector(fc_config);
-
     std::vector<sample_t> corrected(total_read);
     corrector.process(buf.data(), corrected.data(), total_read);
 
-    // Count available OFDM symbols
-    size_t symbol_len = kDataFftSize + kCpLength;
-    size_t first_symbol = det.sample_index + kBootstrapFftSize + kCpLength;
-    size_t available = (total_read > first_symbol) ? (total_read - first_symbol) : 0;
-    size_t num_symbols = available / symbol_len;
-
-    std::cout << "Available data for " << num_symbols << " OFDM symbols" << std::endl;
-    EXPECT_GT(num_symbols, 5) << "Not enough symbols for meaningful test";
-
-    // Create FFT engine
-    ofdm::FftConfig fft_config;
-    fft_config.size = ofdm::FftSize::k8K;
-    auto fft = ofdm::FftEngine::create(fft_config);
-
-    // Process first few symbols
-    std::vector<sample_t> time_data(kDataFftSize);
-    std::vector<sample_t> freq_data(kDataFftSize);
-    double total_power = 0.0;
-    size_t symbols_processed = 0;
-
-    for (size_t sym = 0; sym < std::min(num_symbols, size_t(10)); ++sym) {
-        size_t offset = first_symbol + sym * symbol_len + kCpLength;  // Skip CP
-        if (offset + kDataFftSize > total_read)
-            break;
-
-        // Copy data (skip CP)
-        std::copy(&corrected[offset], &corrected[offset + kDataFftSize], time_data.begin());
-
-        // FFT
-        fft->process(time_data.data(), freq_data.data());
-
-        // Accumulate power. std::norm() needs the normalized [-1, 1)
-        // float domain to mean anything as a power figure -- on a raw
-        // sample_t in the fixed-point build (std::complex<int16_t>) it
-        // silently overflows int16 arithmetic instead (32767^2 doesn't
-        // fit), which is how this produced "nan dB": garbage/negative
-        // power sums feeding log10() below.
-        double sym_power = 0.0;
-        for (size_t i = 0; i < kDataFftSize; ++i) {
-            sym_power += std::norm(to_complex_float(freq_data[i]));
-        }
-        total_power += sym_power / kDataFftSize;
-        symbols_processed++;
+    sync::BootstrapDecoder decoder;
+    sync::BootstrapDecodeResult r;
+    ASSERT_TRUE(decoder.decode(corrected.data() + det.sample_index, &r))
+        << "correlated=" << r.correlated << " termination_ok=" << r.termination_ok
+        << " fields_ok=" << r.fields_ok;
+    EXPECT_EQ(det.sample_index + static_cast<size_t>(r.timing_offset), first_bootstrap_);
+    EXPECT_EQ(r.integer_cfo_bins, 0);
+    for (size_t i = 0; i < 3; i++) {
+        EXPECT_EQ(r.fields[i], fields_[i]) << "bootstrap symbol " << i + 1;
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-    double avg_power_db = 10.0 * std::log10(total_power / symbols_processed + 1e-20);
-    std::cout << "Processed " << symbols_processed << " symbols in " << ms << " ms" << std::endl;
-    std::cout << "Average symbol power: " << avg_power_db << " dB" << std::endl;
-
-    EXPECT_GT(avg_power_db, -30.0) << "Average symbol power too low";
-    std::cout << "=== Chain test PASSED ===" << std::endl;
+    std::cout << "Bootstrap at " << first_bootstrap_ << ": bsr_coefficient "
+              << int(r.signaling.bsr_coefficient) << ", preamble_structure "
+              << int(r.signaling.preamble_structure) << std::endl;
 }
 
 // Test: Signal quality metrics from capture

@@ -12,7 +12,7 @@
 //
 // Supports:
 //   - 8192, 16384, 32768 point transforms (ATSC 3.0 data symbols)
-//   - 4096 point transform (bootstrap)
+//   - 2048 point transform (A/321 bootstrap)
 //   - Float mode: FFTW3 with wisdom caching when available at build time,
 //     otherwise built-in radix-2 Cooley-Tukey (ATSC3_USE_FFTW=OFF forces it)
 //   - Fixed-point mode: Q1.15 radix-2 Cooley-Tukey
@@ -29,7 +29,8 @@ namespace ofdm {
 
 // Supported FFT sizes
 enum class FftSize : size_t {
-    k4K = 4096,    // Bootstrap
+    k2K = 2048,  // Bootstrap (A/321)
+    k4K = 4096,
     k8K = 8192,    // Data symbol
     k16K = 16384,  // Data symbol
     k32K = 32768   // Data symbol
