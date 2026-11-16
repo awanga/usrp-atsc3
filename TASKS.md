@@ -55,6 +55,11 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Open
 
+- `hotfix/ldpc-annex-a-codes` (off `main`, pushed 2026-11-16): the LDPC
+  matrix and float-decoder fixes as 1.0.1. Merging to `main` needs user
+  approval; then tag v1.0.1 and back-merge into `develop`. `main` does
+  not configure on this host (Boost 1.90 has no `boost_system`); the
+  LDPC sources and tests were built directly (55/55, float and fxp).
 - The equalizer needs the Q30 registers (`cfg_min_mag_sq_q30`,
   `cfg_noise_q30`) software derives; the register map still lists
   NOISE_VARIANCE / MIN_CHANNEL_MAGNITUDE as Q1.15 (changing it needs
