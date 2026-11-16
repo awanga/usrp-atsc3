@@ -202,6 +202,40 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   list of registers" warnings, which the synth gate treats as failure.
 - **Next:** 9.10 de-interleavers.
 
+## 2026-11-16 — Spec review of L1, LDPC and the receive chain
+
+- **Decision:** before the de-interleaver RTL, check the golden model
+  against A/321/A/322 rather than its own tests. Replace the LDPC
+  matrices with the Annex A codes; record the remaining gaps in
+  `hdl/docs/placeholder_status.md` (#2, #11-#16) for the user to
+  sequence.
+- **Reason:** an independent analysis said L1 was DVB-T2 style. It is:
+  "L1-Pre/L1-Post" with an invented layout and a hard-decision slicer.
+  The review found the same pattern elsewhere: hash-generated LDPC
+  matrices, BCH over the wrong field polynomial, a bootstrap model of
+  4096 repeated halves (A/321 is 2048-point ZC/PN with CAB/BCA), no bit
+  de-interleaver, no BBP layer. Bit-exact RTL inherits all of it.
+- **Status:** `scripts/gen_ldpc_tables.py` extracts Tables A.1.1-A.2.12
+  (row counts, ascending rows and address ranges checked; output
+  regenerates identically); `ldpc_matrix.cc` builds H per Section
+  6.1.3 Type A/B and `ldpc_encode()` is the transmitter procedure;
+  encoded random words satisfy H for all 24 codes. The float min-sum
+  decoder never corrected a real codeword: it clamped the APP sum to the
+  int8 range and its sign(0) = 0 zeroed whole check rows (the all-zero
+  test word hid both); it also reported max_iterations + 1. Mutants:
+  six, all killed; one (Type A M2 step) only by the table-value tests,
+  since the encoder and H share the address rule. Also fixed: the
+  equalizer's Q30 accessors broke the float build (fixed-point only now).
+- **Edition check:** A/322:2018 and :2026-06 agree on everything above:
+  both use L1-Basic/L1-Detail (no L1-Pre/L1-Post), the same BCH g1, and
+  the generator gives byte-identical LDPC tables from both PDFs. The only
+  L1-Basic difference is `L1B_first_sub_mimo_mixed` (1 bit, taken from
+  `L1B_reserved`) in 2026. The code's citations (Section 5 for L1,
+  Table 5.1 for L1-Pre fields, Section 10 for BCH) match neither edition:
+  Section 5 is Input Formatting, Table 5.1 is the OFI, and there is no
+  Section 10.
+- **Next:** user decides the order of the spec gaps vs. 9.10.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

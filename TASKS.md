@@ -25,42 +25,33 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 - Branch `feature/hdl-port-foundations` is rebased onto `develop` and
   force-pushed (2026-10-29; backup: local `backup/pre-rebase`).
-- RTL done through 9.9 (2026-11-16): constellation demapper (uniform,
-  1D/2D NUC, max-log, hex ROMs) bit-exact vs `demap_symbol()`
-  (`demapper_gen`), 11 mutants killed, formal 0/6/12 only (~22 min,
-  FORMAL_TIMEOUT=4000), bench chain now ends in the demapper.
-- 9.8 (2026-11-15): equalizer (ZF/MMSE per carrier,
-  two parallel udiv_seq) bit-exact vs `equalize_sample()`
-  (`equalizer_gen`; Q30 floor/noise come from new lib accessors), 9
-  mutants killed, formal with free stalls at depth 40 (multipliers cut),
-  bench: estimator H + a bench-only buffer of the active FFT bins ->
-  equalizer. Golden fix: |H|^2 and the MMSE denominator wrapped int32 at
-  the Q1.15 corners. Phase tracking not ported (`placeholder_status.md`
-  #10). 9.7 (`hdl/rtl/channel/`: complex_divider, linear_interp,
-  h_average, channel_estimator; same bar, 13 mutants, formal BMC 40;
-  same int32-wrap fix in `safe_complex_divide`; Wiener and SNR metrics
-  not ported, `placeholder_status.md` #9; first pilot must be at
-  relative 0 else `span_error`).
-- `lib/`: fixed-point build 669/669 ctest (float 662 + new tests on
-  2026-10-29); cppcheck (CI flags) clean locally.
-- Closed 2026-10-22 / 10-29 (details in HISTORY.md): FrameSync window,
-  GCC 15 alp_demux, cppcheck, A/322-exact pilots and pilot codes, SPDX
-  headers, gate sizes (`hdl/docs/synth_baseline.md`), CI HDL gate (unrun:
-  needs GitHub), GNU Radio 3.10.12 + UHD 3.15 in `/opt/uhd`
-  (`docs/uhd_build.md`); ctest float 662 (9 hardware skips), fxp 666.
-- Through 9.6 (2026-10-18): frame_sync, pilot_extractor, freq_correction
-  and the earlier blocks meet the done bar; host is Ubuntu 26.04
-  (`hdl/docs/toolchain.md`).
+- Spec review before 9.10 (2026-11-16, uncommitted): the golden model
+  is not an ATSC 3.0 receiver yet. LDPC fixed (Annex A tables, spec
+  encoder, all 24 codes; float min-sum APP clamp + sign(0) bugs fixed).
+  Still non-spec, `placeholder_status.md` #2, #6, #7, #11-#16: L1
+  (DVB-T2 layout, no FEC), BCH (wrong field/lengths), bootstrap (4096
+  repeated halves, not A/321), no bit de-interleaver, no BBP header or
+  descrambler, wrong de-interleaver order/framing, no resampling.
+  ctest float 669/669, fxp 676/676; cppcheck (CI flags) clean.
+- RTL done through 9.9 (2026-11-16): demapper (11 mutants, formal
+  0/6/12 only, FORMAL_TIMEOUT=4000); 9.8 equalizer; 9.7 channel
+  estimator (`hdl/rtl/channel/`). Not ported: Wiener, phase tracking
+  (#9, #10). Details in HISTORY.md.
+- Earlier closures (FrameSync window, A/322 pilots, SPDX, gate sizes,
+  GNU Radio 3.10.12 + UHD 3.15 in `/opt/uhd`, Ubuntu 26.04 host): HISTORY.md.
 
 ## Next
 
 1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; hardware
    firmware deferred by user; schematics obtained; Vivado in /opt/Xilinx
    usable for synth/resource estimates).
-2. 9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
-   sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
-   end-to-end pipeline test, 9.17 throughput/timing closure. Scope notes
-   per block: HISTORY.md archive, "Phase 9".
+2. User decision: re-sequence the plan around the spec gaps (BCH, bit
+   de-interleaver, A/321 bootstrap, L1-Basic/Detail chain, real
+   frequency/cell/time de-interleavers, BBP) before more RTL, since RTL
+   is bit-exact to the golden model. Then 9.10 de-interleavers, 9.11
+   LDPC, 9.12 BCH, 9.13 L1 decode + config sequencer, 9.14 ALP demux,
+   9.15 AXI4-Lite, 9.16 end-to-end, 9.17 throughput. Scope notes per
+   block: HISTORY.md archive, "Phase 9".
 
 ## Open
 
@@ -71,11 +62,9 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - No production block yet selects the active window from the FFT bins or
   buffers them until the estimate is ready (the bench uses a behavioural
   buffer): integration work (9.16).
-
 - linear_interp formal needs ~21 min (yices) and a 4000 s limit; its
   proof is shrunk (6 carriers, 4-bit divider, always-ready handshake);
   3+ pilot lists, stalls and the flags are simulation-only.
-
 - frame_sync throughput: one correlation is fft_size + ~170 cycles and a
   chunk runs up to search_window+1 of them with the input held off
   (~0.5M cycles at 8K/64); the bench measures +8,333 source-stall cycles
@@ -83,15 +72,17 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 - frame_sync_fsm formal is bounded (BMC depth 30, cover depth 60), not
   unbounded; blends/products are cut. The correlator's arithmetic is
   covered by bit-exact simulation and mutants only.
-
 - Throughput (9.17): bootstrap detector ~150 cycles/sample,
   freq_correction 18 cycles/sample (one iterative CORDIC per sample),
   FFT ~192.5k cycles per 8K symbol; at 6.25 MS/s / 100 MHz the budget is
   16 cycles/sample (147k per 8K+CP symbol). `ofdm_frontend_tb`'s
   `realtime_budget_8k` is an expected failure until this closes (it
   measures 514,051 source-stall cycles over two 8K symbols).
-- The L1-Pre pilot pattern field is still a 3-bit index into seven
-  patterns (not the A/331 field); replace it with the 9.13 L1 decode.
+- No off-air ATSC 3.0 capture exists; `test/captures/` is synthetic and
+  shaped to the non-spec bootstrap model. A real capture (or an A/322
+  reference transmitter output) is the only end-to-end conformance test.
+- `CLAUDE.md` ("bootstrap is always 4K OFDM") and README text describing
+  L1-Pre/L1-Post contradict A/321/A/322; edits need user approval.
 - Formal harnesses other than pilot_extractor have not been re-timed
   with yices (qualified 2026-10-02; z3 stays their default).
 - CI runs no HDL: `ci.yml` is ubuntu-22.04 (older Verilator/Yosys) and
