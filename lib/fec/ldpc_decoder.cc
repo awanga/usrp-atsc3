@@ -34,9 +34,10 @@ inline float clamp_llr(float llr) {
     return std::max(LLR_MIN, std::min(LLR_MAX, llr));
 }
 
-// Sign of a value (returns -1, 0, or 1)
+// Sign for min-sum: zero counts as positive (bit 0), as in the fixed-point
+// path. Returning 0 would zero every message of the check row.
 inline float sign(float x) {
-    return (x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f);
+    return (x < 0.0f) ? -1.0f : 1.0f;
 }
 
 // ATSC 3.0 LDPC code parameters
@@ -396,75 +397,8 @@ LdpcDecoder::LdpcDecoder(const LdpcConfig& config) : config_(config) {
 LdpcDecoder::~LdpcDecoder() = default;
 
 void LdpcDecoder::load_parity_matrix() {
-    // Generate ATSC 3.0 H matrix using quasi-cyclic construction
-    LdpcMatrixGenerator generator;
-    H_ = generator.generate(config_.code_rate, config_.short_codeword);
-
-    // Validate the generated matrix
-    if (!generator.validate_matrix(H_, config_.code_rate, config_.short_codeword)) {
-        // Fall back to test matrix if validation fails
-        generate_test_matrix();
-    }
-}
-
-void LdpcDecoder::generate_test_matrix() {
-    // Generate a simple regular LDPC matrix for testing
-    // This is NOT the actual ATSC 3.0 matrix, but allows testing the algorithm
-    //
-    // Structure: quasi-cyclic with block size Q
-    // Each block row has constant number of 1s per row
-    // This provides reasonable error correction for testing
-
-    size_t n = H_.num_cols;  // Codeword length
-    size_t m = H_.num_rows;  // Parity checks
-
-    // Use smaller block size for manageability
-    // Real ATSC 3.0 uses Q=360 for long codes, Q=90 for short codes
-    size_t Q = config_.short_codeword ? 90 : 360;
-
-    // Number of blocks
-    size_t n_blocks = n / Q;
-    size_t m_blocks = m / Q;
-
-    // Row weight (edges per check node)
-    // Typical LDPC: row_weight ~ 6-20
-    size_t row_weight = 6;  // Simplified
-
-    // Initialize storage
-    H_.row_indices.resize(m);
-    H_.col_indices.resize(n);
-
-    // Generate quasi-cyclic structure
-    // For each block position, add a circulant permutation matrix
-    for (size_t mb = 0; mb < m_blocks; ++mb) {
-        // Determine which column blocks this row block connects to
-        // Use a simple pattern: connect to row_weight consecutive blocks
-        for (size_t w = 0; w < row_weight && (mb + w) < n_blocks; ++w) {
-            size_t nb = (mb + w) % n_blocks;
-
-            // Add circulant shift (different for each block)
-            size_t shift = (mb * row_weight + w) % Q;
-
-            // Add connections for this Q x Q block
-            for (size_t i = 0; i < Q; ++i) {
-                size_t row = mb * Q + i;
-                size_t col = nb * Q + ((i + shift) % Q);
-
-                if (row < m && col < n) {
-                    H_.row_indices[row].push_back(static_cast<uint16_t>(col));
-                    H_.col_indices[col].push_back(static_cast<uint16_t>(row));
-                }
-            }
-        }
-    }
-
-    // Sort indices for consistent ordering
-    for (auto& row : H_.row_indices) {
-        std::sort(row.begin(), row.end());
-    }
-    for (auto& col : H_.col_indices) {
-        std::sort(col.begin(), col.end());
-    }
+    // An invalid rate leaves H_ empty; decode() then reports is_valid = false.
+    H_ = LdpcMatrixGenerator().generate(config_.code_rate, config_.short_codeword);
 }
 
 void LdpcDecoder::allocate_buffers() {
@@ -655,7 +589,8 @@ LdpcResult LdpcDecoder::decode(const int8_t* llr_in) {
     }
 
     // Fill result
-    result.iterations_used = iter + 1;
+    // iter stops at max_iterations when no early exit happened
+    result.iterations_used = std::min(iter + 1, config_.max_iterations);
     result.num_unsatisfied_checks = check_syndrome();
     result.converged = (result.num_unsatisfied_checks == 0);
 
@@ -750,9 +685,12 @@ void LdpcDecoder::min_sum_iteration() {
             float msg_mag = (idx == min1_idx) ? min2 : min1;
             float new_cn_msg = clamp_llr(msg_sign * msg_mag * scale);
 
-            // Update APP with delta (new - old)
+            // Update APP with delta (new - old). The APP is a sum of up to
+            // degree+1 messages, so it is not clamped to the message range:
+            // a clamped APP no longer equals channel + messages and the
+            // extrinsic APP - message above goes wrong.
             float old_cn_msg = llr_cn_[row][idx];
-            llr_app_[col] = clamp_llr(llr_app_[col] - old_cn_msg + new_cn_msg);
+            llr_app_[col] = llr_app_[col] - old_cn_msg + new_cn_msg;
 
             // Store new CN→VN message
             llr_cn_[row][idx] = new_cn_msg;

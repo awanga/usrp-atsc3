@@ -228,6 +228,27 @@ TEST(LdpcDecoderTest, IterationCountWithinLimit) {
     EXPECT_LE(result.iterations_used, config.max_iterations);
 }
 
+TEST(LdpcDecoderTest, IterationsUsedCapsAtMaxWhenNotConverging) {
+    // Random hard-sign LLRs are not a codeword; the decoder runs every
+    // iteration and must report exactly max_iterations, not one more.
+    for (bool fxp : {false, true}) {
+        LdpcConfig config;
+        config.short_codeword = true;
+        config.max_iterations = 5;
+        config.use_fixed_point = fxp;
+        LdpcDecoder decoder(config);
+
+        std::mt19937 rng(9);
+        std::vector<int8_t> llr(decoder.codeword_length());
+        for (auto& l : llr) {
+            l = (rng() & 1) ? 20 : -20;
+        }
+        LdpcResult result = decoder.decode(llr.data());
+        ASSERT_FALSE(result.converged);
+        EXPECT_EQ(result.iterations_used, config.max_iterations);
+    }
+}
+
 TEST(LdpcDecoderTest, EarlyTerminationOnConvergence) {
     LdpcConfig config;
     config.short_codeword = true;

@@ -3,12 +3,15 @@
 //
 // test_ldpc_matrix.cc — Unit tests for ATSC 3.0 LDPC H matrix generation
 //
-// Tests H matrix dimensions, sparsity, and structure per ATSC A/322 Section 9.
-
-#include <gtest/gtest.h>
+// Tests H matrix dimensions, sparsity, and structure per ATSC A/322
+// Section 6.1.3 and Annex A.
 
 #include "fec/ldpc_decoder.h"
 #include "fec/ldpc_matrix.h"
+
+#include <algorithm>
+#include <gtest/gtest.h>
+#include <random>
 
 namespace atsc3 {
 namespace fec {
@@ -50,7 +53,7 @@ TEST_F(LdpcMatrixTest, LongCode_Rate13_15_Dimensions) {
 }
 
 //------------------------------------------------------------------------------
-// Dimension Tests - Short Codes (N=16200, Q=90)
+// Dimension Tests - Short Codes (N=16200, 45 groups of 360)
 //------------------------------------------------------------------------------
 
 TEST_F(LdpcMatrixTest, ShortCode_Rate2_15_Dimensions) {
@@ -172,29 +175,103 @@ TEST_F(LdpcMatrixTest, Sparsity_EdgesConsistent) {
 }
 
 //------------------------------------------------------------------------------
-// Quasi-Cyclic Structure Tests
+// A/322 Annex A structure
 //------------------------------------------------------------------------------
 
-TEST_F(LdpcMatrixTest, QuasiCyclic_ExpansionFactor) {
-    EXPECT_EQ(LdpcMatrixGenerator::get_expansion_factor(false), 360);  // Long codes
-    EXPECT_EQ(LdpcMatrixGenerator::get_expansion_factor(true), 90);    // Short codes
+TEST_F(LdpcMatrixTest, GroupSizeIs360ForBothLengths) {
+    // A/322 Section 6.2.2: Ngroup = Ninner / 360 for both code lengths
+    EXPECT_EQ(LdpcMatrixGenerator::get_expansion_factor(false), 360);
+    EXPECT_EQ(LdpcMatrixGenerator::get_expansion_factor(true), 360);
 }
 
-TEST_F(LdpcMatrixTest, QuasiCyclic_BaseMatrix_Valid) {
-    auto base = generator_.get_base_matrix(config::CodeRate::RATE_7_15, false);
+std::vector<uint16_t> sorted(std::vector<uint16_t> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+}
 
-    EXPECT_TRUE(base.is_valid());
-    EXPECT_EQ(base.expansion_factor, 360);
-    EXPECT_EQ(base.num_block_cols, 180);  // 64800 / 360
-    EXPECT_GT(base.num_block_rows, 0);
+TEST_F(LdpcMatrixTest, TypeB_InfoColumnsFollowTableA_1_12) {
+    // Table A.1.12 (13/15, 64800) first row; Type B, Qldpc = 24, Minner = 8640
+    const std::vector<uint16_t> row0 = {142,  2307, 2598, 2650, 4028, 4434, 5781,
+                                        5881, 6016, 6323, 6681, 6698, 8125};
+    auto H = generator_.generate(config::CodeRate::RATE_13_15, false);
+    EXPECT_EQ(H.col_indices[0], row0);
 
-    // Check entries are in valid range
-    for (const auto& row : base.entries) {
-        for (int16_t val : row) {
-            EXPECT_GE(val, -1);
-            EXPECT_LT(val, static_cast<int16_t>(base.expansion_factor));
+    std::vector<uint16_t> col1;
+    for (uint16_t x : row0) {
+        col1.push_back(static_cast<uint16_t>((x + 24) % 8640));
+    }
+    EXPECT_EQ(H.col_indices[1], sorted(col1));
+}
+
+TEST_F(LdpcMatrixTest, TypeA_InfoColumnsFollowTableA_2_1) {
+    // Table A.2.1 (2/15, 16200) first row; Type A, M1 = 3240 (Q1 = 9),
+    // M2 = 10800 (Q2 = 30), Table 6.6
+    auto H = generator_.generate(config::CodeRate::RATE_2_15, true);
+    EXPECT_EQ(H.col_indices[0], (std::vector<uint16_t>{2889, 3122, 3208, 4324, 5968, 7241, 13215}));
+    EXPECT_EQ(H.col_indices[1], (std::vector<uint16_t>{2898, 3131, 3217, 4354, 5998, 7271, 13245}));
+}
+
+TEST_F(LdpcMatrixTest, TypeA_ParityColumnsAreInterleaved) {
+    // Section 6.1.3.1 step vi: codeword bit Nouter + 360 t + s carries p_{Q1 s + t}.
+    // For 2/15 at 16200 (Nouter = 2160, Q1 = 9), p_1 sits at column 2160 + 360,
+    // and check 1 (p_1 = a_1 + p_0) touches p_0 at column 2160 and p_1 there.
+    auto H = generator_.generate(config::CodeRate::RATE_2_15, true);
+    const auto& check1 = H.row_indices[1];
+    EXPECT_TRUE(std::binary_search(check1.begin(), check1.end(), 2160));
+    EXPECT_TRUE(std::binary_search(check1.begin(), check1.end(), 2160 + 360));
+    // M2 parity is the identity part: check 3240 + 0 holds p_3240 at column
+    // 2160 + 3240 and no other M2 parity column.
+    const auto& check_m2 = H.row_indices[3240];
+    size_t m2_cols = 0;
+    for (uint16_t c : check_m2) {
+        m2_cols += c >= 2160 + 3240 ? 1 : 0;
+    }
+    EXPECT_EQ(m2_cols, 1u);
+    EXPECT_TRUE(std::binary_search(check_m2.begin(), check_m2.end(), 2160 + 3240));
+}
+
+size_t unsatisfied_checks(const SparseMatrix& H, const std::vector<uint8_t>& cw) {
+    size_t unsatisfied = 0;
+    for (const auto& row : H.row_indices) {
+        uint8_t parity = 0;
+        for (uint16_t col : row) {
+            parity ^= cw[col];
+        }
+        unsatisfied += parity;
+    }
+    return unsatisfied;
+}
+
+TEST_F(LdpcMatrixTest, EncodedCodewordsSatisfyEveryCheck) {
+    // The encoder follows the transmitter procedure of Section 6.1.3; H is built
+    // from the check equations. Random information must give a zero syndrome
+    // for all 24 codes.
+    std::mt19937 rng(1234);
+    for (bool short_cw : {false, true}) {
+        for (int r = 0; r <= static_cast<int>(config::CodeRate::RATE_13_15); ++r) {
+            auto rate = static_cast<config::CodeRate>(r);
+            auto H = generator_.generate(rate, short_cw);
+            ASSERT_TRUE(generator_.validate_matrix(H, rate, short_cw));
+            std::vector<uint8_t> info(H.info_bits);
+            for (auto& b : info) {
+                b = static_cast<uint8_t>(rng() & 1);
+            }
+            std::vector<uint8_t> cw(H.num_cols, 0xFF);
+            ASSERT_TRUE(ldpc_encode(rate, short_cw, info.data(), cw.data()));
+            for (uint8_t b : cw) {
+                ASSERT_LE(b, 1) << "codeword bit left unwritten";
+            }
+            EXPECT_EQ(unsatisfied_checks(H, cw), 0u)
+                << "rate index " << r << (short_cw ? " short" : " long");
         }
     }
+}
+
+TEST_F(LdpcMatrixTest, InvalidRateGivesEmptyMatrix) {
+    auto H = generator_.generate(static_cast<config::CodeRate>(12), false);
+    EXPECT_FALSE(H.is_valid());
+    std::vector<uint8_t> buf(64800, 0);
+    EXPECT_FALSE(ldpc_encode(static_cast<config::CodeRate>(12), false, buf.data(), buf.data()));
 }
 
 //------------------------------------------------------------------------------
@@ -288,6 +365,46 @@ TEST_F(LdpcMatrixTest, Decoder_AllZeroInput_Converges) {
         EXPECT_EQ(bit, 0);
     }
 }
+
+class LdpcNoisyDecodeTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(LdpcNoisyDecodeTest, RecoversRandomCodeword) {
+    // A random (non-zero) codeword exercises the actual code structure; the
+    // all-zero codeword satisfies any H. LLRs reach the int8 limit, so the
+    // decoder's internal sums must not be clamped to that range.
+    LdpcConfig config;
+    config.code_rate = config::CodeRate::RATE_7_15;
+    config.short_codeword = true;
+    config.max_iterations = 50;
+    config.use_fixed_point = GetParam();
+    LdpcDecoder decoder(config);
+
+    std::mt19937 rng(77);
+    std::vector<uint8_t> info(7560);
+    for (auto& b : info) {
+        b = static_cast<uint8_t>(rng() & 1);
+    }
+    std::vector<uint8_t> cw(16200);
+    ASSERT_TRUE(ldpc_encode(config.code_rate, true, info.data(), cw.data()));
+
+    // BPSK, sigma 0.8 (about 1.9 dB Es/N0); LLR = 40 y, so strong bits saturate int8
+    std::normal_distribution<float> noise(0.0f, 0.8f);
+    std::vector<int8_t> llr(cw.size());
+    size_t raw_errors = 0;
+    for (size_t i = 0; i < cw.size(); ++i) {
+        float y = (cw[i] ? -1.0f : 1.0f) + noise(rng);
+        float l = std::clamp(40.0f * y, -127.0f, 127.0f);
+        llr[i] = static_cast<int8_t>(l);
+        raw_errors += (y < 0) != (cw[i] != 0) ? 1 : 0;
+    }
+    ASSERT_GT(raw_errors, 100u);  // the channel really corrupts the word
+
+    LdpcResult result = decoder.decode(llr.data());
+    EXPECT_TRUE(result.converged);
+    EXPECT_EQ(result.decoded_bits, info);
+}
+
+INSTANTIATE_TEST_SUITE_P(FloatAndFixed, LdpcNoisyDecodeTest, ::testing::Bool());
 
 //------------------------------------------------------------------------------
 // File Path Tests
