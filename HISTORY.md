@@ -178,6 +178,30 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   reported a late beat as carrier 0.
 - **Next:** 9.9 constellation demapper.
 
+## 2026-11-16 — Constellation demapper RTL (plan 9.9)
+
+- **Decision:** one block for every `demap_symbol()` path: uniform QAM
+  (Gray boundary slicer), 1D NUC (separable per axis) and 2D NUC (quadrant
+  expansion), all max-log with the shared converter
+  `(d*scale + 2^(sh-1)) >> sh`, clip, TLAST on the last LLR of a TLAST cell.
+  The NUC tables are generated hex ROMs (`nuc2d.hex`, `nuc1d.hex`, loaded
+  via parameters); scale and cell width come from new fixed-point lib
+  accessors, so the integers are the contract.
+- **Reason:** the sequential datapath keeps the block small (30,382 cells,
+  4 memories, 47,664 bits); throughput is 9.17 work.
+- **Status:** bit-exact on both simulators (every modulation, clip and
+  scale extremes, stalls and gaps, invalid config fallback, reset mid
+  cell); 11 mutants killed; front-end bench now ends
+  ... -> equalizer -> demapper (64-QAM). Formal passes (1339 s, needs
+  `FORMAL_TIMEOUT=4000`) for modulations 0/6/12 only; the longer
+  uniform/NUC paths are simulation-only. Lessons: an exclusive-vs-inclusive
+  cell-boundary mutant was equivalent (the clamp absorbs it) and was
+  replaced by a top-cell mutant; NUC_QPSK is only sensitive on cells near a
+  rounding boundary, so the test builds such cells explicitly; indexing
+  per-bit minima as packed vectors avoids yosys "Replacing memory with
+  list of registers" warnings, which the synth gate treats as failure.
+- **Next:** 9.10 de-interleavers.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here

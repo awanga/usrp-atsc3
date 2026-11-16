@@ -25,7 +25,11 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 - Branch `feature/hdl-port-foundations` is rebased onto `develop` and
   force-pushed (2026-10-29; backup: local `backup/pre-rebase`).
-- RTL done through 9.8 (2026-11-15): equalizer (ZF/MMSE per carrier,
+- RTL done through 9.9 (2026-11-16): constellation demapper (uniform,
+  1D/2D NUC, max-log, hex ROMs) bit-exact vs `demap_symbol()`
+  (`demapper_gen`), 11 mutants killed, formal 0/6/12 only (~22 min,
+  FORMAL_TIMEOUT=4000), bench chain now ends in the demapper.
+- 9.8 (2026-11-15): equalizer (ZF/MMSE per carrier,
   two parallel udiv_seq) bit-exact vs `equalize_sample()`
   (`equalizer_gen`; Q30 floor/noise come from new lib accessors), 9
   mutants killed, formal with free stalls at depth 40 (multipliers cut),
@@ -53,8 +57,7 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 1. Test bed: `hdl/docs/hg_xcku5p_testbed.md` (plan only; hardware
    firmware deferred by user; schematics obtained; Vivado in /opt/Xilinx
    usable for synth/resource estimates).
-2. 9.9 constellation demapper,
-   9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
+2. 9.10 de-interleavers, 9.11 LDPC, 9.12 BCH, 9.13 L1 decode + config
    sequencer, 9.14 ALP demux, 9.15 AXI4-Lite control plane, 9.16
    end-to-end pipeline test, 9.17 throughput/timing closure. Scope notes
    per block: HISTORY.md archive, "Phase 9".
