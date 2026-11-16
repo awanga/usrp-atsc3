@@ -7,17 +7,19 @@
 //
 // Implements min-sum belief propagation for ATSC 3.0 LDPC codes.
 // Supports all 12 code rates (2/15 through 13/15) for both short
-// (16200 bit) and long (64800 bit) codewords per ATSC A/322 Section 9.
+// (16200 bit) and long (64800 bit) codewords per ATSC A/322 Section 6.1.3.
 //
 // Uses sparse parity check matrix representation to avoid OOM for
-// large codewords. Matrices are loaded from JSON configuration files.
+// large codewords. Matrices are built from the A/322 Annex A tables
+// (ldpc_matrix.h); input LLRs are in codeword order, i.e. after the bit
+// de-interleaver.
 //
 // AXI4-S Interface Contract:
 //   Input:  TDATA=int8_t (soft LLRs, codeword_length samples)
 //   Output: TDATA=uint8_t (decoded information bits)
 //           TVALID TREADY TLAST(codeword boundary)
 //
-// Reference: ATSC A/322 Section 9 (LDPC Coding)
+// Reference: ATSC A/322 Section 6.1.3 and Annex A (LDPC Coding)
 
 #include "config/atsc3_config.h"
 
@@ -239,10 +241,6 @@ private:
     // Check if all parity checks are satisfied
     // Returns number of unsatisfied checks
     size_t check_syndrome();
-
-    // Generate simplified parity matrix for testing
-    // (Used when JSON files not available)
-    void generate_test_matrix();
 };
 
 // Get code rate as a float value (e.g., 7/15 = 0.4667)

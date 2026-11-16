@@ -1,231 +1,170 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 Alfred Wanga
 //
-// ldpc_matrix.cc — ATSC 3.0 LDPC H matrix generation
+// ldpc_matrix.cc — ATSC 3.0 LDPC parity check matrices and encoder
 //
-// Implements quasi-cyclic LDPC matrix construction per ATSC A/322 Section 9.
-//
-// Reference: ATSC A/322 Section 9.2 (LDPC Code Construction)
+// Reference: ATSC A/322 Section 6.1.3, Annex A
 
 #include "ldpc_matrix.h"
 
 #include "ldpc_decoder.h"
+#include "ldpc_tables.h"
 
 #include <algorithm>
-#include <cmath>
 #include <fstream>
-#include <stdexcept>
 
 namespace atsc3 {
 namespace fec {
 
 namespace {
 
-// LDPC code parameters per ATSC A/322
-// For rate k/15:
-//   - Long codes: N=64800, K=64800*k/15, M=64800*(15-k)/15, Q=360
-//   - Short codes: N=16200, K=16200*k/15, M=16200*(15-k)/15, Q=90
+constexpr size_t kGroup = 360;
 
-struct LdpcCodeSpec {
-    size_t num_block_rows;  // M / Q
-    size_t num_block_cols;  // N / Q
-    size_t row_weight;      // Average non-zero entries per block row
-};
-
-// Specifications for long codes (N=64800, Q=360)
-// Block columns = 64800/360 = 180
-const LdpcCodeSpec kLongCodeSpecs[] = {
-    {156, 180, 6},  // 2/15: M=56160, blocks=156
-    {144, 180, 6},  // 3/15: M=51840, blocks=144
-    {132, 180, 7},  // 4/15: M=47520, blocks=132
-    {120, 180, 7},  // 5/15: M=43200, blocks=120
-    {108, 180, 8},  // 6/15: M=38880, blocks=108
-    {96, 180, 8},   // 7/15: M=34560, blocks=96
-    {84, 180, 9},   // 8/15: M=30240, blocks=84
-    {72, 180, 10},  // 9/15: M=25920, blocks=72
-    {60, 180, 11},  // 10/15: M=21600, blocks=60
-    {48, 180, 13},  // 11/15: M=17280, blocks=48
-    {36, 180, 16},  // 12/15: M=12960, blocks=36
-    {24, 180, 22},  // 13/15: M=8640, blocks=24
-};
-
-// Specifications for short codes (N=16200, Q=90)
-// Block columns = 16200/90 = 180
-const LdpcCodeSpec kShortCodeSpecs[] = {
-    {156, 180, 6},  // 2/15: M=14040, blocks=156
-    {144, 180, 6},  // 3/15: M=12960, blocks=144
-    {132, 180, 7},  // 4/15: M=11880, blocks=132
-    {120, 180, 7},  // 5/15: M=10800, blocks=120
-    {108, 180, 8},  // 6/15: M=9720, blocks=108
-    {96, 180, 8},   // 7/15: M=8640, blocks=96
-    {84, 180, 9},   // 8/15: M=7560, blocks=84
-    {72, 180, 10},  // 9/15: M=6480, blocks=72
-    {60, 180, 11},  // 10/15: M=5400, blocks=60
-    {48, 180, 13},  // 11/15: M=4320, blocks=48
-    {36, 180, 16},  // 12/15: M=3240, blocks=36
-    {24, 180, 22},  // 13/15: M=2160, blocks=24
-};
-
-// Generate circulant shift value using ATSC A/322 construction method
-// This creates deterministic quasi-cyclic patterns
-inline int16_t compute_shift(size_t block_row, size_t block_col, size_t Q, size_t seed) {
-    // Use a deterministic function based on position
-    // This approximates the ATSC A/322 exponent tables
-    size_t hash = (block_row * 73 + block_col * 37 + seed) % (Q * 7);
-    if (hash < Q) {
-        return static_cast<int16_t>(hash);
+const LdpcTable* table_for(config::CodeRate rate, bool short_codeword) {
+    size_t idx = static_cast<size_t>(rate);
+    if (idx >= sizeof(k_ldpc_tables[0]) / sizeof(k_ldpc_tables[0][0])) {
+        return nullptr;
     }
-    return -1;  // Zero block
+    return &k_ldpc_tables[short_codeword ? 1 : 0][idx];
 }
 
-// Generate base matrix with proper ATSC 3.0 structure
-LdpcBaseMatrix generate_atsc3_base_matrix(const LdpcCodeSpec& spec, size_t Q, size_t rate_idx) {
-    LdpcBaseMatrix base;
-    base.num_block_rows = spec.num_block_rows;
-    base.num_block_cols = spec.num_block_cols;
-    base.expansion_factor = Q;
+size_t parity_length(const LdpcTable& t) {
+    return t.ninner - t.nouter;
+}
 
-    base.entries.resize(spec.num_block_rows);
-    for (size_t row = 0; row < spec.num_block_rows; ++row) {
-        base.entries[row].resize(spec.num_block_cols, -1);  // Initialize all as zero blocks
+// Parity accumulator fed by bit m of the group whose first bit uses address
+// x (Section 6.1.3.1 step ii, Section 6.1.3.2 q(i, j, l)).
+size_t accumulator(const LdpcTable& t, size_t x, size_t m) {
+    size_t minner = parity_length(t);
+    if (!t.type_a) {
+        return (x + m * (minner / kGroup)) % minner;
     }
-
-    // ATSC 3.0 LDPC structure:
-    // 1. Systematic part: first K/Q columns connect to all check nodes
-    // 2. Parity part: staircase structure in last M/Q columns
-    // 3. Additional connections per row_weight
-
-    size_t info_blocks = spec.num_block_cols - spec.num_block_rows;  // K/Q
-
-    // Generate connections in systematic part
-    // Each block row connects to approximately row_weight blocks
-    for (size_t row = 0; row < spec.num_block_rows; ++row) {
-        size_t connections = 0;
-
-        // Systematic connections (distributed across info columns)
-        for (size_t col = 0; col < info_blocks && connections < spec.row_weight - 1; ++col) {
-            // Use rate-dependent pattern
-            if (((row + col + rate_idx) % 3) == 0 || ((row * 2 + col) % 5) == 0) {
-                int16_t shift = static_cast<int16_t>((row * 17 + col * 13 + rate_idx * 7) % Q);
-                base.entries[row][col] = shift;
-                ++connections;
-            }
-        }
-
-        // Ensure minimum connectivity
-        while (connections < spec.row_weight / 2) {
-            size_t col = (row * 7 + connections * 11) % info_blocks;
-            if (base.entries[row][col] == -1) {
-                base.entries[row][col] = static_cast<int16_t>((row + col + connections) % Q);
-                ++connections;
-            }
-        }
+    if (x < t.m1) {
+        return (x + m * (t.m1 / kGroup)) % t.m1;
     }
+    size_t m2 = minner - t.m1;
+    return t.m1 + (x - t.m1 + m * (m2 / kGroup)) % m2;
+}
 
-    // Generate staircase structure in parity part
-    // This ensures the H matrix has full rank
-    for (size_t row = 0; row < spec.num_block_rows; ++row) {
-        size_t parity_col = info_blocks + row;
-
-        // Diagonal element
-        if (parity_col < spec.num_block_cols) {
-            base.entries[row][parity_col] = 0;  // Identity (shift 0)
-        }
-
-        // Sub-diagonal element (dual-diagonal structure)
-        if (row > 0 && parity_col < spec.num_block_cols) {
-            base.entries[row][parity_col - 1] = static_cast<int16_t>((row * 3) % Q);
-        }
+// Codeword column that carries parity accumulator j: Type A interleaves both
+// parity parts (Section 6.1.3.1 steps vi and viii); Type B does not.
+size_t parity_column(const LdpcTable& t, size_t j) {
+    if (!t.type_a) {
+        return t.nouter + j;
     }
+    if (j < t.m1) {
+        size_t q1 = t.m1 / kGroup;
+        return t.nouter + kGroup * (j % q1) + j / q1;
+    }
+    size_t q2 = (parity_length(t) - t.m1) / kGroup;
+    size_t k = j - t.m1;
+    return t.nouter + t.m1 + kGroup * (k % q2) + k / q2;
+}
 
-    return base;
+// Accumulators chained by the dual-diagonal (p_j ^= p_{j-1}) part
+size_t dual_diagonal_length(const LdpcTable& t) {
+    return t.type_a ? t.m1 : parity_length(t);
+}
+
+void add_edge(SparseMatrix& H, size_t row, size_t col) {
+    H.row_indices[row].push_back(static_cast<uint16_t>(col));
+    H.col_indices[col].push_back(static_cast<uint16_t>(row));
 }
 
 }  // namespace
 
 SparseMatrix LdpcMatrixGenerator::generate(config::CodeRate rate, bool short_codeword) const {
-    LdpcBaseMatrix base = get_base_matrix(rate, short_codeword);
-    size_t info_bits = get_ldpc_info_bits(short_codeword, rate);
-    return expand_base_matrix(base, info_bits);
-}
-
-LdpcBaseMatrix LdpcMatrixGenerator::get_base_matrix(config::CodeRate rate,
-                                                    bool short_codeword) const {
-    if (short_codeword) {
-        return generate_base_matrix_short(rate);
-    } else {
-        return generate_base_matrix_long(rate);
-    }
-}
-
-LdpcBaseMatrix LdpcMatrixGenerator::generate_base_matrix_long(config::CodeRate rate) const {
-    size_t rate_idx = static_cast<size_t>(rate);
-    if (rate_idx >= sizeof(kLongCodeSpecs) / sizeof(kLongCodeSpecs[0])) {
-        return LdpcBaseMatrix{};  // Invalid rate
-    }
-
-    const LdpcCodeSpec& spec = kLongCodeSpecs[rate_idx];
-    return generate_atsc3_base_matrix(spec, 360, rate_idx);
-}
-
-LdpcBaseMatrix LdpcMatrixGenerator::generate_base_matrix_short(config::CodeRate rate) const {
-    size_t rate_idx = static_cast<size_t>(rate);
-    if (rate_idx >= sizeof(kShortCodeSpecs) / sizeof(kShortCodeSpecs[0])) {
-        return LdpcBaseMatrix{};  // Invalid rate
-    }
-
-    const LdpcCodeSpec& spec = kShortCodeSpecs[rate_idx];
-    return generate_atsc3_base_matrix(spec, 90, rate_idx);
-}
-
-SparseMatrix LdpcMatrixGenerator::expand_base_matrix(const LdpcBaseMatrix& base, size_t info_bits) {
     SparseMatrix H;
-
-    if (!base.is_valid()) {
+    const LdpcTable* t = table_for(rate, short_codeword);
+    if (t == nullptr) {
         return H;
     }
 
-    size_t Q = base.expansion_factor;
-    size_t m = base.num_block_rows * Q;  // Total parity checks
-    size_t n = base.num_block_cols * Q;  // Codeword length
+    H.num_rows = parity_length(*t);
+    H.num_cols = t->ninner;
+    H.info_bits = t->nouter;
+    H.row_indices.resize(H.num_rows);
+    H.col_indices.resize(H.num_cols);
 
-    H.num_rows = m;
-    H.num_cols = n;
-    H.info_bits = info_bits;
-
-    H.row_indices.resize(m);
-    H.col_indices.resize(n);
-
-    // Expand each base matrix entry into a Q×Q circulant block
-    for (size_t br = 0; br < base.num_block_rows; ++br) {
-        for (size_t bc = 0; bc < base.num_block_cols; ++bc) {
-            int16_t shift = base.entries[br][bc];
-
-            if (shift < 0) {
-                continue;  // Zero block
-            }
-
-            // Add circulant permutation matrix
-            // Row i of circulant maps to column (i + shift) mod Q
-            for (size_t i = 0; i < Q; ++i) {
-                size_t row = br * Q + i;
-                size_t col = bc * Q + ((i + static_cast<size_t>(shift)) % Q);
-
-                H.row_indices[row].push_back(static_cast<uint16_t>(col));
-                H.col_indices[col].push_back(static_cast<uint16_t>(row));
+    // Table row r covers codeword bits 360r..360r+359: info bits for every
+    // row, and for Type A also the M1 parity bits (step vii), which follow
+    // the info bits in the codeword.
+    for (size_t r = 0; r < t->num_rows; ++r) {
+        for (size_t m = 0; m < kGroup; ++m) {
+            for (size_t e = t->row_start[r]; e < t->row_start[r + 1]; ++e) {
+                add_edge(H, accumulator(*t, t->addresses[e], m), kGroup * r + m);
             }
         }
     }
 
-    // Sort indices for consistent ordering
+    // Check j closes accumulator j: p_j = a_j (+ p_{j-1} on the dual diagonal)
+    for (size_t j = 0; j < H.num_rows; ++j) {
+        add_edge(H, j, parity_column(*t, j));
+        if (j > 0 && j < dual_diagonal_length(*t)) {
+            add_edge(H, j, parity_column(*t, j - 1));
+        }
+    }
+
     for (auto& row : H.row_indices) {
         std::sort(row.begin(), row.end());
     }
     for (auto& col : H.col_indices) {
         std::sort(col.begin(), col.end());
     }
-
     return H;
+}
+
+bool ldpc_encode(config::CodeRate rate, bool short_codeword, const uint8_t* info,
+                 uint8_t* codeword) {
+    const LdpcTable* t = table_for(rate, short_codeword);
+    if (t == nullptr) {
+        return false;
+    }
+    const size_t minner = parity_length(*t);
+    std::vector<uint8_t> p(minner, 0);
+
+    auto accumulate_group = [&](size_t row, const uint8_t* bits) {
+        for (size_t m = 0; m < kGroup; ++m) {
+            if (bits[m] & 1) {
+                for (size_t e = t->row_start[row]; e < t->row_start[row + 1]; ++e) {
+                    p[accumulator(*t, t->addresses[e], m)] ^= 1;
+                }
+            }
+        }
+    };
+
+    std::copy(info, info + t->nouter, codeword);
+    const size_t info_groups = t->nouter / kGroup;
+    for (size_t g = 0; g < info_groups; ++g) {
+        accumulate_group(g, info + kGroup * g);
+    }
+    for (size_t j = 1; j < dual_diagonal_length(*t); ++j) {
+        p[j] ^= p[j - 1];
+    }
+
+    if (!t->type_a) {
+        std::copy(p.begin(), p.end(), codeword + t->nouter);
+        return true;
+    }
+
+    // Type A: interleave the M1 part (step vi), let it feed the M2
+    // accumulators (step vii), then interleave the M2 part (step viii).
+    const size_t q1 = t->m1 / kGroup;
+    const size_t q2 = (minner - t->m1) / kGroup;
+    for (size_t s = 0; s < kGroup; ++s) {
+        for (size_t u = 0; u < q1; ++u) {
+            codeword[t->nouter + kGroup * u + s] = p[q1 * s + u];
+        }
+    }
+    for (size_t g = 0; g < q1; ++g) {
+        accumulate_group(info_groups + g, codeword + t->nouter + kGroup * g);
+    }
+    for (size_t s = 0; s < kGroup; ++s) {
+        for (size_t u = 0; u < q2; ++u) {
+            codeword[t->nouter + t->m1 + kGroup * u + s] = p[t->m1 + q2 * s + u];
+        }
+    }
+    return true;
 }
 
 bool LdpcMatrixGenerator::validate_matrix(const SparseMatrix& H, config::CodeRate rate,
