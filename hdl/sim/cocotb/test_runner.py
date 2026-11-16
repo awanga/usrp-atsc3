@@ -87,6 +87,14 @@ BLOCKS = {
         [],
         {},
     ),
+    "constellation_demapper": (
+        ["ofdm/constellation_demapper.v"],
+        [],
+        {
+            "NUC2D_HEX": f'"{RTL / "ofdm" / "nuc2d.hex"}"',
+            "NUC1D_HEX": f'"{RTL / "ofdm" / "nuc1d.hex"}"',
+        },
+    ),
     "pilot_extractor": (
         ["ofdm/pilot_extractor.v", "ofdm/pilot_additional_cp_lut.v"],
         [],
@@ -116,6 +124,7 @@ INTEGRATION = {
             "ofdm/pilot_additional_cp_lut.v",
             "channel/channel_estimator.v",
             "channel/equalizer.v",
+            "ofdm/constellation_demapper.v",
             "channel/complex_divider.v",
             "channel/linear_interp.v",
             "channel/h_average.v",
@@ -128,6 +137,8 @@ INTEGRATION = {
         {
             "TWIDDLE_HEX": f'"{RTL / "ofdm" / "fft_twiddles.hex"}"',
             "CP_ROM_HEX": f'"{RTL / "ofdm" / "pilot_cp_positions.hex"}"',
+            "NUC2D_HEX": f'"{RTL / "ofdm" / "nuc2d.hex"}"',
+            "NUC1D_HEX": f'"{RTL / "ofdm" / "nuc1d.hex"}"',
         },
     ),
 }

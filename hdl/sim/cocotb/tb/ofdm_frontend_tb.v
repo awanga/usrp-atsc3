@@ -21,7 +21,9 @@
 module ofdm_frontend_tb #(
     parameter TWIDDLE_HEX = "fft_twiddles.hex",
     parameter CP_ROM_HEX  = "pilot_cp_positions.hex",
-    parameter FS_ADDR_W   = 15
+    parameter FS_ADDR_W   = 15,
+    parameter NUC2D_HEX   = "nuc2d.hex",
+    parameter NUC1D_HEX   = "nuc1d.hex"
 ) (
     input  wire        clk,
     input  wire        rst,
@@ -69,6 +71,11 @@ module ofdm_frontend_tb #(
     output wire        eq_tlast,
     output wire        eq_framing_error,
     output wire        eq_cfg_invalid,
+    output wire [7:0]  dm_tdata,          // constellation_demapper LLR output
+    output wire        dm_tvalid,
+    input  wire        dm_tready,
+    output wire        dm_tlast,
+    output wire        dm_cfg_invalid,
 
     output wire [95:0] m_axis_tdata,
     output wire        m_axis_tvalid,
@@ -292,6 +299,9 @@ module ofdm_frontend_tb #(
         end
     end
 
+    wire [31:0] eq_m_tdata;
+    wire        eq_m_tvalid, eq_m_tlast, dm_s_ready;
+    wire        eq_m_tready = eq_tready && dm_s_ready;
     wire eq_y_ready_unused;
     wire [15:0] eq_zeroed_unused;
     equalizer u_eq (
@@ -311,10 +321,37 @@ module ofdm_frontend_tb #(
         .h_axis_tvalid      (ce_tvalid),
         .h_axis_tready      (eq_h_tready),
         .h_axis_tlast       (ce_tlast),
-        .m_axis_tdata       (eq_tdata),
-        .m_axis_tvalid      (eq_tvalid),
-        .m_axis_tready      (eq_tready),
-        .m_axis_tlast       (eq_tlast)
+        .m_axis_tdata       (eq_m_tdata),
+        .m_axis_tvalid      (eq_m_tvalid),
+        .m_axis_tready      (eq_m_tready),
+        .m_axis_tlast       (eq_m_tlast)
+    );
+
+    // The equalized cells fork to the bench's tap and the demapper; a cell
+    // moves only when both accept it.
+    assign eq_tdata  = eq_m_tdata;
+    assign eq_tlast  = eq_m_tlast;
+    assign eq_tvalid = eq_m_tvalid && dm_s_ready;
+
+    // 64-QAM, noise variance 0.1, clip 127: the integers are the model's K
+    // line for that configuration (checked in test_ofdm_frontend_tb.py).
+    constellation_demapper #(.NUC2D_HEX(NUC2D_HEX), .NUC1D_HEX(NUC1D_HEX)) u_dm (
+        .clk                (clk),
+        .rst                (rst),
+        .cfg_modulation     (4'd2),
+        .cfg_code_rate      (4'd0),
+        .cfg_llr_scale_q16  (32'd745126),
+        .cfg_norm_const_q15 (16'd4447),
+        .cfg_llr_clip       (8'd127),
+        .cfg_invalid        (dm_cfg_invalid),
+        .s_axis_tdata       (eq_m_tdata),
+        .s_axis_tvalid      (eq_m_tvalid && eq_tready),
+        .s_axis_tready      (dm_s_ready),
+        .s_axis_tlast       (eq_m_tlast),
+        .m_axis_tdata       (dm_tdata),
+        .m_axis_tvalid      (dm_tvalid),
+        .m_axis_tready      (dm_tready),
+        .m_axis_tlast       (dm_tlast)
     );
 
     assign fft_tdata = fft_tdata_w;

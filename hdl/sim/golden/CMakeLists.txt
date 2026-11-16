@@ -46,3 +46,9 @@ target_link_libraries(channel_estimator_gen atsc3_lib)
 
 add_executable(equalizer_gen equalizer_gen.cc)
 target_link_libraries(equalizer_gen atsc3_lib)
+
+add_executable(demapper_gen demapper_gen.cc)
+target_link_libraries(demapper_gen atsc3_lib)
+
+add_executable(demapper_rom_gen demapper_rom_gen.cc)
+target_link_libraries(demapper_rom_gen atsc3_lib)

@@ -53,6 +53,7 @@ from test_freq_correction import run_golden as fc_golden
 from test_pilot_extractor import run_golden as pe_golden, unpack_pilot
 from test_channel_estimator import run_golden as ce_golden, s16
 from test_equalizer import golden as eq_golden
+from test_constellation_demapper import golden as dm_golden
 
 FULL = os.environ.get("HDL_FULL") == "1"
 RATIO = 16
@@ -117,7 +118,16 @@ def golden_chain(fft_size, cp_num, pattern, samples, inc):
         10737418,
     ), "bench equalizer constants out of date"
     equalized = [eq_flat[i * noc : (i + 1) * noc] for i in range(len(estimates))]
-    return bins, pilots, fs_results, (estimates, equalized)
+    (dm_bps, dm_scale, dm_norm), llr_flat = dm_golden(
+        2, 0, "0.1", 127, [c for sym in equalized for c in sym]
+    )
+    assert (dm_bps, dm_scale, dm_norm) == (
+        6,
+        745126,
+        4447,
+    ), "bench demapper constants stale"
+    llrs = [llr_flat[i * noc : (i + 1) * noc] for i in range(len(estimates))]
+    return bins, pilots, fs_results, (estimates, equalized, llrs)
 
 
 async def reset(dut, inc, fft_size, cp_num, pattern):
@@ -135,6 +145,7 @@ async def reset(dut, inc, fft_size, cp_num, pattern):
     dut.s_axis_tlast.value = 0
     dut.m_axis_tready.value = 1
     dut.eq_tready.value = 1
+    dut.dm_tready.value = 1
     for _ in range(3):
         await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -227,6 +238,30 @@ async def eq_sink(dut, equalized, rnd):
     assert dut.eq_framing_error.value == 0 and dut.eq_cfg_invalid.value == 0
 
 
+async def dm_sink(dut, llrs, rnd):
+    """Demapper output: every LLR of every cell of every symbol against the
+    model's demap_symbol() on the equalized cells, TLAST on the last LLR of
+    the symbol's last cell."""
+    for s, sym in enumerate(llrs):
+        flat = [v for cell in sym for v in cell]
+        k = 0
+        while k < len(flat):
+            await FallingEdge(dut.clk)
+            if dut.dm_tvalid.value == 1 and dut.dm_tready.value == 1:
+                v = int(dut.dm_tdata.value)
+                v = v - 256 if v & 0x80 else v
+                assert (
+                    v == flat[k]
+                ), f"LLR symbol {s} beat {k}: expected {flat[k]}, got {v}"
+                assert int(dut.dm_tlast.value) == int(
+                    k == len(flat) - 1
+                ), "demapper TLAST"
+                k += 1
+            if rnd is not None:
+                dut.dm_tready.value = int(rnd.random() < 0.7)
+    assert dut.dm_cfg_invalid.value == 0
+
+
 async def fs_event_sink(dut, events):
     """frame_sync's event output is always ready, so every valid cycle is a
     transfer."""
@@ -249,7 +284,7 @@ async def run_chain(
     inc = cfo_increment()
     if n_symbols >= 2:
         samples = with_preamble(samples, 1, fft_size + cp_len, inc)
-    bins, pilots, fs_results, (estimates, equalized) = golden_chain(
+    bins, pilots, fs_results, (estimates, equalized, llrs) = golden_chain(
         fft_size, cp_num, pattern, samples, inc
     )
     assert len(bins) == n_symbols * fft_size
@@ -269,9 +304,11 @@ async def run_chain(
     tap = cocotb.start_soon(fft_tap(dut, bins))
     ce = cocotb.start_soon(ce_sink(dut, estimates))
     eqt = cocotb.start_soon(eq_sink(dut, equalized, rnd if stall_output else None))
+    dmt = cocotb.start_soon(dm_sink(dut, llrs, rnd if stall_output else None))
     await sink(dut, pilots, rnd if stall_output else None)
     await ce
     await eqt
+    await dmt
     await tap
     await src
     for _ in range(40):  # the tail samples clear freq_correction

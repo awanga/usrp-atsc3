@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 Alfred Wanga
+#
+# Run via hdl/formal/run_formal.sh constellation_demapper. Black-box harness;
+# the LLR product is cut (see the harness header). Bounded: BMC, not
+# induction.
+
+[tasks]
+prove
+cover
+
+[options]
+prove: mode bmc
+prove: depth 36
+cover: mode cover
+cover: depth 36
+
+[engines]
+smtbmc yices
+
+[script]
+read_verilog -formal -I. constellation_demapper.v
+read_verilog -formal -I. constellation_demapper_formal.v
+prep -top constellation_demapper_formal
+flatten
+opt_merge
+cutpoint t:$mul
+opt_clean
+
+[files]
+constellation_demapper.v ../rtl/ofdm/constellation_demapper.v
+constellation_demapper_formal.v
+nuc2d.hex ../rtl/ofdm/nuc2d.hex
+nuc1d.hex ../rtl/ofdm/nuc1d.hex
