@@ -124,6 +124,19 @@ public:
     // divided by a per-constellation headroom factor so its peak component
     // fits Q1.15 (see qam_headroom_for_peak() in the .cc), so the points
     // are table_scale() * (unit-power point) * 32768.
+#ifdef ATSC3_FIXED_POINT
+    // The integers the fixed-point demapper derives from noise_variance and
+    // the constellation: the Q16.16 LLR scale, and the uniform slicer's
+    // per-level step in Q1.15 (0 for NUC modes). A hardware port is
+    // configured with exactly these values.
+    int32_t llr_scale_q16() const {
+        return llr_scale_q16_;
+    }
+    int16_t norm_const_q15() const {
+        return norm_const_q15_;
+    }
+#endif
+
     float table_scale() const {
         return table_scale_;
     }
