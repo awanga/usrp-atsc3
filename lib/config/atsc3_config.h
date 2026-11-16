@@ -139,7 +139,8 @@ struct PlpConfig {
 };
 
 // Full ATSC 3.0 configuration from L1 preamble
-// This struct is populated by L1Decoder and distributed via ConfigBus
+// Distributed via ConfigBus. Meant to be filled from the L1-Basic /
+// L1-Detail fields (framing/l1_signaling.h); nothing fills it yet.
 struct Atsc3Config {
     // ===== L1-Basic (from bootstrap) =====
     uint8_t version = 0;  // L1-Basic version
