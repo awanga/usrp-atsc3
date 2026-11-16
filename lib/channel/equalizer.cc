@@ -108,6 +108,7 @@ size_t Equalizer::get_first_active_carrier() const {
     return config_.first_active_carrier;
 }
 
+#ifdef ATSC3_FIXED_POINT
 int32_t Equalizer::min_magnitude_sq_q30() const {
     return static_cast<int32_t>(config_.min_channel_magnitude * config_.min_channel_magnitude *
                                 static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
@@ -117,6 +118,7 @@ int32_t Equalizer::noise_q30() const {
     return static_cast<int32_t>(config_.noise_variance *
                                 static_cast<float>(ATSC3_Q_SCALE * ATSC3_Q_SCALE));
 }
+#endif
 
 sample_t Equalizer::equalize_zf(sample_t y, sample_t h) const {
     // ZF: X_hat = Y / H

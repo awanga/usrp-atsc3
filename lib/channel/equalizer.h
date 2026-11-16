@@ -148,13 +148,15 @@ public:
         return config_;
     }
 
-    // Get number of active carriers
+#ifdef ATSC3_FIXED_POINT
     // Deep-fade floor and noise term as the Q30 integers the fixed-point
     // equalizer compares and adds (|H|^2 is Q30). The RTL takes these as
     // configuration so it uses the exact values derived here.
     int32_t min_magnitude_sq_q30() const;
     int32_t noise_q30() const;
+#endif
 
+    // Get number of active carriers
     size_t get_num_active_carriers() const;
 
     // Get first active carrier index
