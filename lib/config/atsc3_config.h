@@ -56,20 +56,86 @@ enum class CodeRate : uint8_t {
 // FFT sizes per ATSC A/322 §7.1
 enum class FftSize : uint8_t { FFT_8K = 0, FFT_16K = 1, FFT_32K = 2 };
 
-// Cyclic prefix lengths (as index into table)
-enum class CpLength : uint8_t {
-    CP_192_8192 = 0,
-    CP_384_8192 = 1,
-    CP_512_8192 = 2,
-    CP_768_8192 = 3,
-    CP_1024_8192 = 4,
-    CP_1536_8192 = 5,
-    CP_2048_8192 = 6,
-    CP_2432_8192 = 7,
-    CP_3072_8192 = 8,
-    CP_3648_8192 = 9,
-    CP_4096_8192 = 10
+// Guard interval patterns, numbered by their A/322 Table 9.13 code
+// (L1B_first_sub_guard_interval, L1D_guard_interval); codes 0 and 13-15
+// are reserved. Lengths in samples: A/322 Table 8.9
+// (ofdm::guard_interval_samples()).
+enum class GuardInterval : uint8_t {
+    GI1_192 = 1,
+    GI2_384 = 2,
+    GI3_512 = 3,
+    GI4_768 = 4,
+    GI5_1024 = 5,
+    GI6_1536 = 6,
+    GI7_2048 = 7,
+    GI8_2432 = 8,
+    GI9_3072 = 9,
+    GI10_3648 = 10,
+    GI11_4096 = 11,
+    GI12_4864 = 12
 };
+
+// A/322 Table 8.9: the guard interval length in samples, the same for
+// every FFT size; 0 for a reserved code.
+inline size_t guard_interval_samples(GuardInterval gi) {
+    switch (gi) {
+        case GuardInterval::GI1_192:
+            return 192;
+        case GuardInterval::GI2_384:
+            return 384;
+        case GuardInterval::GI3_512:
+            return 512;
+        case GuardInterval::GI4_768:
+            return 768;
+        case GuardInterval::GI5_1024:
+            return 1024;
+        case GuardInterval::GI6_1536:
+            return 1536;
+        case GuardInterval::GI7_2048:
+            return 2048;
+        case GuardInterval::GI8_2432:
+            return 2432;
+        case GuardInterval::GI9_3072:
+            return 3072;
+        case GuardInterval::GI10_3648:
+            return 3648;
+        case GuardInterval::GI11_4096:
+            return 4096;
+        case GuardInterval::GI12_4864:
+            return 4864;
+    }
+    return 0;
+}
+
+// The pattern with that length in samples; false if Table 8.9 has none.
+inline bool guard_interval_from_samples(size_t samples, GuardInterval* gi) {
+    for (unsigned code = 1; code <= 12; ++code) {
+        if (guard_interval_samples(static_cast<GuardInterval>(code)) == samples) {
+            *gi = static_cast<GuardInterval>(code);
+            return true;
+        }
+    }
+    return false;
+}
+
+// A/322 Table 8.9: whether gi may be used with fft_size (GI8-GI11 need
+// 16K or 32K, GI12 needs 32K). False for a reserved code or an FFT size
+// other than 8192, 16384, 32768.
+inline bool guard_interval_allowed(GuardInterval gi, size_t fft_size) {
+    if (guard_interval_samples(gi) == 0) {
+        return false;
+    }
+    switch (fft_size) {
+        case 8192:
+            return gi <= GuardInterval::GI7_2048;
+        case 16384:
+            return gi <= GuardInterval::GI11_4096;
+        case 32768:
+            return true;
+        default:
+            return false;
+    }
+}
 
 // Scattered pilot pattern: the A/322 L1D_scattered_pilot_pattern code, named
 // SP<Dx>_<Dy> after the pilot spacing in carriers and symbols (Table 7.3).
@@ -147,9 +213,8 @@ struct Atsc3Config {
 
     // ===== L1-Pre (preamble OFDM config) =====
     FftSize fft_size = FftSize::FFT_8K;
-    CpLength cp_length = CpLength::CP_1024_8192;
+    GuardInterval guard_interval = GuardInterval::GI5_1024;
     PilotPattern pilot_pattern = PilotPattern::SP6_4;
-    uint8_t gi_fraction = 0;  // Guard interval fraction index
     bool preamble_reduced_carriers = false;
 
     // L1-Post configuration
@@ -187,13 +252,10 @@ struct Atsc3Config {
         }
     }
 
-    // CP length in samples (for current FFT size)
+    // Guard interval length in samples (A/322 Table 8.9; the same for
+    // every FFT size)
     size_t get_cp_samples() const {
-        static constexpr size_t cp_numerators[] = {192,  384,  512,  768,  1024, 1536,
-                                                   2048, 2432, 3072, 3648, 4096};
-        size_t fft = get_fft_samples();
-        size_t num = cp_numerators[static_cast<size_t>(cp_length)];
-        return (num * fft) / 8192;
+        return guard_interval_samples(guard_interval);
     }
 
     // Active carriers for current FFT size
@@ -264,7 +326,7 @@ struct Atsc3Config {
 inline Atsc3Config get_default_config() {
     Atsc3Config config;
     config.fft_size = FftSize::FFT_8K;
-    config.cp_length = CpLength::CP_1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
     config.pilot_pattern = PilotPattern::SP6_4;
     config.num_plps = 1;
     config.plps[0].plp_id = 0;

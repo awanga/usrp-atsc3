@@ -51,7 +51,7 @@ TEST(PlpConfigTest, DefaultConstruction) {
 TEST(Atsc3ConfigTest, DefaultConstruction) {
     Atsc3Config config;
     EXPECT_EQ(config.fft_size, FftSize::FFT_8K);
-    EXPECT_EQ(config.cp_length, CpLength::CP_1024_8192);
+    EXPECT_EQ(config.guard_interval, GuardInterval::GI5_1024);
     EXPECT_EQ(config.num_plps, 0);
     EXPECT_FALSE(config.valid);
 }
@@ -70,40 +70,36 @@ TEST(Atsc3ConfigTest, GetFftSamples) {
     EXPECT_EQ(config.get_fft_samples(), 32768u);
 }
 
-// Test get_cp_samples helper
+// A/322 Table 8.9: guard interval lengths are absolute sample counts
 TEST(Atsc3ConfigTest, GetCpSamples8K) {
     Atsc3Config config;
     config.fft_size = FftSize::FFT_8K;
 
-    config.cp_length = CpLength::CP_192_8192;
+    config.guard_interval = GuardInterval::GI1_192;
     EXPECT_EQ(config.get_cp_samples(), 192u);
 
-    config.cp_length = CpLength::CP_512_8192;
+    config.guard_interval = GuardInterval::GI3_512;
     EXPECT_EQ(config.get_cp_samples(), 512u);
 
-    config.cp_length = CpLength::CP_1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
     EXPECT_EQ(config.get_cp_samples(), 1024u);
 
-    config.cp_length = CpLength::CP_2048_8192;
+    config.guard_interval = GuardInterval::GI7_2048;
     EXPECT_EQ(config.get_cp_samples(), 2048u);
 }
 
-// Test CP samples scales with FFT size
-TEST(Atsc3ConfigTest, GetCpSamplesScalesWithFft) {
+// A/322 Table 8.9: the same length at every FFT size (this test used to
+// expect 2x at 16K and 4x at 32K, contradicting the table).
+TEST(Atsc3ConfigTest, GetCpSamplesIndependentOfFft) {
     Atsc3Config config;
-    config.cp_length = CpLength::CP_1024_8192;
-
-    config.fft_size = FftSize::FFT_8K;
-    size_t cp_8k = config.get_cp_samples();
-    EXPECT_EQ(cp_8k, 1024u);
-
-    config.fft_size = FftSize::FFT_16K;
-    size_t cp_16k = config.get_cp_samples();
-    EXPECT_EQ(cp_16k, 2048u);  // 2x
-
+    config.guard_interval = GuardInterval::GI5_1024;
+    for (FftSize f : {FftSize::FFT_8K, FftSize::FFT_16K, FftSize::FFT_32K}) {
+        config.fft_size = f;
+        EXPECT_EQ(config.get_cp_samples(), 1024u);
+    }
     config.fft_size = FftSize::FFT_32K;
-    size_t cp_32k = config.get_cp_samples();
-    EXPECT_EQ(cp_32k, 4096u);  // 4x
+    config.guard_interval = GuardInterval::GI12_4864;
+    EXPECT_EQ(config.get_cp_samples(), 4864u);
 }
 
 // Test get_active_carriers helper
@@ -173,7 +169,7 @@ TEST(Atsc3ConfigTest, GetDefaultConfig) {
 
     EXPECT_TRUE(config.valid);
     EXPECT_EQ(config.fft_size, FftSize::FFT_8K);
-    EXPECT_EQ(config.cp_length, CpLength::CP_1024_8192);
+    EXPECT_EQ(config.guard_interval, GuardInterval::GI5_1024);
     EXPECT_EQ(config.pilot_pattern, PilotPattern::SP6_4);
     EXPECT_EQ(config.num_plps, 1);
 

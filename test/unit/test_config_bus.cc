@@ -344,7 +344,7 @@ TEST(ConfigBusTest, PublishFullConfig) {
     Atsc3Config config;
     config.version = 1;
     config.fft_size = FftSize::FFT_16K;
-    config.cp_length = CpLength::CP_1536_8192;
+    config.guard_interval = GuardInterval::GI6_1536;
     config.pilot_pattern = PilotPattern::SP12_2;
     config.num_plps = 2;
     config.plps[0].plp_id = 0;
@@ -360,7 +360,7 @@ TEST(ConfigBusTest, PublishFullConfig) {
     const auto& received = observer.last_config();
     EXPECT_EQ(received.version, 1u);
     EXPECT_EQ(received.fft_size, FftSize::FFT_16K);
-    EXPECT_EQ(received.cp_length, CpLength::CP_1536_8192);
+    EXPECT_EQ(received.guard_interval, GuardInterval::GI6_1536);
     EXPECT_EQ(received.pilot_pattern, PilotPattern::SP12_2);
     EXPECT_EQ(received.num_plps, 2u);
     EXPECT_EQ(received.plps[0].modulation, Modulation::QAM64);

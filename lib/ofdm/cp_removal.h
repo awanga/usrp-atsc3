@@ -17,6 +17,7 @@
 //
 // Reference: ATSC A/322:2026 Section 8.5, Tables 8.9 and 9.13
 
+#include "config/atsc3_config.h"
 #include "types.h"
 
 #include <cstddef>
@@ -27,35 +28,11 @@
 namespace atsc3 {
 namespace ofdm {
 
-// Guard interval patterns, numbered by their A/322 Table 9.13 code
-// (L1B_first_sub_guard_interval, L1D_guard_interval); codes 0 and 13-15
-// are reserved.
-enum class GuardInterval : uint8_t {
-    GI1_192 = 1,
-    GI2_384 = 2,
-    GI3_512 = 3,
-    GI4_768 = 4,
-    GI5_1024 = 5,
-    GI6_1536 = 6,
-    GI7_2048 = 7,
-    GI8_2432 = 8,
-    GI9_3072 = 9,
-    GI10_3648 = 10,
-    GI11_4096 = 11,
-    GI12_4864 = 12
-};
+using config::GuardInterval;
 
-// A/322 Table 8.9: the guard interval length in samples, the same for
-// every FFT size; 0 for a reserved code.
-size_t guard_interval_samples(GuardInterval gi);
-
-// The pattern with that length in samples; false if Table 8.9 has none.
-bool guard_interval_from_samples(size_t samples, GuardInterval* gi);
-
-// A/322 Table 8.9: whether gi may be used with fft_size (GI8-GI11 need
-// 16K or 32K, GI12 needs 32K). False for a reserved code or an FFT size
-// other than 8192, 16384, 32768.
-bool guard_interval_allowed(GuardInterval gi, size_t fft_size);
+using config::guard_interval_allowed;
+using config::guard_interval_from_samples;
+using config::guard_interval_samples;
 
 // CP Removal configuration
 struct CpRemovalConfig {

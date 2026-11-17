@@ -201,7 +201,7 @@ TEST_F(SignalChainTest, ConfigBusDistribution) {
     config::Atsc3Config test_config;
     test_config.valid = true;
     test_config.fft_size = config::FftSize::FFT_16K;
-    test_config.cp_length = config::CpLength::CP_2048_8192;
+    test_config.guard_interval = config::GuardInterval::GI7_2048;
     test_config.pilot_pattern = config::PilotPattern::SP12_2;
     test_config.num_plps = 1;
     test_config.plps[0].plp_id = 0;

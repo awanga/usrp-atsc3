@@ -18,8 +18,8 @@
 // beats -- no timing is implied.
 //
 // Input (stdin):
-//   C <fft_size> <gi_samples>              -- first line; gi_samples is
-//                                             an A/322 Table 8.9 length
+//   C <fft_size> <gi_code>                 -- first line; gi_code is the
+//                                             A/322 Table 9.13 code (1..12)
 //   <re> <im>                              -- one per input sample, until EOF
 //
 // Output (stdout), one block per complete symbol the golden model emits:
@@ -49,18 +49,18 @@ int main() {
     std::istringstream cfg_in(line);
     char tag = 0;
     size_t fft_size = 0;
-    size_t gi_samples = 0;
-    if (!(cfg_in >> tag >> fft_size >> gi_samples) || tag != 'C') {
+    unsigned gi_code = 0;
+    if (!(cfg_in >> tag >> fft_size >> gi_code) || tag != 'C') {
         std::cerr << "cp_removal_gen: bad config line: " << line << '\n';
         return 1;
     }
 
     CpRemovalConfig config;
     config.fft_size = fft_size;
-    if (!atsc3::ofdm::guard_interval_from_samples(gi_samples, &config.guard_interval) ||
-        !atsc3::ofdm::guard_interval_allowed(config.guard_interval, fft_size)) {
-        std::cerr << "cp_removal_gen: " << gi_samples << "-sample guard interval with FFT "
-                  << fft_size << " is not allowed by A/322 Table 8.9\n";
+    config.guard_interval = static_cast<atsc3::ofdm::GuardInterval>(gi_code);
+    if (gi_code > 15 || !atsc3::ofdm::guard_interval_allowed(config.guard_interval, fft_size)) {
+        std::cerr << "cp_removal_gen: guard interval code " << gi_code << " with FFT " << fft_size
+                  << " is not allowed by A/322 Tables 8.9 and 9.13\n";
         return 1;
     }
     CpRemoval remover(config);
