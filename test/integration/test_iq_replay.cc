@@ -6,8 +6,8 @@
 // Tests ATSC 3.0 receiver signal chain components on the IQ fixtures in
 // test/captures/ (synthetic A/321 bootstraps at 6.144 MS/s; see the README
 // there): bootstrap detection and decoding against the positions and
-// fields recorded in the .sigmf-meta, frequency correction, FFT, and basic
-// signal quality metrics.
+// fields recorded in the .sigmf-meta, frame sync over every bootstrap,
+// frequency correction, FFT, and basic signal quality metrics.
 //
 // Requires: test/captures/*.sigmf-data files (via git-lfs)
 
@@ -15,10 +15,12 @@
 #include "bootstrap_detector.h"
 #include "config_bus.h"
 #include "fft_engine.h"
+#include "frame_sync.h"
 #include "freq_correction.h"
 #include "iq_source.h"
 #include "iq_source_factory.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -175,11 +177,16 @@ protected:
         std::string meta = read_meta(capture_file_);
         size_t ann = meta.find("\"annotations\"");
         ASSERT_NE(ann, std::string::npos) << "no annotations in the .sigmf-meta";
-        std::vector<long> start = meta_integers(meta.substr(ann), "core:sample_start", 1);
         std::vector<long> fields = meta_integers(meta.substr(ann), "atsc3:bootstrap_fields", 3);
-        ASSERT_EQ(start.size(), 1u) << "no bootstrap annotation in the .sigmf-meta";
         ASSERT_EQ(fields.size(), 3u) << "no atsc3:bootstrap_fields in the .sigmf-meta";
-        first_bootstrap_ = static_cast<size_t>(start[0]);
+        const std::string key = "\"core:sample_start\"";
+        for (size_t at = meta.find(key, ann); at != std::string::npos;
+             at = meta.find(key, at + key.size())) {
+            bootstraps_.push_back(
+                static_cast<size_t>(meta_integers(meta.substr(at), "core:sample_start", 1).at(0)));
+        }
+        ASSERT_FALSE(bootstraps_.empty()) << "no bootstrap annotation in the .sigmf-meta";
+        first_bootstrap_ = bootstraps_[0];
         for (size_t i = 0; i < 3; i++) {
             fields_[i] = static_cast<uint8_t>(fields[i]);
         }
@@ -189,6 +196,7 @@ protected:
 
     std::string capture_file_;
     double sample_rate_ = 6.25e6;
+    std::vector<size_t> bootstraps_;  // annotated bootstrap starts
     size_t first_bootstrap_ = 0;
     uint8_t fields_[3] = {};
 };
@@ -240,8 +248,8 @@ TEST_F(IqReplayTest, BootstrapDetectionTiming) {
 
     // The fixture's offset is ~973 Hz, inside the +-1.5 kHz fractional range.
     EXPECT_NEAR(detection.cfo_hz, 973.0, 30.0);
-    EXPECT_NEAR(static_cast<double>(detection.sample_index),
-                static_cast<double>(first_bootstrap_), 8.0);
+    EXPECT_NEAR(static_cast<double>(detection.sample_index), static_cast<double>(first_bootstrap_),
+                8.0);
     EXPECT_GT(detection.metric, 0.9) << "Bootstrap metric too low";
 }
 
@@ -372,6 +380,63 @@ TEST_F(IqReplayTest, BootstrapDetectDecodeChain) {
     std::cout << "Bootstrap at " << first_bootstrap_ << ": bsr_coefficient "
               << int(r.signaling.bsr_coefficient) << ", preamble_structure "
               << int(r.signaling.preamble_structure) << std::endl;
+}
+
+// Test: every bootstrap in the capture is detected, decoded and accepted by
+// FrameSync at its annotated position. The fixture's symbol 1 field
+// signals min_time_to_next, so each one must fall in the previous one's
+// window and FrameSync locks from the second on.
+TEST_F(IqReplayTest, FrameSyncTracksEveryBootstrap) {
+    auto source = hal::create_file_source(capture_file_, sample_rate_, false);
+    ASSERT_NE(source, nullptr);
+
+    std::vector<sample_t> samples;
+    std::vector<sample_t> chunk(65536);
+    for (size_t n; (n = read_samples(*source, chunk.data(), chunk.size())) > 0;) {
+        samples.insert(samples.end(), chunk.begin(), chunk.begin() + n);
+    }
+
+    sync::BootstrapDetector detector;
+    sync::BootstrapDecoder decoder;
+    sync::FrameSync frame_sync;
+    std::vector<sync::FrameEvent> events;
+    frame_sync.set_frame_callback([&](const sync::FrameEvent& e) { events.push_back(e); });
+    std::vector<sample_t> window(sync::BootstrapDecoder::kInputLength);
+
+    // A detection is reported a few samples after the last sample of
+    // symbol 0; two symbols of margin covers it.
+    constexpr size_t kLatency = 2 * sync::kBootstrapSymbolLength;
+    constexpr size_t kChunk = 10000;  // < the detector holdoff: one detection at most
+    for (size_t pos = 0; pos < samples.size(); pos += kChunk) {
+        size_t n = std::min(kChunk, samples.size() - pos);
+        sync::BootstrapDetection det = detector.process(samples.data() + pos, n);
+        if (det.detected && det.sample_index + window.size() <= samples.size()) {
+            sync::FreqCorrectionConfig fc_config;
+            fc_config.sample_rate_hz = sample_rate_;
+            fc_config.initial_cfo_hz = det.cfo_hz;
+            sync::FreqCorrection corrector(fc_config);
+            corrector.process(samples.data() + det.sample_index, window.data(), window.size());
+            sync::BootstrapDecodeResult r;
+            if (decoder.decode(window.data(), &r)) {
+                size_t start = det.sample_index + static_cast<size_t>(r.timing_offset);
+                EXPECT_TRUE(frame_sync.on_bootstrap(start, r.signaling)) << start;
+            }
+        }
+        size_t searched = pos + n;
+        frame_sync.mark_searched(searched > kLatency ? searched - kLatency : 0);
+    }
+
+    // The last annotated bootstrap is complete in the capture.
+    ASSERT_LE(bootstraps_.back() + window.size(), samples.size());
+    ASSERT_EQ(events.size(), bootstraps_.size());
+    for (size_t i = 0; i < events.size(); i++) {
+        EXPECT_EQ(events[i].sample_index, bootstraps_[i]) << "frame " << i;
+        EXPECT_EQ(events[i].frame_number, i);
+        EXPECT_FALSE(events[i].predicted);
+    }
+    EXPECT_EQ(frame_sync.get_rejected_count(), 0u);
+    EXPECT_EQ(frame_sync.get_state(), bootstraps_.size() > 1 ? sync::FrameSyncState::LOCKED
+                                                             : sync::FrameSyncState::ACQUIRING);
 }
 
 // Test: Signal quality metrics from capture

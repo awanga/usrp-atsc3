@@ -565,9 +565,9 @@ TEST(ConstellationDemapperTest, LargeConstellationStress) {
 // test actually needs to catch is an *implementation* bug in the
 // fixed-point port itself (e.g. a Q-format shift error) -- for that, the
 // reference must use the same normalization/table convention the real
-// code does, mirroring how bootstrap_detector/timing_recovery/
-// frame_sync's equivalence tests compare against a from-scratch double
-// port of their own rewritten algorithm, not the pre-rewrite one.
+// code does, mirroring how timing_recovery's equivalence tests compare
+// against a from-scratch double port of its own rewritten algorithm, not
+// the pre-rewrite one.
 //==============================================================================
 
 namespace {

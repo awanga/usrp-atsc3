@@ -3,262 +3,156 @@
 
 #pragma once
 
-// Frame Synchronization — Superframe and subframe boundary detection
+// Frame Synchronization — frame boundary tracking from bootstraps
 //
-// Tracks ATSC 3.0 frame boundaries using preamble correlation.
-// Works with bootstrap detector output to maintain frame alignment.
+// Every ATSC 3.0 frame begins with a bootstrap (A/322 Section 7.2), so the
+// frame boundaries are the starts of the validated bootstraps
+// (BootstrapDecoder) and nothing else needs correlating. FrameSync checks
+// each one against what the previous one promised and predicts the next:
+//   - min_time_to_next (A/321 Section 6.1.1.1) puts the next bootstrap of
+//     the same version in the window [T(X), T(X + 1)) ms after this one;
+//   - for a time-aligned frame (L1B_frame_length_mode = 0, A/322 Section
+//     9.2), L1B_frame_length gives the frame length exactly, bootstrap
+//     included, so the next frame starts at this bootstrap + that length
+//     (set_frame_length()). A symbol-aligned frame's length needs the
+//     whole L1-Basic/L1-Detail symbol layout; until that is wired in only
+//     the min_time_to_next window is used.
 //
-// AXI4-S Interface Contract:
-//   Input:  TDATA=cf32, TVALID, TREADY (frequency-corrected OFDM symbols)
-//   Output: TDATA=cf32, TVALID, TREADY, TLAST (frame boundary marker)
+// All sample indices are at the bootstrap rate, 6.144 MS/s (6144 samples
+// per ms). The windows are widened by the receiver's sample-clock error
+// (max_clock_error_ppm of the interval) plus timing_slack_samples for the
+// bootstrap timing estimate; those two are receiver assumptions, not
+// spec values. Every frame is assumed to be an A/322 (bootstrap version
+// 0.0) frame, so the next frame's bootstrap is the next one decoded.
 //
-// Reference: ATSC A/322 Section 5 (Bootstrap), Section 6 (Frame Structure)
+// States:
+//   SEARCHING  no bootstrap yet (or lost)
+//   ACQUIRING  one bootstrap, waiting for a second that fits its window
+//   LOCKED     the last bootstrap fitted the window of the one before
+//   HOLDOVER   locked with a known frame length, but the next bootstrap
+//              was missed: boundaries are predicted (FrameEvent::predicted)
+//              for up to holdover_frames frames, then SEARCHING
+// While LOCKED, a bootstrap that comes too early for the window is
+// rejected as spurious (the lock rests on two consistent bootstraps);
+// in ACQUIRING the new one replaces the old. Without a frame length a
+// missed bootstrap cannot be predicted, so LOCKED drops to SEARCHING.
+//
+// Time advances by mark_searched(end): the caller declares that every
+// bootstrap starting before end has been reported. This keeps the
+// detector/decoder latency out of FrameSync.
+//
+// Interface: control-rate events (one per bootstrap), not a sample
+// stream; no AXI4-S data path.
+//
+// Reference: ATSC A/321:2026 Section 6.1.1.1; A/322:2026 Sections 7.2,
+// 9.2
 
-#include "types.h"
+#include "sync/bootstrap_signal.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <vector>
 
 namespace atsc3 {
 namespace sync {
 
-// Detection score and confidence domain. The float build keeps the
-// original normalized double; the fixed-point build works in unsigned
-// Q1.15 integers (32768 = 1.0, the same format as the DETECTION_THRESHOLD
-// register), so every comparison and blend in the state machine is an
-// integer operation the RTL reproduces exactly.
-#ifdef ATSC3_FIXED_POINT
-using FrameScore = uint32_t;
-#else
-using FrameScore = double;
-#endif
+enum class FrameSyncState { SEARCHING, ACQUIRING, LOCKED, HOLDOVER };
 
-// Frame sync state
-enum class FrameSyncState {
-    SEARCHING,  // Looking for bootstrap/preamble
-    ACQUIRING,  // Found candidate, confirming
-    LOCKED,     // Tracking frame boundaries
-    HOLDOVER    // Lost lock, using last known timing
-};
-
-// Frame structure parameters (from L1 signaling or defaults)
-struct FrameParams {
-    // FFT size for data symbols
-    size_t fft_size = 8192;
-
-    // Cyclic prefix length (samples)
-    size_t cp_length = 512;  // 1/16 of 8K
-
-    // Number of OFDM symbols per subframe
-    size_t symbols_per_subframe = 1;
-
-    // Number of subframes per frame
-    size_t subframes_per_frame = 1;
-
-    // Preamble symbol count
-    size_t preamble_symbols = 1;
-
-    // Total samples per symbol (FFT + CP)
-    size_t samples_per_symbol() const {
-        return fft_size + cp_length;
-    }
-
-    // Total samples per subframe
-    size_t samples_per_subframe() const {
-        return symbols_per_subframe * samples_per_symbol();
-    }
-
-    // Total samples per frame (excluding preamble)
-    size_t samples_per_frame() const {
-        return subframes_per_frame * samples_per_subframe();
-    }
-};
-
-// Frame sync configuration
 struct FrameSyncConfig {
-    // Sample rate in Hz
-    double sample_rate_hz = 6.25e6;
+    // Sample-clock error tolerated between transmitter and receiver
+    // (both oscillators), in parts per million of the interval.
+    uint32_t max_clock_error_ppm = 100;
 
-    // Default frame parameters (updated after L1 decode)
-    FrameParams frame_params;
+    // Bootstrap start timing error tolerated, in samples.
+    uint32_t timing_slack_samples = 16;
 
-    // Bootstrap correlation threshold for detection
-    double detection_threshold = 0.7;
-
-    // Lock acquisition: require N consecutive detections
-    size_t lock_acquire_count = 3;
-
-    // Lock loss: tolerate N consecutive misses before holdover
-    size_t lock_loss_count = 5;
-
-    // Holdover duration (frames) before returning to search
-    size_t holdover_frames = 10;
-
-    // Search window size (samples) around expected boundary
-    size_t search_window = 64;
+    // Frames predicted in HOLDOVER before giving up.
+    uint32_t holdover_frames = 3;
 };
 
-// Frame boundary event
 struct FrameEvent {
-    enum Type {
-        FRAME_START,     // Start of frame (preamble)
-        SUBFRAME_START,  // Start of subframe
-        SYMBOL_START     // Start of data symbol
-    };
-
-    Type type;
-    size_t sample_index;     // Global sample index
-    size_t frame_number;     // Frame counter
-    size_t subframe_number;  // Subframe within frame
-    size_t symbol_number;    // Symbol within subframe
-    double confidence;       // Detection confidence [0, 1]
+    size_t sample_index = 0;  // frame start (bootstrap symbol 0)
+    size_t frame_number = 0;  // counted from acquisition
+    bool predicted = false;   // HOLDOVER prediction, no bootstrap seen
 };
 
-// Frame Synchronizer
-//
-// Tracks frame boundaries using bootstrap/preamble correlation.
-// Maintains lock across frames and handles brief signal drops.
-//
-// Usage:
-//   FrameSyncConfig config;
-//   FrameSync sync(config);
-//
-//   sync.set_frame_callback([](const FrameEvent& ev) {
-//       // Handle frame/subframe/symbol boundary
-//   });
-//
-//   // Feed from bootstrap detector or directly
-//   sync.set_bootstrap_offset(bootstrap_sample_index);
-//   sync.process(symbols, n_symbols);
-//
 class FrameSync {
 public:
     using FrameCallback = std::function<void(const FrameEvent& event)>;
 
+    static constexpr size_t kSamplesPerMs = 6144;  // at 6.144 MS/s
+
     explicit FrameSync(const FrameSyncConfig& config = FrameSyncConfig());
-    ~FrameSync();
 
-    // Process OFDM symbols (after FFT)
-    void process(const sample_t* symbols, size_t n);
-
-    // Notify bootstrap detection (coarse timing)
-    void set_bootstrap_offset(size_t sample_index, double confidence = 1.0);
-
-    // Set callback for frame events
     void set_frame_callback(FrameCallback cb) {
         frame_callback_ = std::move(cb);
     }
 
-    // Update frame parameters (from L1 decode)
-    void update_frame_params(const FrameParams& params);
+    // A bootstrap that BootstrapDecoder validated, starting at
+    // sample_index. Returns false when it was rejected (too early while
+    // LOCKED). Emits a FrameEvent when accepted.
+    bool on_bootstrap(size_t sample_index, const BootstrapSignaling& signaling);
 
-    // Reset synchronizer state
+    // Length of the frame that began with the last accepted bootstrap, in
+    // samples (L1B_frame_length x 5 ms x 6144 for a time-aligned frame).
+    // Applies to that frame only (the next accepted bootstrap clears it);
+    // call again for each frame.
+    void set_frame_length(size_t samples);
+
+    // Every bootstrap starting before end has been reported.
+    void mark_searched(size_t end);
+
     void reset();
 
-    // Get current state
     FrameSyncState get_state() const {
         return state_;
     }
-
-    // Get current frame number
-    size_t get_frame_number() const {
-        return frame_number_;
-    }
-
-    // Get current symbol position within frame
-    size_t get_symbol_position() const {
-        return symbol_position_;
-    }
-
-    // Absolute sample index of the next expected frame boundary
-    size_t expected_boundary() const {
-        return expected_boundary_;
-    }
-
-    // Get samples until next expected boundary
-    size_t get_samples_to_boundary() const;
-
-    // Get lock confidence
-    double get_confidence() const;
-
-    // Is locked?
     bool is_locked() const {
         return state_ == FrameSyncState::LOCKED;
     }
-
-    // Get configuration
+    size_t get_frame_number() const {
+        return frame_number_;
+    }
+    // Start of the current frame (last accepted bootstrap or prediction).
+    size_t get_frame_start() const {
+        return frame_start_;
+    }
+    // Window the next bootstrap must start in: [earliest, latest].
+    // Meaningless while SEARCHING.
+    size_t get_window_earliest() const {
+        return window_earliest_;
+    }
+    size_t get_window_latest() const {
+        return window_latest_;
+    }
+    size_t get_rejected_count() const {
+        return rejected_;
+    }
     const FrameSyncConfig& get_config() const {
         return config_;
     }
 
-    // Normalized correlation of symbols[offset .. offset+preamble_len)
-    // against the preamble reference, in [0, 1]. Exposed (forwards to the
-    // private implementation) for monitoring and for the fixed-point-
-    // vs-reference equivalence test (test_frame_sync.cc) --
-    // this computation is memoryless (no dependence on prior calls or
-    // FSM state), so it can be compared call-by-call against a double
-    // reference without the closed-loop trajectory concerns
-    // TimingRecovery's equivalence test ran into.
-    double compute_correlation(const sample_t* symbols, size_t n, size_t offset);
-
-    // Preamble reference sample k (k < fft_size). Exposed so the RTL's
-    // reference table can be generated from, and checked against, the
-    // running model.
-    const std::vector<sample_t>& preamble_reference() const {
-        return preamble_ref_;
-    }
-
 private:
+    size_t tolerance(size_t interval) const;
+    void update_window();
+    // continues: the bootstrap extends the current lock (frame number + 1)
+    // rather than starting an acquisition (frame number 0).
+    void accept(size_t sample_index, const BootstrapSignaling& signaling, bool continues);
+    void emit(bool predicted);
+
     FrameSyncConfig config_;
-    FrameSyncState state_;
-
-    // Frame tracking
-    size_t frame_number_;
-    size_t subframe_number_;
-    size_t symbol_position_;  // Symbol within current subframe
-    size_t sample_counter_;   // Global sample counter
-
-    // Lock tracking
-    size_t consecutive_hits_;    // Consecutive successful detections
-    size_t consecutive_misses_;  // Consecutive missed detections
-    size_t holdover_counter_;    // Frames in holdover
-
-    // Expected boundary
-    size_t expected_boundary_;  // Next expected frame boundary
-    FrameScore confidence_;     // Current lock confidence
-
-    // Detection thresholds in the score domain, derived once from
-    // config_.detection_threshold: fixed-point truncates to Q1.15 (0.7 ->
-    // 22937, the register reset value); the relaxed locked-state
-    // threshold is 4/5 of it (integer divide in fixed-point).
-    FrameScore detection_threshold_;
-    FrameScore relaxed_threshold_;
-
-    // Preamble reference for correlation
-    std::vector<sample_t> preamble_ref_;
-
-    // Callback
     FrameCallback frame_callback_;
 
-    // State machine
-    void transition_state(FrameSyncState new_state);
-    void handle_searching(const sample_t* symbols, size_t n);
-    void handle_acquiring(const sample_t* symbols, size_t n);
-    void handle_locked(const sample_t* symbols, size_t n);
-    void handle_holdover(const sample_t* symbols, size_t n);
-
-    // Normalized correlation magnitude in the score domain: the
-    // fixed-point build returns floor(|corr| * 32768 / norm), capped at
-    // 65535, with every step in integers (see frame_sync.cc).
-    FrameScore correlate_preamble(const sample_t* symbols, size_t n, size_t offset);
-
-    // Event emission
-    void emit_frame_event(FrameEvent::Type type);
-
-    // Initialize preamble reference
-    void init_preamble_reference();
+    FrameSyncState state_ = FrameSyncState::SEARCHING;
+    size_t frame_number_ = 0;
+    size_t frame_start_ = 0;
+    size_t last_bootstrap_ = 0;      // start of the last accepted bootstrap
+    unsigned min_time_to_next_ = 0;  // field of the last accepted bootstrap
+    size_t frame_length_ = 0;        // 0 = unknown
+    size_t window_earliest_ = 0;
+    size_t window_latest_ = 0;
+    uint32_t holdover_count_ = 0;
+    size_t rejected_ = 0;
 };
 
 }  // namespace sync

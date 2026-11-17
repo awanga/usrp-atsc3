@@ -80,7 +80,8 @@ struct BootstrapSignaling {
 // reserved preamble_structure. out is filled either way.
 bool parse_bootstrap_signaling(const uint8_t fields[3], BootstrapSignaling* out);
 
-// Section 6.1.1.1: lower edge of the signaled interval, in ms. X in 0..30.
+// Section 6.1.1.1: lower edge of the signaled interval, in ms. X in 0..31
+// (31 is not signaled; T(31) is the upper edge of X = 30's interval).
 unsigned bootstrap_min_time_to_next_ms(unsigned x);
 
 // Section 6.1.1.1 (major version 0): (N + 16) x 0.384 MHz.

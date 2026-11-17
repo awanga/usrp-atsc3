@@ -7,8 +7,8 @@
 //
 // Q1.15-only utility (no ATSC3_FIXED_POINT branch): provides the integer
 // shift-add primitives that back the fixed-point rewrites of
-// bootstrap_detector, freq_correction, and frame_sync (rotation mode for
-// the NCO's cos/sin, vectoring mode for magnitude/phase). No multiplier,
+// bootstrap_detector and freq_correction (rotation mode for the NCO's
+// cos/sin, vectoring mode for magnitude/phase). No multiplier,
 // no trig/sqrt library call -- shift, add, and table lookup only, so this
 // is also the direct C++ reference for a future shared hdl/rtl/common/cordic.v.
 //
@@ -80,8 +80,7 @@ struct CordicVectorResult {
 
 // Vectoring mode: (magnitude, atan2(y, x)) for a Q1.15 complex input,
 // full range (all four quadrants, including x == 0). Backs
-// bootstrap_detector's CFO/metric and frame_sync's correlation
-// normalization.
+// bootstrap_detector's CFO.
 CordicVectorResult cordic_vector(int16_t x_q15, int16_t y_q15);
 
 }  // namespace dsp
