@@ -281,7 +281,7 @@ def collisions(fft_size, num_active, golden, pattern=None):
     """(scattered-on-continual, scattered-on-edge) record counts, the
     continual carriers being the common set and the pattern's additional
     pilots."""
-    first = (fft_size - num_active) // 2
+    first = fft_size // 2 - (num_active - 1) // 2  # A/322 Section 8.3
     last = first + num_active - 1
     reduction = (NOC_MAX[fft_size] - num_active) // CUNIT[fft_size]
     cps = continual_offsets(fft_size, reduction)

@@ -86,15 +86,19 @@ use two different index origins for what's conceptually the same axis.
 **Rule, pinned once here, applies everywhere on the RTL datapath:**
 
 ```
-first_active_carrier = (fft_size - num_active_carriers) >> 1
+first_active_carrier = (fft_size >> 1) - ((num_active_carriers - 1) >> 1)
 relative_index        = absolute_index - first_active_carrier
 ```
+
+Absolute indices are bins of `fft_engine`'s DC-centred output (DC at bin
+`fft_size/2`); A/322 Section 8.3 puts carrier k at k - (NoC - 1)/2 carrier
+spacings from the centre, hence the formula (640 for 8K NoCmax).
 
 - `fft_size` and `num_active_carriers` both come from the `l1_status`
   register bank -- `first_active_carrier` is **not** its own register.
   Every block that needs it computes this one-line formula internally
-  (a subtract and a shift; matches `lib/ofdm/pilot_extractor.cc`'s
-  `compute_first_active()` exactly). Giving it a register would be a
+  (shifts and a subtract; matches `config::first_carrier_bin()` in
+  `lib/config/atsc3_config.h` exactly). Giving it a register would be a
   redundant, independently-writable copy of a value that's supposed to be
   a pure function of two other registers.
 - `received[]` / `channel_estimate[]` / equalized-symbol / LLR streams are

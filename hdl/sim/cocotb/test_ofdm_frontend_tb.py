@@ -82,7 +82,7 @@ def golden_chain(fft_size, gi_code, pattern, samples, inc):
         ce_input.append([(r[0], (r[2], r[3]), (r[4], r[5])) for r in recs])
     estimates = ce_golden(fft_size, 0, False, 0, ce_input)
     noc = {8192: 6913, 16384: 13825, 32768: 27649}[fft_size]
-    first = (fft_size - noc) // 2
+    first = fft_size // 2 - (noc - 1) // 2  # A/322 Section 8.3
     carriers = []
     for s, est in enumerate(estimates):
         y = bins[s * fft_size + first : s * fft_size + first + noc]

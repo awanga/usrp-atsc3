@@ -185,8 +185,9 @@ module ofdm_frontend_tb #(
     // the received bins to arrive in step with the estimates.
     wire [15:0] noc = (cfg_fft_size == 18'd32768) ? 16'd27649 :
                       (cfg_fft_size == 18'd16384) ? 16'd13825 : 16'd6913;
-    wire [17:0] first_act_w = ({1'b0, cfg_fft_size[16:0]} - {2'b00, noc}) >> 1;
-    wire [16:0] first_act = first_act_w[16:0];
+    // A/322 Section 8.3: carrier 0 is (NoC - 1)/2 bins below DC (bin fft/2
+    // of fft_engine's DC-centred output).
+    wire [16:0] first_act = cfg_fft_size[17:1] - ({1'b0, noc} - 17'd1) / 17'd2;
     reg [31:0] ybuf [0:65535];
     reg [16:0] bin_idx;
     reg        wr_bank, rd_bank;

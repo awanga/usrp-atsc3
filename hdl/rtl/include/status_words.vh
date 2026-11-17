@@ -121,13 +121,14 @@
 // Absolute <-> relative subcarrier indexing (pinned once, applies wherever
 // PILOT_SYMBOL_SUBCARRIER_INDEX meets a relative-indexed on-chip array):
 //
-//   first_active_carrier = (fft_size - num_active_carriers) >> 1
+//   first_active_carrier = (fft_size >> 1) - ((num_active_carriers - 1) >> 1)
 //   relative_index        = absolute_index - first_active_carrier
 //
 // fft_size/num_active_carriers both come from the l1_status register bank
 // (config/hdl_register_map.json) -- first_active_carrier is not itself a
 // register; every block computes it internally with the one-line formula
-// above (matches lib/ofdm/pilot_extractor.cc's compute_first_active()).
+// above (matches config::first_carrier_bin(), lib/config/atsc3_config.h;
+// absolute indices are bins of fft_engine's DC-centred output, A/322 8.3).
 // received[]/channel_estimate[]/equalized/LLR streams are positional: beat
 // N on those streams IS relative subcarrier index N, with no explicit index
 // field on the wire. Only PILOT_SYMBOL carries an explicit index, and it is

@@ -28,9 +28,12 @@
 //      the C++'s nested k/j loops -- same (idx_even, idx_odd, twiddle)
 //      triples, different but equivalent enumeration order; see below
 //      for the index algebra.
-//   3. Unload: FFT_SIZE samples read out in natural (not bit-reversed)
-//      order, saturated to int16 at the I/O boundary, exactly like the
-//      C++'s non-normalizing output path.
+//   3. Unload: FFT_SIZE samples read out in DC-centred order (bin
+//      i ^ FFT_SIZE/2: the two halves swapped, so frequency rises through
+//      the output and OFDM carrier k is at bin N/2 - (NoC - 1)/2 + k,
+//      A/322 Section 8.3; FftConfig::dc_centered), saturated to int16 at
+//      the I/O boundary, exactly like the C++'s non-normalizing output
+//      path.
 //
 // Shared 16384-entry twiddle ROM: rather than one
 // table per FFT_SIZE, a single table sized for the largest size (32768,
@@ -360,7 +363,9 @@ module fft_engine #(
                 // address needs a full settled cycle before ram_rdata_a
                 // reflects it, on every iteration, not just the first.
                 ST_UNLOAD_ADDR: begin
-                    ram_addr_a <= sample_cnt;
+                    // DC-centred: flip the half-size bit (fft_size_r is
+                    // one-hot, so fft_size_r >> 1 is that bit).
+                    ram_addr_a <= sample_cnt ^ fft_size_r[ADDR_WIDTH:1];
                     state      <= ST_UNLOAD_WAIT;
                 end
 

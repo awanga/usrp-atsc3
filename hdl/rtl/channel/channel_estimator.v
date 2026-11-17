@@ -38,7 +38,7 @@
 //                                      pilot_extractor's rule so the two
 //                                      blocks always agree)
 //       cfg_avg_alpha_q15 > 32768 -> 32768, cfg_alpha_invalid
-//     first_active = (fft_size - num_active) >> 1 (hdl/docs/
+//     first_active = fft_size/2 - (num_active - 1)/2 (hdl/docs/
 //     wire_level_layouts.md). cfg_avg_enable is read live between
 //     symbols.
 //
@@ -111,7 +111,9 @@ module channel_estimator (
     wire        num_active_invalid_now = have_num && !(le_max && cred_ok);
     wire [15:0] num_active_now = (have_num && !num_active_invalid_now) ?
                                  cfg_num_active_carriers : noc_max_now;
-    wire [16:0] first_now = (fft_now - {1'b0, num_active_now}) >> 1;
+    // A/322 Section 8.3: carrier 0 is (NoC - 1)/2 bins below DC (bin
+    // fft/2 of the DC-centred FFT output).
+    wire [16:0] first_now = (fft_now >> 1) - (({1'b0, num_active_now} - 17'd1) >> 1);
 
     reg [15:0] num_active;
     reg [15:0] first_active;

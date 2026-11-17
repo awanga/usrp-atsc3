@@ -25,7 +25,7 @@
 //               absolute carrier `shift` = Cred_coeff * Cunit / 2, so the
 //               pointer skips entries below `shift` while the bins before
 //               the active window go by (one entry per bin, at most six, and
-//               first_active is at least 639) and then matches
+//               first_active is at least 640) and then matches
 //               entry == rel + shift.
 //               additional set (Tables D.1.4 / D.1.5): up to three
 //               relative indices per {FFT size, pattern, Cred_coeff},
@@ -63,7 +63,7 @@
 //       cfg_num_active_carriers not NoCmax - Cred_coeff * Cunit with
 //         Cred_coeff 0..4 (Cunit 96 / 192 / 384) -> NoCmax,
 //                                      cfg_num_active_invalid
-//     first_active = (fft_size - num_active) >> 1 (hdl/docs/
+//     first_active = fft_size/2 - (num_active - 1)/2 (hdl/docs/
 //     wire_level_layouts.md), last_active = first_active + num_active - 1.
 //
 // AXI4-S: TDATA=ci16 TVALID TREADY TLAST TUSER(symbol index) in;
@@ -159,7 +159,9 @@ module pilot_extractor #(
     wire [15:0] num_active_now = (have_num && !num_active_invalid_now) ?
                                  cfg_num_active_carriers : noc_max_now;
     wire [2:0]  cred_now       = (have_num && !num_active_invalid_now) ? cred_match : 3'd0;
-    wire [16:0] first_now_wide = (fft_now - {1'b0, num_active_now}) >> 1;
+    // A/322 Section 8.3: carrier 0 is (NoC - 1)/2 bins below DC (bin
+    // fft/2 of the DC-centred FFT output).
+    wire [16:0] first_now_wide = (fft_now >> 1) - (({1'b0, num_active_now} - 17'd1) >> 1);
     wire [16:0] last_now_wide  = first_now_wide + {1'b0, num_active_now} - 17'd1;
 
     // Absolute carrier of relative carrier 0: Cred_coeff * Cunit / 2

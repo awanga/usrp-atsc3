@@ -34,7 +34,7 @@
 // Bounds: prove is k-induction at depth 4 (smtbmc yices), closed by the
 // invariants. Whole symbols (the framing check) are past any BMC depth,
 // and so is a first pilot: the first active carrier of every legal
-// configuration is at least 639. The cover task therefore starts from an
+// configuration is at least 640. The cover task therefore starts from an
 // arbitrary state that satisfies the invariants (assumed there, proved in
 // the prove task) and reaches a record of each type within a few steps.
 // test_pilot_extractor.py runs whole symbols at all sizes, patterns and
@@ -200,7 +200,7 @@ module pilot_extractor_formal (
         endcase
     end
 
-    wire [16:0] c_first = (c_fft - c_num) / 2;
+    wire [16:0] c_first = c_fft / 2 - (c_num - 17'd1) / 2;  // A/322 8.3
     wire [16:0] c_last  = c_first + c_num - 17'd1;
     wire [16:0] c_shift = {14'd0, c_cred_eff} * {8'd0, c_unit[8:1]};
 
@@ -373,7 +373,7 @@ module pilot_extractor_formal (
         // ghost configuration is a legal one
         inv_ok = inv_ok && (g_fft == 17'd8192 || g_fft == 17'd16384 || g_fft == 17'd32768);
         inv_ok = inv_ok && g_lut_ok;
-        inv_ok = inv_ok && (g_last < g_fft && g_first <= g_last && g_first >= 17'd639);
+        inv_ok = inv_ok && (g_last < g_fft && g_first <= g_last && g_first >= 17'd640);
         inv_ok = inv_ok && (g_num == g_last - g_first + 17'd1);
         inv_ok = inv_ok && ((g_dx == 8'd3 || g_dx == 8'd4 || g_dx == 8'd6 || g_dx == 8'd8 ||
                              g_dx == 8'd12 || g_dx == 8'd16 || g_dx == 8'd24 || g_dx == 8'd32) &&

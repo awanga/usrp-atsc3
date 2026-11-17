@@ -215,13 +215,34 @@ MUTANTS = [
         replace="(cfg_guard_interval <= 4'd11) ||",
         killers=["sim:cp_removal", "formal:cp_removal"],
     ),
+    dict(
+        name="pe_first_carrier_old_formula",
+        file="ofdm/pilot_extractor.v",
+        find="wire [16:0] first_now_wide = (fft_now >> 1) - (({1'b0, num_active_now} - 17'd1) >> 1);",
+        replace="wire [16:0] first_now_wide = (fft_now - {1'b0, num_active_now}) >> 1;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="ce_first_carrier_old_formula",
+        file="channel/channel_estimator.v",
+        find="wire [16:0] first_now = (fft_now >> 1) - (({1'b0, num_active_now} - 17'd1) >> 1);",
+        replace="wire [16:0] first_now = (fft_now - {1'b0, num_active_now}) >> 1;",
+        killers=["sim:channel_estimator"],
+    ),
     # --- fft_engine --------------------------------------------------------
+    dict(
+        name="fft_unload_natural_order",
+        file="ofdm/fft_engine.v",
+        find="ram_addr_a <= sample_cnt ^ fft_size_r[ADDR_WIDTH:1];",
+        replace="ram_addr_a <= sample_cnt;",
+        killers=["sim:fft_engine"],
+    ),
     dict(
         name="fft_unload_skips_settle",
         file="ofdm/fft_engine.v",
-        find="                    ram_addr_a <= sample_cnt;\n"
+        find="                    ram_addr_a <= sample_cnt ^ fft_size_r[ADDR_WIDTH:1];\n"
         "                    state      <= ST_UNLOAD_WAIT;",
-        replace="                    ram_addr_a <= sample_cnt;\n"
+        replace="                    ram_addr_a <= sample_cnt ^ fft_size_r[ADDR_WIDTH:1];\n"
         "                    state      <= ST_UNLOAD_EMIT;",
         killers=["sim:fft_engine"],
     ),

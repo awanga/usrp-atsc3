@@ -46,7 +46,9 @@ def s16(v):
 
 
 def first_active(fft, noc):
-    return (fft - noc) // 2
+    # A/322 Section 8.3: carrier 0 is (NoC - 1)/2 bins below DC, which is
+    # bin fft/2 of the DC-centred FFT output.
+    return fft // 2 - (noc - 1) // 2
 
 
 def pack_pilot(carrier, ref, rx):
