@@ -14,8 +14,6 @@
 // Profile with perf: perf record -F 99 --call-graph=dwarf ./bench_signal_chain
 //                    perf report
 
-#include <gtest/gtest.h>
-
 #include "fec/ldpc_decoder.h"
 #include "ofdm/cell_deinterleaver.h"
 #include "ofdm/constellation_demapper.h"
@@ -27,6 +25,7 @@
 #include <chrono>
 #include <complex>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <iomanip>
 #include <memory>
 #include <random>
@@ -109,8 +108,8 @@ protected:
 // Benchmark 8K FFT configuration (most common)
 TEST_F(SignalChainBenchmark, Profile8K) {
     const size_t fft_size = 8192;
-    const size_t num_carriers = 6913;              // Active data carriers
-    const size_t bits_per_symbol = 6;              // 64-QAM
+    const size_t num_carriers = 6913;  // Active data carriers
+    const size_t bits_per_symbol = 6;  // 64-QAM
     const size_t num_llr_bits = bits_per_symbol * num_carriers;
     const size_t ldpc_codeword = 64800;
     const size_t iterations = 100;
@@ -139,6 +138,7 @@ TEST_F(SignalChainBenchmark, Profile8K) {
     ofdm::FftConfig fft_cfg;
     fft_cfg.size = ofdm::FftSize::k8K;
     fft_cfg.use_patient_plan = false;
+    fft_cfg.dc_centered = true;
     auto fft_engine = ofdm::FftEngine::create(fft_cfg);
 
     ofdm::DemapperConfig demap_cfg;
@@ -202,8 +202,8 @@ TEST_F(SignalChainBenchmark, Profile8K) {
         std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count();
 
     // Calculate percentages
-    uint64_t total_cycles = fft_cycles + demap_cycles + cell_deint_cycles +
-                            freq_deint_cycles + ldpc_cycles;
+    uint64_t total_cycles =
+        fft_cycles + demap_cycles + cell_deint_cycles + freq_deint_cycles + ldpc_cycles;
 
     double cycles_to_us = total_us / total_cycles;
 
@@ -228,10 +228,9 @@ TEST_F(SignalChainBenchmark, Profile8K) {
     printf("\nThroughput: %.2f symbols/sec, %.2f Mbps\n", symbols_per_sec, bits_per_sec / 1e6);
 
     // Identify bottleneck
-    auto max_it = std::max_element(timings.begin(), timings.end(),
-                                    [](const BlockTiming& a, const BlockTiming& b) {
-                                        return a.percent < b.percent;
-                                    });
+    auto max_it = std::max_element(
+        timings.begin(), timings.end(),
+        [](const BlockTiming& a, const BlockTiming& b) { return a.percent < b.percent; });
     printf("\n*** BOTTLENECK: %s (%.1f%% of total time) ***\n", max_it->name, max_it->percent);
 }
 
@@ -264,6 +263,7 @@ TEST_F(SignalChainBenchmark, Profile16K) {
     // Initialize blocks
     ofdm::FftConfig fft_cfg;
     fft_cfg.size = ofdm::FftSize::k16K;
+    fft_cfg.dc_centered = true;
     auto fft_engine = ofdm::FftEngine::create(fft_cfg);
 
     ofdm::DemapperConfig demap_cfg;
@@ -288,10 +288,10 @@ TEST_F(SignalChainBenchmark, Profile16K) {
     }
 
     uint64_t total_cycles = fft_cycles + demap_cycles;
-    printf("FFT:     %10.1f%% (%zu cycles/iter)\n",
-           100.0 * fft_cycles / total_cycles, fft_cycles / iterations);
-    printf("Demap:   %10.1f%% (%zu cycles/iter)\n",
-           100.0 * demap_cycles / total_cycles, demap_cycles / iterations);
+    printf("FFT:     %10.1f%% (%zu cycles/iter)\n", 100.0 * fft_cycles / total_cycles,
+           fft_cycles / iterations);
+    printf("Demap:   %10.1f%% (%zu cycles/iter)\n", 100.0 * demap_cycles / total_cycles,
+           demap_cycles / iterations);
 }
 
 // FFT-focused benchmark
@@ -302,11 +302,9 @@ TEST_F(SignalChainBenchmark, FftBenchmark) {
     const size_t iterations = 500;
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
-    std::vector<std::pair<ofdm::FftSize, const char*>> sizes = {
-        {ofdm::FftSize::k8K, "8K"},
-        {ofdm::FftSize::k16K, "16K"},
-        {ofdm::FftSize::k32K, "32K"}
-    };
+    std::vector<std::pair<ofdm::FftSize, const char*>> sizes = {{ofdm::FftSize::k8K, "8K"},
+                                                                {ofdm::FftSize::k16K, "16K"},
+                                                                {ofdm::FftSize::k32K, "32K"}};
 
     printf("\n%-10s %12s %14s %12s\n", "FFT Size", "Time (us)", "Cycles/sample", "Throughput");
     printf("%-10s %12s %14s %12s\n", "--------", "---------", "-------------", "----------");

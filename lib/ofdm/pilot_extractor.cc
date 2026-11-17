@@ -264,7 +264,8 @@ void PilotExtractor::compute_pattern_params() {
     params_.reduced_carriers = (fft.noc_max - config_.num_active_carriers) / fft.c_unit;
 
     if (config_.first_active_carrier == 0) {
-        config_.first_active_carrier = (config_.fft_size - config_.num_active_carriers) / 2;
+        config_.first_active_carrier =
+            config::first_carrier_bin(config_.fft_size, config_.num_active_carriers);
     }
     params_.first_active = config_.first_active_carrier;
     params_.last_active = params_.first_active + config_.num_active_carriers - 1;

@@ -28,7 +28,7 @@ constexpr size_t kActiveCarriers32K = 27649;
 
 // Compute first active subcarrier (center FFT around DC)
 size_t compute_first_active(size_t fft_size, size_t num_active) {
-    return (fft_size - num_active) / 2;
+    return config::first_carrier_bin(fft_size, num_active);
 }
 
 // Get active carrier count for FFT size

@@ -116,18 +116,23 @@ TEST(Atsc3ConfigTest, GetActiveCarriers) {
     EXPECT_EQ(config.get_active_carriers(), 27649u);
 }
 
-// Test get_first_active_carrier helper (carriers are centered)
+// A/322 Section 8.3: carrier k is k - (NoC - 1)/2 spacings from the centre
+// (bin N/2 in DC-centred order), so carrier 0 is at N/2 - (NoC - 1)/2.
+// (This test used to expect (N - NoC)/2, one bin low.)
 TEST(Atsc3ConfigTest, GetFirstActiveCarrier) {
     Atsc3Config config;
 
     config.fft_size = FftSize::FFT_8K;
-    EXPECT_EQ(config.get_first_active_carrier(), (8192 - 6913) / 2);
+    EXPECT_EQ(config.get_first_active_carrier(), 640u);
 
     config.fft_size = FftSize::FFT_16K;
-    EXPECT_EQ(config.get_first_active_carrier(), (16384 - 13825) / 2);
+    EXPECT_EQ(config.get_first_active_carrier(), 1280u);
 
     config.fft_size = FftSize::FFT_32K;
-    EXPECT_EQ(config.get_first_active_carrier(), (32768 - 27649) / 2);
+    EXPECT_EQ(config.get_first_active_carrier(), 2560u);
+
+    EXPECT_EQ(first_carrier_bin(8192, 6529), 832u);  // Cred 4
+    EXPECT_EQ(first_carrier_bin(32768, 26113), 3328u);
 }
 
 // Test get_codeword_bits helper

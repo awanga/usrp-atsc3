@@ -21,7 +21,8 @@
 //   <re> <im>                   -- exactly fft_size lines
 //
 // Output (stdout):
-//   <re> <im>                   -- exactly fft_size lines, in order
+//   <re> <im>                   -- exactly fft_size lines, DC-centred bin
+//                                  order (FftConfig::dc_centered)
 //
 // Usage: fft_engine_gen < stimulus.txt > results.txt
 
@@ -69,6 +70,7 @@ int main() {
             return 1;
     }
     config.direction = FftDirection::kForward;
+    config.dc_centered = true;  // fft_engine.v feeds the carrier-indexed blocks
 
     auto fft = FftEngine::create(config);
     if (!fft) {

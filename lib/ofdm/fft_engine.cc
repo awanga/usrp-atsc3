@@ -46,6 +46,51 @@ bool is_valid_fft_size(size_t n) {
     return rev;
 }
 
+// Swaps the two halves of the backend's output: natural order (DC at bin
+// 0) becomes DC-centred order (DC at bin N/2). In place, no buffer.
+class DcCenteredEngine : public FftEngine {
+public:
+    explicit DcCenteredEngine(std::unique_ptr<FftEngine> inner) : inner_(std::move(inner)) {}
+
+    void process(const sample_t* in, sample_t* out) override {
+        inner_->process(in, out);
+        const size_t half = inner_->get_size() / 2;
+        std::swap_ranges(out, out + half, out + half);
+    }
+
+#ifdef ATSC3_FIXED_POINT
+    void process(const std::complex<float>* in, std::complex<float>* out) override {
+        inner_->process(in, out);
+        const size_t half = inner_->get_size() / 2;
+        std::swap_ranges(out, out + half, out + half);
+    }
+#endif
+
+    size_t get_size() const override {
+        return inner_->get_size();
+    }
+    FftDirection get_direction() const override {
+        return inner_->get_direction();
+    }
+    bool is_fftw_backend() const override {
+        return inner_->is_fftw_backend();
+    }
+
+private:
+    std::unique_ptr<FftEngine> inner_;
+};
+
+std::unique_ptr<FftEngine> with_output_order(std::unique_ptr<FftEngine> engine,
+                                             const FftConfig& config) {
+    if (!config.dc_centered) {
+        return engine;
+    }
+    if (config.direction != FftDirection::kForward) {
+        throw std::invalid_argument("FftEngine: dc_centered applies to forward transforms only");
+    }
+    return std::make_unique<DcCenteredEngine>(std::move(engine));
+}
+
 }  // namespace
 
 #ifndef ATSC3_FIXED_POINT
@@ -226,7 +271,7 @@ private:
 };
 
 std::unique_ptr<FftEngine> FftEngine::create(const FftConfig& config) {
-    return std::make_unique<FftwEngine>(config);
+    return with_output_order(std::make_unique<FftwEngine>(config), config);
 }
 
 bool load_fftw_wisdom(const std::string& path) {
@@ -246,7 +291,7 @@ bool save_fftw_wisdom(const std::string& path) {
 #else  // !ATSC3_USE_FFTW
 
 std::unique_ptr<FftEngine> FftEngine::create(const FftConfig& config) {
-    return std::make_unique<Radix2FloatEngine>(config);
+    return with_output_order(std::make_unique<Radix2FloatEngine>(config), config);
 }
 
 bool load_fftw_wisdom(const std::string& /* path */) {
@@ -453,7 +498,7 @@ private:
 };
 
 std::unique_ptr<FftEngine> FftEngine::create(const FftConfig& config) {
-    return std::make_unique<FixedPointFftEngine>(config);
+    return with_output_order(std::make_unique<FixedPointFftEngine>(config), config);
 }
 
 bool load_fftw_wisdom(const std::string& /* path */) {

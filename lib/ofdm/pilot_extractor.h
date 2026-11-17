@@ -91,8 +91,9 @@ struct PilotExtractorConfig {
     // Cred_coeff * Cunit (Table 7.1), so it must be one of the five legal
     // values for the FFT size (8K: 6913 down to 6529 in steps of 96, 16K:
     // 13825 in steps of 192, 32K: 27649 in steps of 384); 0 selects NoCmax.
-    // The window is centered in the FFT unless first_active_carrier is
-    // set (0 = centered).
+    // The window is centred on DC in a DC-centred FFT output
+    // (config::first_carrier_bin) unless first_active_carrier is set
+    // (0 = centred).
     size_t first_active_carrier = 0;
     size_t num_active_carriers = 0;
 };

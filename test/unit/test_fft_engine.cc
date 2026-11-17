@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 namespace atsc3 {
@@ -491,6 +492,87 @@ TEST(FftEngineTest, FixedPointBasicOperation) {
         << "FFT of impulse should have uniform magnitude";
 }
 #endif
+
+// DC-centred order: out[i] = X((i + N/2) mod N). A tone at +f bins lands
+// at N/2 + f, one at -f at N/2 - f (natural order: f and N - f).
+std::vector<sample_t> tone_symbol(size_t n, double bins) {
+    std::vector<sample_t> v(n);
+    for (size_t t = 0; t < n; ++t) {
+        double ph = 2.0 * kPi * bins * static_cast<double>(t) / static_cast<double>(n);
+#ifdef ATSC3_FIXED_POINT
+        v[t] = sample_t(float_to_q15(0.5f * static_cast<float>(std::cos(ph))),
+                        float_to_q15(0.5f * static_cast<float>(std::sin(ph))));
+#else
+        v[t] = sample_t(0.5f * static_cast<float>(std::cos(ph)),
+                        0.5f * static_cast<float>(std::sin(ph)));
+#endif
+    }
+    return v;
+}
+
+size_t peak_of(const std::vector<sample_t>& v) {
+    size_t best = 0;
+    double best_p = -1.0;
+    for (size_t i = 0; i < v.size(); ++i) {
+        double p = std::norm(std::complex<double>(v[i].real(), v[i].imag()));
+        if (p > best_p) {
+            best_p = p;
+            best = i;
+        }
+    }
+    return best;
+}
+
+TEST(FftEngineTest, DcCenteredOrder) {
+    const size_t n = 8192;
+    for (int f : {5, -7, 0, 4095, -4096}) {
+        FftConfig natural;
+        natural.size = FftSize::k8K;
+        FftConfig centred = natural;
+        centred.dc_centered = true;
+        std::vector<sample_t> in = tone_symbol(n, f), a(n), b(n);
+        FftEngine::create(natural)->process(in.data(), a.data());
+        FftEngine::create(centred)->process(in.data(), b.data());
+        EXPECT_EQ(peak_of(a), static_cast<size_t>((f + static_cast<int>(n)) % static_cast<int>(n)))
+            << f;
+        EXPECT_EQ(peak_of(b), static_cast<size_t>(static_cast<int>(n / 2) + f)) << f;
+        for (size_t i = 0; i < n; ++i) {
+            ASSERT_EQ(b[i], a[(i + n / 2) % n]) << f << " " << i;
+        }
+    }
+}
+
+TEST(FftEngineTest, DcCenteredRejectsInverse) {
+    FftConfig c;
+    c.direction = FftDirection::kInverse;
+    c.dc_centered = true;
+    EXPECT_THROW(FftEngine::create(c), std::invalid_argument);
+}
+
+// A/322 Section 8.3: carrier k of a symbol with NoC carriers is at
+// k - (NoC - 1)/2 carrier spacings from the centre, so in DC-centred
+// order it is at bin N/2 + k - (NoC - 1)/2: 8K NoCmax carrier 0 at 640,
+// last carrier at 7552; 8K Cred 4 (NoC 6529) carrier 0 at 832.
+TEST(FftEngineTest, OfdmCarrierLandsOnSpecBin) {
+    struct Case {
+        FftSize size;
+        size_t n, noc, k, bin;
+    };
+    const Case cases[] = {{FftSize::k8K, 8192, 6913, 0, 640},
+                          {FftSize::k8K, 8192, 6913, 6912, 7552},
+                          {FftSize::k8K, 8192, 6529, 0, 832},
+                          {FftSize::k16K, 16384, 13825, 0, 1280},
+                          {FftSize::k32K, 32768, 27649, 100, 2660}};
+    for (const Case& c : cases) {
+        double k_prime = static_cast<double>(c.k) - (static_cast<double>(c.noc) - 1.0) / 2.0;
+        std::vector<sample_t> in = tone_symbol(c.n, k_prime), out(c.n);
+        FftConfig cfg;
+        cfg.size = c.size;
+        cfg.dc_centered = true;
+        FftEngine::create(cfg)->process(in.data(), out.data());
+        EXPECT_EQ(peak_of(out), c.bin) << c.n << " " << c.noc << " " << c.k;
+    }
+}
 
 }  // namespace
 }  // namespace ofdm

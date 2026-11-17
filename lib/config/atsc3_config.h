@@ -137,6 +137,14 @@ inline bool guard_interval_allowed(GuardInterval gi, size_t fft_size) {
     }
 }
 
+// FFT bin of OFDM carrier 0 in DC-centred order (FftConfig::dc_centered):
+// A/322 Section 8.3 puts carrier k at k - (NoC - 1)/2 carrier spacings
+// from the centre frequency, which is bin fft_size/2, so carrier k is at
+// bin first_carrier_bin(fft_size, noc) + k. NoC is odd.
+inline size_t first_carrier_bin(size_t fft_size, size_t noc) {
+    return fft_size / 2 - (noc - 1) / 2;
+}
+
 // Scattered pilot pattern: the A/322 L1D_scattered_pilot_pattern code, named
 // SP<Dx>_<Dy> after the pilot spacing in carriers and symbols (Table 7.3).
 enum class PilotPattern : uint8_t {
@@ -274,7 +282,7 @@ struct Atsc3Config {
 
     // First active carrier (centered in FFT)
     size_t get_first_active_carrier() const {
-        return (get_fft_samples() - get_active_carriers()) / 2;
+        return first_carrier_bin(get_fft_samples(), get_active_carriers());
     }
 
     // LDPC codeword length in bits

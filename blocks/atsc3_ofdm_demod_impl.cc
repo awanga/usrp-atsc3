@@ -64,6 +64,9 @@ void ofdm_demod_impl::reconfigure() {
         fft_config.size = ::atsc3::ofdm::FftSize::k8K;
     }
     fft_config.direction = ::atsc3::ofdm::FftDirection::kForward;
+    // Carriers in increasing k order, as the pilot extractor, channel
+    // estimator and equalizer index them (A/322 Section 8.3).
+    fft_config.dc_centered = true;
     fft_engine_ = ::atsc3::ofdm::FftEngine::create(fft_config);
 
     // Allocate buffers

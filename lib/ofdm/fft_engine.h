@@ -57,6 +57,14 @@ struct FftConfig {
 
     // Normalize output by 1/N for inverse FFT
     bool normalize_inverse = true;
+
+    // Forward only: emit bins in DC-centred order, out[i] = X((i + N/2)
+    // mod N), so frequency rises monotonically through the output. OFDM
+    // carrier k of a symbol with NoC carriers is then at bin
+    // config::first_carrier_bin(N, NoC) + k (A/322 Section 8.3: carrier k
+    // sits at k - (NoC - 1)/2 carrier spacings from the centre). False
+    // keeps the natural order (DC at bin 0), as the bootstrap decoder uses.
+    bool dc_centered = false;
 };
 
 // FFT Engine interface
@@ -74,7 +82,9 @@ class FftEngine {
 public:
     virtual ~FftEngine() = default;
 
-    // Factory method - creates appropriate implementation based on build config
+    // Factory method - creates appropriate implementation based on build
+    // config. Throws std::invalid_argument for dc_centered with an inverse
+    // transform.
     static std::unique_ptr<FftEngine> create(const FftConfig& config);
 
     // Process one FFT/IFFT
