@@ -236,6 +236,63 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   Section 10.
 - **Next:** user decides the order of the spec gaps vs. 9.10.
 
+## 2026-11-16 — Golden-model spec gaps closed (part 1)
+
+- **Decision:** the user approved the v1.0.1 merge (main 9b99603, tag
+  v1.0.1, develop 9729ee4) and said to fix the spec gaps before 9.10.
+  Each gap is replaced by code written from A/321/A/322 text, with a
+  test-side transmitter written separately from the same text and
+  mutants run against every new test.
+- **Status (working tree of `feature/hdl-port-foundations`):**
+  BCH (GF(2^16)/GF(2^14), Table 6.3 lengths, outer CRC); bit
+  de-interleaver (parity / group-wise / block Type A-B, Annex B tables
+  generated from the PDF); frequency de-interleaver (7.3, per-symbol
+  LFSR and offsets); CTI and intra-subframe HTI (7.1.4/7.1.5, CDL
+  rejected); BBP descrambler + header (5.2, Figure 5.6 read from the
+  rendered page); L1-Basic/L1-Detail FEC (6.5, all 7 modes, segmentation)
+  and field parsing (Tables 9.2/9.9, L1D_version 2 mimo_mixed loop);
+  A/321 bootstrap: signal definitions (PN/ZC/Gray/fields, A/322 Table
+  9.1 and Annex H), CAB-structure detector (C/A lag 2048 x B/A lag 504),
+  frequency-domain decoder (cyclic shifts, integer CFO, termination),
+  2048-point FFT size. Removed: DVB-T2 `l1_decoder`, model-shaped
+  `test_interleaver_compliance`, `test_l1_compliance`,
+  `test_bootstrap_variants`. Capture fixtures regenerated at 6.144 MS/s
+  from a separate numpy A/321 transmitter. ctest unit+integration:
+  float 751/751, fxp 761/761; cppcheck (CI flags) clean.
+- **Findings on the way:** the BCA symbols also repeat B at lag 504 (C
+  follows B), so the detector holds off for the rest of the bootstrap;
+  6 MHz ATSC 3.0 runs post-bootstrap at bsr 2 = 6.912 MS/s, not
+  6.144; the integration tests' SigMF parser always fell back to 6.25
+  MS/s (matched the colon inside the key). PN/subcarrier mapping
+  cross-checked by reading drmpeg/gr-atsc3 (GPL; compared, not copied).
+- **Next:** see TASKS.md (FrameSync, resampling, receive-chain wiring).
+- **Moved from TASKS.md Open (frame_sync RTL, now stale):** one
+  correlation is fft_size + ~170 cycles and a chunk runs up to
+  search_window+1 of them with the input held off (~0.5M cycles at
+  8K/64); the bench measured +8,333 source-stall cycles per symbol.
+  frame_sync_fsm formal was bounded (BMC depth 30, cover depth 60) with
+  blends/products cut; the correlator arithmetic was covered by bit-exact
+  simulation and mutants only. Old bootstrap detector RTL: ~150
+  cycles/sample.
+
+## 2026-11-17 — Spec gaps committed; FrameSync and guard intervals
+
+- **Decision (user):** one commit per gap, push afterwards; FrameSync
+  reworked from bootstraps (frame_correlator/frame_sync RTL retired);
+  compliance doc and README rewritten, diff shown before commit.
+- **Status:** commits 45d18f4..fd027d5 on `feature/hdl-port-foundations`.
+  Each intermediate commit was built in a clean worktree (float and fxp,
+  `-DCMAKE_PREFIX_PATH=/opt/uhd`; without it UHD_LIBRARIES is NOTFOUND)
+  and passed `ctest -L unit`. FrameSync: accepts validated bootstraps,
+  window from min_time_to_next (A/321 6.1.1.1) or the time-aligned
+  L1B_frame_length (A/322 9.2), holdover only with a known frame
+  length; 26/26 mutants killed; the replay test tracks all capture
+  bootstraps. Found while writing the compliance doc: CP removal scaled
+  the A/322 Table 8.9 guard intervals by FFT size (2x/4x at 16K/32K) and
+  lacked GI12_4864; now Table 8.9/9.13 exact, 12/12 mutants killed.
+  Tip: float 757/757, fxp 760/760 unit+integration.
+- **Next:** see TASKS.md.
+
 ## Archive: the plan as it stood on 2026-10-01
 
 The full phase-by-phase plan and implementation notes, moved here
