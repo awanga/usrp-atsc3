@@ -142,6 +142,10 @@ async def run(dut, mod, rate, noise, clip, cells, rnd, stalls=False):
         cells = cells + boundary_cells(rnd, mod, k_norm)
     if mod == 6:
         cells = cells + nuc_qpsk_sensitive(k_scale)
+    if mod in (0, 6):
+        # Full-scale corners: QPSK's (-Im) + j(-Re) must saturate -32768.
+        f = (-32768, 32767, 0)
+        cells = cells + [(re, im) for re in f for im in f]
     (bps, scale, norm), expected = golden(mod, rate, noise, clip, cells)
     assert bps == BPS[mod]
     await reset_dut(dut, mod, rate, scale, norm, clip)

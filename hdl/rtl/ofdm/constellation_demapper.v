@@ -15,13 +15,14 @@
 // cw = 2 * norm_const, counted by comparing against k * cw; cell c's bit is
 // bit (bpa - 1 - b) of gray(half_side + c); a boundary k * cw lies between
 // cells k-1 and k when that bit differs. LLR = (dist * scale + 2^30) >> 31,
-// clamped to +/-clip.
+// clamped to +/-clip. QPSK (0) slices (-Im) + j(-Re), negation saturated,
+// so its labels follow A/322 Table C.1.1 (y0 from Im, y1 from Re).
 //
 // Non-uniform (6..11) use the model's max-log LLR,
 //   LLR = ((min d^2 over points with the bit set) -
 //          (min d^2 over points with it clear)) * scale, rounded >> 46,
 // with d^2 the squared distance in Q1.15 units:
-//   NUC_QPSK (6): the four uniform QPSK points, no ROM.
+//   NUC_QPSK (6): the four A/322 Table C.1.1 points, no ROM.
 //   NUC_16/64/256 (7..9): 2D NUC, the first-quadrant points from nuc2d.hex
 //     (generated from the model by hdl/sim/golden/demapper_rom_gen) with the
 //     model's quadrant expansion; all points scanned.
@@ -99,6 +100,11 @@ module constellation_demapper #(
 
     localparam [15:0] QPSK_Q15 = 16'd23170;  // float_to_q15(1/sqrt(2)): the model's QPSK point
 
+    function [15:0] sat_neg;
+        input [15:0] v;
+        sat_neg = (v == 16'h8000) ? 16'h7FFF : 16'd0 - v;
+    endfunction
+
     reg [4:0] state;
 
     //--------------------------------------------------------------------
@@ -117,6 +123,7 @@ module constellation_demapper #(
     wire is_uni      = (mod_r <= 4'd5);
     wire is_2d       = (mod_r >= 4'd6) && (mod_r <= 4'd9);  // NUC_QPSK uses the 2D engine
     wire is_qpsk_nuc = (mod_r == 4'd6);
+    wire is_qpsk_uni = (mod_r == 4'd0);
     wire is_4096     = (mod_r == 4'd11);
 
     reg [3:0] bps;  // bits per symbol
@@ -229,8 +236,9 @@ module constellation_demapper #(
     wire signed [15:0] rom_re = rom2d_q[31:16];
     wire signed [15:0] rom_im = rom2d_q[15:0];
     wire signed [15:0] qp     = $signed(QPSK_Q15);
-    wire signed [15:0] pt_re  = is_qpsk_nuc ? (idx[1] ? qp : -qp) : (quad[0] ? -rom_re : rom_re);
-    wire signed [15:0] pt_im  = is_qpsk_nuc ? (idx[0] ? qp : -qp) : (quad[1] ? -rom_im : rom_im);
+    // NUC_QPSK, Table C.1.1: label (y0, y1) = idx[1:0], Im < 0 for y0, Re < 0 for y1.
+    wire signed [15:0] pt_re  = is_qpsk_nuc ? (idx[0] ? -qp : qp) : (quad[0] ? -rom_re : rom_re);
+    wire signed [15:0] pt_im  = is_qpsk_nuc ? (idx[1] ? -qp : qp) : (quad[1] ? -rom_im : rom_im);
     wire signed [16:0] d_re   = {x_re[15], x_re} - {pt_re[15], pt_re};
     wire signed [16:0] d_im   = {x_im[15], x_im} - {pt_im[15], pt_im};
     wire        [33:0] dist2d = d_re * d_re + d_im * d_im;
@@ -293,8 +301,13 @@ module constellation_demapper #(
             case (state)
                 S_IDLE: begin
                     if (s_axis_tvalid) begin
-                        x_re   <= s_axis_tdata[31:16];
-                        x_im   <= s_axis_tdata[15:0];
+                        // Uniform QPSK slices (-Im) + j(-Re) (the model's
+                        // demap_uniform_fixed), putting the A/322 Table C.1.1
+                        // labels on the Gray grid; negation saturates.
+                        x_re   <= is_qpsk_uni ? sat_neg(s_axis_tdata[15:0])
+                                              : s_axis_tdata[31:16];
+                        x_im   <= is_qpsk_uni ? sat_neg(s_axis_tdata[31:16])
+                                              : s_axis_tdata[15:0];
                         last_r <= s_axis_tlast;
                         axis   <= 1'b0;
                         state  <= is_uni ? S_U_A : is_2d ? S_N2_I : S_N1_I;

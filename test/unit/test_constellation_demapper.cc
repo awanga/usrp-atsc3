@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <gtest/gtest.h>
 #include <limits>
 #include <random>
@@ -99,6 +100,70 @@ TEST(ConstellationDemapperTest, QPSKConstellationPoints) {
         EXPECT_NEAR(power, 1.0f, 0.01f);
     }
 }
+
+// A/322 Section 6.3.4.1 / Table C.1.1, the same for every code rate:
+// (y0, y1) = 00 -> (1 + j1)/sqrt2, 01 -> (-1 + j1)/sqrt2,
+// 10 -> (+1 - j1)/sqrt2, 11 -> (-1 - j1)/sqrt2. Label k = 2 y0 + y1 (y0 the
+// MSB, Section 6.3.4.2); a positive LLR means bit 0.
+TEST(ConstellationDemapperTest, QPSKFollowsTableC11) {
+    const double r = 1.0 / std::sqrt(2.0);
+    const std::complex<double> table[4] = {{r, r}, {-r, r}, {r, -r}, {-r, -r}};
+    for (auto mod : {config::Modulation::QPSK, config::Modulation::NUC_QPSK}) {
+        DemapperConfig config;
+        config.modulation = mod;
+        config.code_rate = config::CodeRate::RATE_6_15;
+        config.noise_variance = 0.1f;
+        ConstellationDemapper demapper(config);
+        const auto& points = demapper.constellation_points();
+        ASSERT_EQ(points.size(), 4u);
+        std::vector<sample_t> cells;
+        for (unsigned k = 0; k < 4; ++k) {
+            const std::complex<double> z = table[k] * static_cast<double>(demapper.table_scale());
+#ifdef ATSC3_FIXED_POINT
+            const sample_t cell(float_to_q15(static_cast<float>(z.real())),
+                                float_to_q15(static_cast<float>(z.imag())));
+            EXPECT_NEAR(q15_to_float(points[k].real()), z.real(), 1e-4) << "label " << k;
+            EXPECT_NEAR(q15_to_float(points[k].imag()), z.imag(), 1e-4) << "label " << k;
+#else
+            const sample_t cell(static_cast<float>(z.real()), static_cast<float>(z.imag()));
+            EXPECT_NEAR(points[k].real(), z.real(), 1e-6) << "label " << k;
+            EXPECT_NEAR(points[k].imag(), z.imag(), 1e-6) << "label " << k;
+#endif
+            cells.push_back(cell);
+            int8_t llr[2];
+            demapper.demap_symbol(cell, llr);
+            for (unsigned b = 0; b < 2; ++b) {
+                const bool one = (k >> (1 - b)) & 1;
+                EXPECT_EQ(llr[b] < 0, one) << "mod " << static_cast<int>(mod) << " label " << k
+                                           << " bit " << b << " llr " << int(llr[b]);
+                EXPECT_NE(llr[b], 0);
+            }
+        }
+        std::vector<int8_t> batch(8);
+        ASSERT_EQ(demapper.demap(cells.data(), cells.size(), batch.data()), 8u);
+        for (unsigned k = 0; k < 4; ++k) {
+            for (unsigned b = 0; b < 2; ++b) {
+                EXPECT_EQ(batch[2 * k + b] < 0, bool((k >> (1 - b)) & 1))
+                    << "batch, mod " << static_cast<int>(mod) << " label " << k << " bit " << b;
+            }
+        }
+    }
+}
+
+#ifdef ATSC3_FIXED_POINT
+// Full-scale negative input: the label is 11 (Table C.1.1), and negating
+// -32768 must saturate rather than wrap to -32768.
+TEST(ConstellationDemapperTest, QPSKFullScaleNegativeSaturates) {
+    DemapperConfig config;
+    config.modulation = config::Modulation::QPSK;
+    ConstellationDemapper demapper(config);
+    int8_t llr[2];
+    demapper.demap_symbol(
+        sample_t(std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::min()), llr);
+    EXPECT_LT(llr[0], 0);
+    EXPECT_LT(llr[1], 0);
+}
+#endif
 
 TEST(ConstellationDemapperTest, QAM16ConstellationPoints) {
     DemapperConfig config;
@@ -690,6 +755,13 @@ TEST(ConstellationDemapperTest, FixedPointVsReferenceEquivalence) {
 
             double i_true = q15_to_float(symbol.real());
             double q_true = q15_to_float(symbol.imag());
+            if (mod == config::Modulation::QPSK) {
+                // A/322 Table C.1.1: y0 is 0 for Im > 0, y1 for Re > 0; the
+                // axis model below has bit 0 = 0 for a negative coordinate.
+                const double real_part = i_true;
+                i_true = -q_true;
+                q_true = -real_part;
+            }
             // LLRs are in the float build's units: noise_variance is per
             // unit average power, while the distances above are measured
             // on the headroom-shrunk grid, so scale them back up by the

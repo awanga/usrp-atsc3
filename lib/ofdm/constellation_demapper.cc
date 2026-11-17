@@ -272,10 +272,16 @@ std::vector<sample_t> build_uniform_qam(size_t bits_per_symbol, float norm, floa
     return points;
 }
 
+// A/322 Table C.1.1: (y0, y1) = 00 -> (1 + j), 01 -> (-1 + j), 10 -> (1 - j),
+// 11 -> (-1 - j), over sqrt(2): y0 is the sign of Im, y1 the sign of Re. The
+// uniform Gray grid has bit 0 on I and bit 1 on Q, both 0 when negative, so
+// label k of the grid maps to (-Im) + j(-Re) of the A/322 point and back.
 std::vector<sample_t> build_qpsk(float& scale_out) {
-    // Use build_uniform_qam for consistent Gray coding
-    // This gives: idx=0→(-,-), idx=1→(-,+), idx=2→(+,-), idx=3→(+,+)
-    return build_uniform_qam(2, kQamNorm4, scale_out);
+    std::vector<sample_t> points = build_uniform_qam(2, kQamNorm4, scale_out);
+    for (sample_t& p : points) {
+        p = sample_t(-p.imag(), -p.real());
+    }
+    return points;
 }
 
 // ============================================================================
@@ -304,12 +310,11 @@ std::vector<sample_t> build_qpsk(float& scale_out) {
 #ifndef ATSC3_FIXED_POINT
 // Fast QPSK demapping (2 bits) - optimized
 inline void demap_qpsk_fast(float i_coord, float q_coord, float scale, int8_t clip, int8_t* out) {
-    // QPSK: bit 0 from I, bit 1 from Q
-    // Gray coding: negative coord → bit=0 → positive LLR
-    // So LLR ∝ -coord
+    // Table C.1.1 (build_qpsk()): y0 = 0 for Im > 0, y1 = 0 for Re > 0;
+    // a positive LLR means bit 0.
     float fclip = static_cast<float>(clip);
-    out[0] = clamp_round(-i_coord * scale, fclip);
-    out[1] = clamp_round(-q_coord * scale, fclip);
+    out[0] = clamp_round(q_coord * scale, fclip);
+    out[1] = clamp_round(i_coord * scale, fclip);
 }
 
 // Fast 16-QAM demapping (4 bits) - optimized
@@ -750,6 +755,17 @@ int32_t ConstellationDemapper::axis_bit_distance(int16_t coord_q15, size_t bit_i
 void ConstellationDemapper::demap_uniform_fixed(sample_t symbol, int8_t* out) const {
     int16_t i_q15 = symbol.real();
     int16_t q_q15 = symbol.imag();
+    if (config_.modulation == config::Modulation::QPSK) {
+        // Rotate the A/322 QPSK labels onto the Gray grid (build_qpsk()):
+        // slice (-Im) + j(-Re), negation saturated.
+        auto neg = [](int16_t v) -> int16_t {
+            return v == std::numeric_limits<int16_t>::min() ? std::numeric_limits<int16_t>::max()
+                                                            : static_cast<int16_t>(-v);
+        };
+        const int16_t re = i_q15;
+        i_q15 = neg(q_q15);
+        q_q15 = neg(re);
+    }
     size_t bits_per_axis = bits_per_symbol_ / 2;
     int64_t clip = config_.llr_clip;
 

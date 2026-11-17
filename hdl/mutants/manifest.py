@@ -561,6 +561,27 @@ MUTANTS = [
     ),
     # --- constellation_demapper --------------------------------------------
     dict(
+        name="dm_qpsk_not_rotated",
+        file="ofdm/constellation_demapper.v",
+        find="wire is_qpsk_uni = (mod_r == 4'd0);",
+        replace="wire is_qpsk_uni = 1'b0;",
+        killers=["sim:constellation_demapper"],
+    ),
+    dict(
+        name="dm_qpsk_negation_wraps",
+        file="ofdm/constellation_demapper.v",
+        find="sat_neg = (v == 16'h8000) ? 16'h7FFF : 16'd0 - v;",
+        replace="sat_neg = 16'd0 - v;",
+        killers=["sim:constellation_demapper"],
+    ),
+    dict(
+        name="dm_nuc_qpsk_labels_swapped",
+        file="ofdm/constellation_demapper.v",
+        find="wire signed [15:0] pt_re  = is_qpsk_nuc ? (idx[0] ? -qp : qp)",
+        replace="wire signed [15:0] pt_re  = is_qpsk_nuc ? (idx[1] ? -qp : qp)",
+        killers=["sim:constellation_demapper"],
+    ),
+    dict(
         name="dm_top_cell_not_counted",
         file="ofdm/constellation_demapper.v",
         find="if (k == half) begin\n                        state <= S_U_B;",
