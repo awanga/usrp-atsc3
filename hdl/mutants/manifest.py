@@ -229,6 +229,41 @@ MUTANTS = [
         replace="wire [16:0] first_now = (fft_now - {1'b0, num_active_now}) >> 1;",
         killers=["sim:channel_estimator"],
     ),
+    dict(
+        name="pe_boost_table_entry",
+        file="ofdm/pilot_extractor.v",
+        find="7'd43 : inv_sp_now = 16'd17597;",
+        replace="7'd43 : inv_sp_now = 16'd21848;",
+        killers=["sim:pilot_extractor"],
+    ),
+    dict(
+        name="pe_cp_boost_like_sp",
+        file="ofdm/pilot_extractor.v",
+        find="wire [15:0] inv_amp    = (cp_hit && !is_sp) ? INV_A_CP : inv_sp_r;",
+        replace="wire [15:0] inv_amp    = 1'b0 ? INV_A_CP : inv_sp_r;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_additional_cp_boost_like_cp",
+        file="ofdm/pilot_extractor.v",
+        find="wire [15:0] inv_amp    = (cp_hit && !is_sp) ? INV_A_CP : inv_sp_r;",
+        replace="wire [15:0] inv_amp    = (is_cp && !is_sp) ? INV_A_CP : inv_sp_r;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="pe_reserved_boost_accepted",
+        file="ofdm/pilot_extractor.v",
+        find="wire       boost_valid_now = (cfg_sp_boost <= 3'd4);",
+        replace="wire       boost_valid_now = 1'b1;",
+        killers=["sim:pilot_extractor", "formal:pilot_extractor"],
+    ),
+    dict(
+        name="ce_ls_truncates",
+        file="channel/channel_estimator.v",
+        find="wire signed [31:0] r_re = (p_re + 32'sd16384) >>> 15;",
+        replace="wire signed [31:0] r_re = p_re >>> 15;",
+        killers=["sim:channel_estimator"],
+    ),
     # --- fft_engine --------------------------------------------------------
     dict(
         name="fft_unload_natural_order",
@@ -366,8 +401,8 @@ MUTANTS = [
     dict(
         name="pe_reference_sign_flipped",
         file="ofdm/pilot_extractor.v",
-        find="lfsr[0] ? Q15_MINUS_ONE : Q15_ONE",
-        replace="lfsr[0] ? Q15_ONE : Q15_MINUS_ONE",
+        find="lfsr[0] ? 16'd0 - inv_amp : inv_amp",
+        replace="lfsr[0] ? inv_amp : 16'd0 - inv_amp",
         killers=["sim:pilot_extractor"],
     ),
     # --- complex_divider ---------------------------------------------------
@@ -454,10 +489,10 @@ MUTANTS = [
     ),
     # --- channel_estimator -------------------------------------------------
     dict(
-        name="ce_divides_by_received",
+        name="ce_reference_from_received_field",
         file="channel/channel_estimator.v",
-        find="s_axis_tdata[`PILOT_SYMBOL_RECEIVED_RE_HI:`PILOT_SYMBOL_RECEIVED_RE_LO],",
-        replace="s_axis_tdata[`PILOT_SYMBOL_REFERENCE_RE_HI:`PILOT_SYMBOL_REFERENCE_RE_LO],",
+        find="wire signed [15:0] inv_x = s_axis_tdata[`PILOT_SYMBOL_REFERENCE_RE_HI:`PILOT_SYMBOL_REFERENCE_RE_LO];",
+        replace="wire signed [15:0] inv_x = s_axis_tdata[`PILOT_SYMBOL_RECEIVED_IM_HI:`PILOT_SYMBOL_RECEIVED_IM_LO];",
         killers=["sim:channel_estimator"],
     ),
     # --- equalizer ---------------------------------------------------------

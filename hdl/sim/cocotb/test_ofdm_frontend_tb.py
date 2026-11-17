@@ -283,6 +283,7 @@ async def run_chain(
         "pe_fft_size_invalid",
         "pe_pattern_invalid",
         "pe_num_active_invalid",
+        "pe_boost_invalid",
         "pe_framing_error",
     )
     raised = [f for f in flags if int(getattr(dut, f).value)]

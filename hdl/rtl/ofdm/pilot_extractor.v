@@ -31,10 +31,14 @@
 //               relative indices per {FFT size, pattern, Cred_coeff},
 //               looked up at reset from pilot_additional_cp_lut.v.
 //   edge:       rel == 0 or rel == NoC-1.
-// Reference value: +32767 for r_k = 0 and -32767 for r_k = 1 (+ 0j), r_k
-// from the 13-bit generator of Section 8.1.2 (G(x) = 1 + x^9 + x^10 +
-// x^12 + x^13), reloaded at every symbol and stepped once per active
-// carrier.
+// Reference value: the inverse of the transmitted pilot, 1 / (2 A (1/2 -
+// r_k)) = +-1/A (+ 0j), so the channel estimate is a multiply (H = Y x
+// reference). A is A_CP = 8.52 dB (Table 8.5) for common continual pilots
+// and A_SP (Table 9.16, by pattern and cfg_sp_boost) for scattered, edge
+// and additional continual pilots; 1/A is Q1.15, rounded, capped at
+// 32767 (lib/ofdm/pilot_extractor.cc). r_k comes from the 13-bit
+// generator of Section 8.1.2 (G(x) = 1 + x^9 + x^10 + x^12 + x^13),
+// reloaded at every symbol and stepped once per active carrier.
 //
 // Interface contract:
 //   - Input: one FFT bin per beat, fft_size beats per symbol, bin 0
@@ -60,6 +64,7 @@
 //         layout for it) -> SP6_2 (allowed at every size), cfg_pattern_invalid
 //       cfg_num_active_carriers 0   -> NoCmax for the size (6913, 13825,
 //                                      27649), as in the C++
+//       cfg_sp_boost 5..7 (reserved) -> 0, cfg_boost_invalid
 //       cfg_num_active_carriers not NoCmax - Cred_coeff * Cunit with
 //         Cred_coeff 0..4 (Cunit 96 / 192 / 384) -> NoCmax,
 //                                      cfg_num_active_invalid
@@ -81,9 +86,11 @@ module pilot_extractor #(
     input  wire [17:0] cfg_fft_size,             // literal: 8192/16384/32768
     input  wire [3:0]  cfg_pilot_pattern,        // L1D_scattered_pilot_pattern code
     input  wire [15:0] cfg_num_active_carriers,  // 0 = default for the size
+    input  wire [2:0]  cfg_sp_boost,             // L1D_scattered_pilot_boost
     output reg         cfg_fft_size_invalid,
     output reg         cfg_pattern_invalid,
     output reg         cfg_num_active_invalid,
+    output reg         cfg_boost_invalid,
     output reg         framing_error,            // sticky
 
     `AXI4S_SLAVE(s_axis, `ATSC3_SAMPLE_WIDTH),
@@ -92,8 +99,7 @@ module pilot_extractor #(
 );
 
     localparam ROM_DEPTH = 256;
-    localparam [15:0] Q15_ONE = 16'sd32767;
-    localparam [15:0] Q15_MINUS_ONE = -16'sd32767;
+    localparam [15:0] INV_A_CP = 16'd12287;  // 1 / 10^(8.52/20) in Q1.15
     localparam [12:0] LFSR_INIT = 13'h001B;  // s[0..12] = 1101 1000 0000 0
 
     //--------------------------------------------------------------------
@@ -194,6 +200,96 @@ module pilot_extractor #(
     );
     wire        pattern_valid_now = add_ok_a;
     wire [3:0]  pattern_now = pattern_valid_now ? cfg_pilot_pattern : 4'd4;
+
+    // Table 9.16: 1/A_SP in Q1.15 for {pattern, L1D_scattered_pilot_boost}.
+    wire       boost_valid_now = (cfg_sp_boost <= 3'd4);
+    wire [2:0] boost_now       = boost_valid_now ? cfg_sp_boost : 3'd0;
+    reg [15:0] inv_sp_now;
+    always @(*) begin
+        case ({pattern_now, boost_now})
+            7'd0  : inv_sp_now = 16'd32767;
+            7'd1  : inv_sp_now = 16'd32767;
+            7'd2  : inv_sp_now = 16'd27890;
+            7'd3  : inv_sp_now = 16'd25436;
+            7'd4  : inv_sp_now = 16'd23467;
+            7'd8  : inv_sp_now = 16'd32767;
+            7'd9  : inv_sp_now = 16'd27890;
+            7'd10 : inv_sp_now = 16'd23467;
+            7'd11 : inv_sp_now = 16'd21157;
+            7'd12 : inv_sp_now = 16'd19745;
+            7'd16 : inv_sp_now = 16'd32767;
+            7'd17 : inv_sp_now = 16'd30581;
+            7'd18 : inv_sp_now = 16'd25731;
+            7'd19 : inv_sp_now = 16'd23198;
+            7'd20 : inv_sp_now = 16'd21650;
+            7'd24 : inv_sp_now = 16'd32767;
+            7'd25 : inv_sp_now = 16'd25731;
+            7'd26 : inv_sp_now = 16'd21650;
+            7'd27 : inv_sp_now = 16'd19745;
+            7'd28 : inv_sp_now = 16'd18216;
+            7'd32 : inv_sp_now = 16'd32767;
+            7'd33 : inv_sp_now = 16'd27255;
+            7'd34 : inv_sp_now = 16'd22932;
+            7'd35 : inv_sp_now = 16'd20675;
+            7'd36 : inv_sp_now = 16'd19295;
+            7'd40 : inv_sp_now = 16'd32767;
+            7'd41 : inv_sp_now = 16'd23198;
+            7'd42 : inv_sp_now = 16'd19519;
+            7'd43 : inv_sp_now = 16'd17597;
+            7'd44 : inv_sp_now = 16'd16423;
+            7'd48 : inv_sp_now = 16'd32767;
+            7'd49 : inv_sp_now = 16'd25436;
+            7'd50 : inv_sp_now = 16'd21157;
+            7'd51 : inv_sp_now = 16'd19295;
+            7'd52 : inv_sp_now = 16'd17801;
+            7'd56 : inv_sp_now = 16'd32767;
+            7'd57 : inv_sp_now = 16'd21650;
+            7'd58 : inv_sp_now = 16'd18216;
+            7'd59 : inv_sp_now = 16'd16423;
+            7'd60 : inv_sp_now = 16'd15327;
+            7'd64 : inv_sp_now = 16'd32767;
+            7'd65 : inv_sp_now = 16'd22670;
+            7'd66 : inv_sp_now = 16'd19074;
+            7'd67 : inv_sp_now = 16'd17197;
+            7'd68 : inv_sp_now = 16'd16049;
+            7'd72 : inv_sp_now = 16'd32767;
+            7'd73 : inv_sp_now = 16'd19519;
+            7'd74 : inv_sp_now = 16'd16423;
+            7'd75 : inv_sp_now = 16'd14806;
+            7'd76 : inv_sp_now = 16'd13818;
+            7'd80 : inv_sp_now = 16'd32767;
+            7'd81 : inv_sp_now = 16'd21157;
+            7'd82 : inv_sp_now = 16'd17801;
+            7'd83 : inv_sp_now = 16'd16049;
+            7'd84 : inv_sp_now = 16'd14978;
+            7'd88 : inv_sp_now = 16'd32767;
+            7'd89 : inv_sp_now = 16'd18007;
+            7'd90 : inv_sp_now = 16'd15151;
+            7'd91 : inv_sp_now = 16'd13660;
+            7'd92 : inv_sp_now = 16'd12748;
+            7'd96 : inv_sp_now = 16'd32767;
+            7'd97 : inv_sp_now = 16'd19074;
+            7'd98 : inv_sp_now = 16'd16049;
+            7'd99 : inv_sp_now = 16'd14469;
+            7'd100: inv_sp_now = 16'd13504;
+            7'd104: inv_sp_now = 16'd32767;
+            7'd105: inv_sp_now = 16'd16235;
+            7'd106: inv_sp_now = 16'd13660;
+            7'd107: inv_sp_now = 16'd12315;
+            7'd108: inv_sp_now = 16'd11493;
+            7'd112: inv_sp_now = 16'd32767;
+            7'd113: inv_sp_now = 16'd17597;
+            7'd114: inv_sp_now = 16'd14806;
+            7'd115: inv_sp_now = 16'd13504;
+            7'd116: inv_sp_now = 16'd12458;
+            7'd120: inv_sp_now = 16'd32767;
+            7'd121: inv_sp_now = 16'd15151;
+            7'd122: inv_sp_now = 16'd12748;
+            7'd123: inv_sp_now = 16'd11493;
+            7'd124: inv_sp_now = 16'd10726;
+            default: inv_sp_now = 16'd32767;
+        endcase
+    end
     wire [2:0]  add_en_now  = pattern_valid_now ? add_en_a : add_en_b;
     wire [13:0] add0_now    = pattern_valid_now ? add0_a : add0_b;
     wire [13:0] add1_now    = pattern_valid_now ? add1_a : add1_b;
@@ -266,6 +362,9 @@ module pilot_extractor #(
     wire        is_pilot  = is_sp || is_cp || is_edge;
     wire [7:0]  pilot_type = is_sp ? `PILOT_TYPE_SCATTERED :
                              is_cp ? `PILOT_TYPE_CONTINUAL : `PILOT_TYPE_EDGE;
+    reg  [15:0] inv_sp_r;  // 1/A_SP, latched at reset
+    // Common CPs are boosted to A_CP; everything else to A_SP.
+    wire [15:0] inv_amp    = (cp_hit && !is_sp) ? INV_A_CP : inv_sp_r;
 
     wire fire_in = s_axis_tvalid && s_axis_tready;
 
@@ -312,7 +411,9 @@ module pilot_extractor #(
             cfg_fft_size_invalid   <= !fft_size_valid_now;
             cfg_pattern_invalid    <= !pattern_valid_now;
             cfg_num_active_invalid <= num_active_invalid_now;
+            cfg_boost_invalid      <= !boost_valid_now;
             framing_error          <= 1'b0;
+            inv_sp_r               <= inv_sp_now;
 
             last_bin_r  <= fft_now[14:0] - 15'd1;
             first_r     <= first_now_wide[14:0];
@@ -359,7 +460,7 @@ module pilot_extractor #(
                 m_axis_tvalid <= 1'b1;
                 m_axis_tdata  <= {8'd0, pilot_type,
                                   s_axis_tdata[31:16], s_axis_tdata[15:0],
-                                  lfsr[0] ? Q15_MINUS_ONE : Q15_ONE, 16'd0,
+                                  lfsr[0] ? 16'd0 - inv_amp : inv_amp, 16'd0,
                                   1'b0, k};
                 m_axis_tlast  <= (k == last_r);
             end else if (m_axis_tready) begin

@@ -121,7 +121,7 @@ def continual_offsets(fft_size, reduction=0):
     return out
 
 
-def run_golden(fft_size, pattern, num_active, symbols):
+def run_golden(fft_size, pattern, num_active, symbols, boost=0):
     """symbols: list of (symbol_index, samples). Returns a list of record
     lists, one per symbol."""
     if not PILOT_EXTRACTOR_GEN.exists():
@@ -130,7 +130,7 @@ def run_golden(fft_size, pattern, num_active, symbols):
             "cmake --build build-fxp --target pilot_extractor_gen "
             "(requires -DATSC3_FIXED_POINT=ON -DATSC3_ENABLE_HDL_STUBS=ON)"
         )
-    lines = [f"C {fft_size} {pattern} {num_active}"]
+    lines = [f"C {fft_size} {pattern} {num_active} {boost}"]
     for sym_idx, samples in symbols:
         assert len(samples) == fft_size
         lines.append(f"S {sym_idx}")
@@ -152,11 +152,12 @@ def run_golden(fft_size, pattern, num_active, symbols):
     return out
 
 
-async def reset_dut(dut, fft_size, pattern, num_active, flags=(0, 0, 0)):
+async def reset_dut(dut, fft_size, pattern, num_active, boost=0, flags=(0, 0, 0, 0)):
     dut.rst.value = 1
     dut.cfg_fft_size.value = fft_size
     dut.cfg_pilot_pattern.value = pattern
     dut.cfg_num_active_carriers.value = num_active
+    dut.cfg_sp_boost.value = boost
     dut.s_axis_tvalid.value = 0
     dut.s_axis_tdata.value = 0
     dut.s_axis_tlast.value = 0
@@ -170,6 +171,7 @@ async def reset_dut(dut, fft_size, pattern, num_active, flags=(0, 0, 0)):
         int(dut.cfg_fft_size_invalid.value),
         int(dut.cfg_pattern_invalid.value),
         int(dut.cfg_num_active_invalid.value),
+        int(dut.cfg_boost_invalid.value),
     )
     assert got == flags, f"config flags {got}, expected {flags}"
     assert dut.framing_error.value == 0
@@ -251,18 +253,20 @@ async def run_stream(
     rnd,
     stalls=False,
     cfg=None,
-    flags=(0, 0, 0),
+    flags=(0, 0, 0, 0),
+    boost=0,
 ):
     """Feeds symbols through one reset and checks every record. cfg
-    overrides what is programmed (fft_size, pattern, num_active) when it
-    differs from the golden configuration. Returns the golden records."""
-    golden = run_golden(fft_size, pattern, num_active, symbols)
+    overrides what is programmed (fft_size, pattern, num_active[, boost])
+    when it differs from the golden configuration. Returns the golden
+    records."""
+    golden = run_golden(fft_size, pattern, num_active, symbols, boost)
     expected = []
     for recs in golden:
         assert recs, "golden produced no pilots"
         expected += [(r, i == len(recs) - 1) for i, r in enumerate(recs)]
 
-    await reset_dut(dut, *(cfg or (fft_size, pattern, num_active)), flags=flags)
+    await reset_dut(dut, *(cfg or (fft_size, pattern, num_active, boost)), flags=flags)
     bp = cocotb.start_soon(drive_backpressure(dut, rnd)) if stalls else None
     drv = cocotb.start_soon(drive_input(dut, symbols, rnd, stalls))
     await collect_output(dut, expected)
@@ -378,15 +382,70 @@ async def invalid_config_falls_back(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     rnd = random.Random(0x91CF)
     syms = random_symbols(rnd, 8192, [1])
-    await run_stream(dut, 8192, 4, 0, syms, rnd, cfg=(12345, 4, 0), flags=(1, 0, 0))
-    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 12, 0), flags=(0, 1, 0))
-    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 13, 0), flags=(0, 1, 0))
-    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 9000), flags=(0, 0, 1))
-    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 50), flags=(0, 0, 1))
-    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 5 * 96), flags=(0, 0, 1))
-    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6914), flags=(0, 0, 1))
+    await run_stream(dut, 8192, 4, 0, syms, rnd, cfg=(12345, 4, 0), flags=(1, 0, 0, 0))
+    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 12, 0), flags=(0, 1, 0, 0))
+    await run_stream(dut, 8192, SP6_2, 0, syms, rnd, cfg=(8192, 13, 0), flags=(0, 1, 0, 0))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 9000), flags=(0, 0, 1, 0))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 50), flags=(0, 0, 1, 0))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6913 - 5 * 96), flags=(0, 0, 1, 0))
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 6914), flags=(0, 0, 1, 0))
     syms32 = random_symbols(rnd, 32768, [0])
-    await run_stream(dut, 32768, SP6_2, 0, syms32, rnd, cfg=(32768, 1, 0), flags=(0, 1, 0))
+    await run_stream(dut, 32768, SP6_2, 0, syms32, rnd, cfg=(32768, 1, 0), flags=(0, 1, 0, 0))
+    # A reserved L1D_scattered_pilot_boost (5..7) runs as boost 0.
+    await run_stream(dut, 8192, 6, 0, syms, rnd, cfg=(8192, 6, 0, 7), flags=(0, 0, 0, 1))
+
+
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
+async def scattered_pilot_boost(dut):
+    """Every L1D_scattered_pilot_boost (Table 9.16) at 8K SP6_4 and at
+    32K SP32_2 (the sparsest pattern 32K allows, Table 8.3): scattered,
+    edge and additional continual pilots carry +-1/A_SP, common continual
+    pilots +-1/A_CP."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    rnd = random.Random(0xB005)
+    syms = random_symbols(rnd, 8192, [0, 1])
+    for pattern in (5, 14):  # SP6_4, SP32_2
+        if pattern == 14:
+            syms = random_symbols(rnd, 32768, [0])
+        fft = 8192 if pattern == 5 else 32768
+        for boost in range(5):
+            golden = await run_stream(dut, fft, pattern, 0, syms, rnd, boost=boost)
+            mags = {abs(r[2]) for recs in golden for r in recs}
+            assert 12287 in mags and len(mags) == 2, f"pattern {pattern} boost {boost}: {mags}"
+
+
+@cocotb.test(timeout_time=2000, timeout_unit="ms")
+async def scattered_pilot_boost_table(dut):
+    """Every (pattern, L1D_scattered_pilot_boost) entry of Table 9.16: the
+    first record of a symbol (carrier 0, an edge pilot, so 1/A_SP) carries
+    the golden model's +-1/A_SP. 8K, except SP24 (16K, Table 8.3). Only
+    the head of each symbol is streamed; a reset starts the next case."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    rnd = random.Random(0x9160)
+    seen = set()
+    for pattern in range(16):
+        fft = 16384 if pattern in (12, 13) else 8192
+        zero = [(0, [(0, 0)] * fft)]
+        for boost in range(5):
+            golden = run_golden(fft, pattern, 0, zero, boost)
+            exp = golden[0][0]
+            assert exp[1] in (SCATTERED, EDGE), f"first record {exp}"
+            await reset_dut(dut, fft, pattern, 0, boost)
+            first = fft // 2 - (NOC_MAX[fft] - 1) // 2
+            head = [(0, [(0, 0)] * (first + 1))]
+            drv = cocotb.start_soon(drive_input(dut, head, rnd, False))
+            for _ in range(first + 50):
+                await RisingEdge(dut.clk)
+                if dut.m_axis_tvalid.value == 1:
+                    break
+            assert dut.m_axis_tvalid.value == 1, f"pattern {pattern} boost {boost}: no record"
+            got = unpack_pilot(dut.m_axis_tdata.value)
+            assert got[:4] == exp[:4], f"pattern {pattern} boost {boost}: {got} vs {exp}"
+            seen.add(abs(exp[2]))
+            drv.kill()
+            dut.s_axis_tvalid.value = 0
+    # Non-vacuity: the sweep compared boosted values, not just 0 dB.
+    assert 32767 in seen and len(seen) > 1, f"1/A_SP values seen: {sorted(seen)}"
 
 
 @cocotb.test(timeout_time=500, timeout_unit="ms")

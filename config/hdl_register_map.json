@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "OpenATSC3 HDL AXI4-Lite Register Map",
     "description": "Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "conventions": {
         "address_layout": "One 0x1000-aligned region per block, in RTL signal-chain order (bootstrap detector through ALP demux). Register offsets within a region are 4-byte aligned.",
         "writable_by": {
@@ -66,7 +66,8 @@
             {"name": "TI_EXTENDED", "offset": "0x64", "width": 1, "format": "bool", "reset": false, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::ti_extended"},
             {"name": "NUM_FEC_BLOCKS", "offset": "0x68", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::num_fec_blocks", "consumers": ["cell_deinterleaver (num_cells derived from this)"]},
             {"name": "FEC_BLOCK_START", "offset": "0x6C", "width": 32, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:PlpConfig::fec_block_start"},
-            {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x70", "width": 16, "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "computed from FFT_SIZE (8K->6913, 16K->13825, 32K->27649), per lib/ofdm/pilot_extractor.cc / freq_deinterleaver.cc auto-compute logic", "consumers": ["pilot_extractor", "channel_estimator", "equalizer", "freq_deinterleaver"]}
+            {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x70", "width": 16, "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "computed from FFT_SIZE (8K->6913, 16K->13825, 32K->27649), per lib/ofdm/pilot_extractor.cc / freq_deinterleaver.cc auto-compute logic", "consumers": ["pilot_extractor", "channel_estimator", "equalizer", "freq_deinterleaver"]},
+            {"name": "SCATTERED_PILOT_BOOST", "offset": "0x74", "width": 3, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::scattered_pilot_boost", "notes": "L1D_scattered_pilot_boost / L1B_first_sub_scattered_pilot_boost, 0..4 (A/322 Table 9.16); 5..7 reserved."}
         ],
         "excluded_fields": [
             {"field": "PlpConfig::plp_layer, PlpConfig::ldm_injection_level", "reason": "Layered Division Multiplexing (LDM) fields. The HDL port plan does not discuss LDM anywhere -- it's not listed as in-scope (no LDM combining/splitting stage appears in the 13-block signal chain) or explicitly out-of-scope. Left out of this register map as an open scope question for whoever picks up LDM, rather than silently including registers for a capability no RTL block implements."},
@@ -119,7 +120,8 @@
             "registers": [
                 {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
                 {"name": "PILOT_PATTERN", "offset": "0x04", "format": "enum", "enum_values": {"SP3_2": 0, "SP3_4": 1, "SP4_2": 2, "SP4_4": 3, "SP6_2": 4, "SP6_4": 5, "SP8_2": 6, "SP8_4": 7, "SP12_2": 8, "SP12_4": 9, "SP16_2": 10, "SP16_4": 11, "SP24_2": 12, "SP24_4": 13, "SP32_2": 14, "SP32_4": 15}, "reset": "SP6_4", "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::pattern", "notes": "Wired from l1_status.PILOT_PATTERN."},
-                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x08", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::num_active_carriers", "notes": "Wired from l1_status.NUM_ACTIVE_CARRIERS."}
+                {"name": "NUM_ACTIVE_CARRIERS", "offset": "0x08", "format": "uint32", "reset": 6913, "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::num_active_carriers", "notes": "Wired from l1_status.NUM_ACTIVE_CARRIERS."},
+                {"name": "SCATTERED_PILOT_BOOST", "offset": "0x0C", "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/ofdm/pilot_extractor.h:PilotExtractorConfig::scattered_pilot_boost", "notes": "Wired from l1_status.SCATTERED_PILOT_BOOST, not independently stored. Selects 1/A_SP (Table 9.16) for the pilot references; 5..7 fall back to 0 and raise cfg_boost_invalid."}
             ],
             "open_items": [
                 "Pilot dedup precedence (SCATTERED > CONTINUAL > EDGE) needs an explicit rule fixed in lib/ before this block's RTL is bit-exact (an item from the plan's pass-2 review); not resolved by this register-map deliverable."

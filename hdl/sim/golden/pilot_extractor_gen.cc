@@ -10,6 +10,7 @@
 //
 // Input (stdin):
 //   C <fft_size> <pattern code 0..15> <num_active_carriers, 0 = default>
+//     [<L1D_scattered_pilot_boost 0..4, default 0>]
 //   S <symbol_index>             -- then fft_size lines of <re> <im>
 //   ...                          -- repeated per symbol
 //
@@ -49,10 +50,16 @@ int main() {
         return 1;
     }
 
+    unsigned boost = 0;
+    if (!(cfg_in >> boost)) {
+        boost = 0;  // optional field
+    }
+
     PilotExtractorConfig config;
     config.fft_size = fft_size;
     config.pattern = static_cast<PilotPattern>(pattern);
     config.num_active_carriers = num_active;
+    config.scattered_pilot_boost = boost;
     PilotExtractor extractor(config);
 
     std::vector<sample_t> symbol(fft_size);

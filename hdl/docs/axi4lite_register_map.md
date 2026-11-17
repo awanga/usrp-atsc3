@@ -1,6 +1,6 @@
 # OpenATSC3 HDL AXI4-Lite Register Map
 
-> Generated from `config/hdl_register_map.json` (v0.3.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
+> Generated from `config/hdl_register_map.json` (v0.4.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
 
 Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.
 
@@ -80,6 +80,7 @@ Canonical mirror of L1-Pre/L1-Post/active-PLP decode results (lib/framing/l1_dec
 | `NUM_FEC_BLOCKS` | `0x68` | uint32 | `0` | l1 | *(`lib/config/atsc3_config.h:PlpConfig::num_fec_blocks`)* |
 | `FEC_BLOCK_START` | `0x6C` | uint32 | `0` | l1 | *(`lib/config/atsc3_config.h:PlpConfig::fec_block_start`)* |
 | `NUM_ACTIVE_CARRIERS` | `0x70` | uint32 | `6913` | l1 | *(`computed from FFT_SIZE (8K->6913, 16K->13825, 32K->27649), per lib/ofdm/pilot_extractor.cc / freq_deinterleaver.cc auto-compute logic`)* |
+| `SCATTERED_PILOT_BOOST` | `0x74` | uint32 | `0` | l1 | L1D_scattered_pilot_boost / L1B_first_sub_scattered_pilot_boost, 0..4 (A/322 Table 9.16); 5..7 reserved. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::scattered_pilot_boost`)* |
 
 **Excluded fields** (present in the C++ config struct, deliberately not a register):
 
@@ -146,6 +147,7 @@ Base address: `0x5000`
 | `FFT_SIZE` | `0x00` | enum | `FFT_8K` | l1 | Wired from l1_status.FFT_SIZE. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::fft_size`)* |
 | `PILOT_PATTERN` | `0x04` | enum | `SP6_4` | l1 | Wired from l1_status.PILOT_PATTERN. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::pattern`)* |
 | `NUM_ACTIVE_CARRIERS` | `0x08` | uint32 | `6913` | l1 | Wired from l1_status.NUM_ACTIVE_CARRIERS. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::num_active_carriers`)* |
+| `SCATTERED_PILOT_BOOST` | `0x0C` | uint32 | `0` | l1 | Wired from l1_status.SCATTERED_PILOT_BOOST, not independently stored. Selects 1/A_SP (Table 9.16) for the pilot references; 5..7 fall back to 0 and raise cfg_boost_invalid. *(`lib/ofdm/pilot_extractor.h:PilotExtractorConfig::scattered_pilot_boost`)* |
 
 **Open item:** Pilot dedup precedence (SCATTERED > CONTINUAL > EDGE) needs an explicit rule fixed in lib/ before this block's RTL is bit-exact (an item from the plan's pass-2 review); not resolved by this register-map deliverable.
 

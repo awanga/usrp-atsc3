@@ -8,7 +8,8 @@
 // estimate() (ATSC3_FIXED_POINT=ON) with InterpolationMethod LINEAR (the
 // C++ falls back to linear for CUBIC and WIENER as well):
 //
-//   pilot record -> complex_divider (H = Y / X) -> linear_interp
+//   pilot record -> LS multiply (H = Y / X = Y x reference, the record
+//                   carrying 1/X; see pilot_extractor.v) -> linear_interp
 //                -> h_average (when enabled)
 //
 // Not ported: estimated_snr_db and mean_phase_error (log10 / atan2 on
@@ -25,7 +26,8 @@
 //     carrier is dropped like an out-of-order one (order_error).
 //   - Output: one ci16 beat per active carrier, positional, TLAST on the
 //     last; see linear_interp.v for the supported span.
-//   - Throughput: one division per pilot (about 70 cycles) dominates.
+//   - Throughput: the LS stage takes a pilot per cycle; linear_interp's
+//     division per gap dominates.
 //   - Reset (synchronous, active-high) clears all state and flags and
 //     validates and latches the configuration (not read live):
 //       cfg_fft_size not 8K/16K/32K -> 8K, cfg_fft_size_invalid
@@ -140,37 +142,47 @@ module channel_estimator (
     // most 16384), above any num_active, so linear_interp drops it.
     wire [15:0] rel_idx = abs_idx - first_active;
 
-    wire [63:0] div_in = {
-        s_axis_tdata[`PILOT_SYMBOL_RECEIVED_RE_HI:`PILOT_SYMBOL_RECEIVED_RE_LO],
-        s_axis_tdata[`PILOT_SYMBOL_RECEIVED_IM_HI:`PILOT_SYMBOL_RECEIVED_IM_LO],
-        s_axis_tdata[`PILOT_SYMBOL_REFERENCE_RE_HI:`PILOT_SYMBOL_REFERENCE_RE_LO],
-        s_axis_tdata[`PILOT_SYMBOL_REFERENCE_IM_HI:`PILOT_SYMBOL_REFERENCE_IM_LO]
-    };
+    // H = Y x (1/X): the reference is real (+-1/A), so two products,
+    // rounded half up and saturated to +-32767 like the C++
+    // PilotSymbol::estimate_channel().
+    wire signed [15:0] y_re = s_axis_tdata[`PILOT_SYMBOL_RECEIVED_RE_HI:`PILOT_SYMBOL_RECEIVED_RE_LO];
+    wire signed [15:0] y_im = s_axis_tdata[`PILOT_SYMBOL_RECEIVED_IM_HI:`PILOT_SYMBOL_RECEIVED_IM_LO];
+    wire signed [15:0] inv_x = s_axis_tdata[`PILOT_SYMBOL_REFERENCE_RE_HI:`PILOT_SYMBOL_REFERENCE_RE_LO];
+    wire signed [31:0] p_re = y_re * inv_x;
+    wire signed [31:0] p_im = y_im * inv_x;
+    wire signed [31:0] r_re = (p_re + 32'sd16384) >>> 15;
+    wire signed [31:0] r_im = (p_im + 32'sd16384) >>> 15;
+    wire [15:0] h_re = (r_re > 32'sd32767) ? 16'sd32767 :
+                       (r_re < -32'sd32767) ? -16'sd32767 : r_re[15:0];
+    wire [15:0] h_im = (r_im > 32'sd32767) ? 16'sd32767 :
+                       (r_im < -32'sd32767) ? -16'sd32767 : r_im[15:0];
 
-    wire        div_s_ready;
-    wire [31:0] div_tdata;
-    wire        div_tvalid, div_tlast;
+    // One registered LS stage; a pilot is taken when the stage is empty or
+    // its result is being taken, so pos_r and ls_tdata always belong to
+    // the same pilot.
+    reg  [31:0] ls_tdata;
+    reg         ls_tvalid, ls_tlast;
+    reg  [15:0] pos_r;
     wire        interp_s_ready;
+    wire        ls_s_ready = !ls_tvalid || interp_s_ready;
 
-    // The divider accepts the next pilot only after its result has been
-    // taken, so the position register is stable while the result is used.
-    reg [15:0] pos_r;
+    always @(*) s_axis_tready = ls_s_ready;
+
     always @(posedge clk) begin
-        if (rst)
-            pos_r <= 16'd0;
-        else if (s_axis_tvalid && div_s_ready)
-            pos_r <= rel_idx;
+        if (rst) begin
+            ls_tvalid <= 1'b0;
+            ls_tlast  <= 1'b0;
+            ls_tdata  <= 32'd0;
+            pos_r     <= 16'd0;
+        end else if (ls_s_ready) begin
+            ls_tvalid <= s_axis_tvalid;
+            if (s_axis_tvalid) begin
+                ls_tdata <= {h_re, h_im};
+                ls_tlast <= s_axis_tlast;
+                pos_r    <= rel_idx;
+            end
+        end
     end
-
-    always @(*) s_axis_tready = div_s_ready;
-
-    complex_divider ls_div (
-        .clk(clk), .rst(rst),
-        .s_axis_tdata(div_in), .s_axis_tvalid(s_axis_tvalid),
-        .s_axis_tready(div_s_ready), .s_axis_tlast(s_axis_tlast),
-        .m_axis_tdata(div_tdata), .m_axis_tvalid(div_tvalid),
-        .m_axis_tready(interp_s_ready), .m_axis_tlast(div_tlast)
-    );
 
     //--------------------------------------------------------------------
     // Interpolation and smoothing
@@ -182,8 +194,8 @@ module channel_estimator (
     linear_interp interp (
         .clk(clk), .rst(rst), .num_active(num_active),
         .span_error(span_error), .order_error(order_error),
-        .s_axis_tdata({pos_r, div_tdata}), .s_axis_tvalid(div_tvalid),
-        .s_axis_tready(interp_s_ready), .s_axis_tlast(div_tlast),
+        .s_axis_tdata({pos_r, ls_tdata}), .s_axis_tvalid(ls_tvalid),
+        .s_axis_tready(interp_s_ready), .s_axis_tlast(ls_tlast),
         .m_axis_tdata(interp_tdata), .m_axis_tvalid(interp_tvalid),
         .m_axis_tready(avg_s_ready), .m_axis_tlast(interp_tlast)
     );
@@ -205,7 +217,9 @@ module channel_estimator (
         m_axis_tlast  = avg_tlast;
     end
 
-    // Unused by design: type/reserved fields of the pilot record, top bit of first_now
-    wire unused_ok = &{1'b0, s_axis_tdata[95:80], first_now[16], 1'b0};
+    // Unused by design: type/reserved fields and the (zero) imaginary
+    // reference of the pilot record, top bit of first_now
+    wire unused_ok = &{1'b0, s_axis_tdata[95:80], first_now[16],
+                        s_axis_tdata[`PILOT_SYMBOL_REFERENCE_IM_HI:`PILOT_SYMBOL_REFERENCE_IM_LO], 1'b0};
 
 endmodule

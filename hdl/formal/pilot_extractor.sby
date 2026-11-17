@@ -27,9 +27,12 @@ read_verilog -formal -I. pilot_additional_cp_lut.v
 read_verilog -formal -I. pilot_extractor.v
 read_verilog -formal -I. pilot_extractor_bare.v
 hierarchy -top pilot_extractor_bare
+# The harness checks each record's reference against the latched inv_sp_r
+# (exposed) or 1/A_CP, not against the 1/A_SP case table; every Table 9.16
+# entry is checked in sim (scattered_pilot_boost_table).
 proc
 flatten
-expose -dff w:\dut.k w:\dut.m w:\dut.cp_ptr w:\dut.cp_raw w:\dut.sym_r w:\dut.first_r w:\dut.last_r w:\dut.last_bin_r w:\dut.dx_r w:\dut.dy_mask_r w:\dut.period_m1_r w:\dut.shift_r w:\dut.stride_sh_r w:\dut.add_en_r w:\dut.add0_r w:\dut.add1_r w:\dut.add2_r
+expose -dff w:\dut.k w:\dut.m w:\dut.cp_ptr w:\dut.cp_raw w:\dut.sym_r w:\dut.first_r w:\dut.last_r w:\dut.last_bin_r w:\dut.dx_r w:\dut.dy_mask_r w:\dut.period_m1_r w:\dut.shift_r w:\dut.stride_sh_r w:\dut.add_en_r w:\dut.add0_r w:\dut.add1_r w:\dut.add2_r w:\dut.inv_sp_r
 write_verilog gen_pilot_extractor_bare.v
 
 # Stage 2: re-elaborate the exposed wrapper under the harness.

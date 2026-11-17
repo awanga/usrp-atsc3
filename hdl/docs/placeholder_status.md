@@ -28,7 +28,7 @@
 | 16 | Sample rate | `lib/dsp/resampler.cc`, `apps/atsc3_rx.grc` | Partly resolved 2026-11-17 (8368cf1): rational resampler to 6.144 MS/s and (bsr_coefficient + 16) x 0.384 MS/s exists in lib; the flowgraph does not use it yet | Bootstrap at 6.144 MS/s (A/321 5.1), frame at (N + 16) x 0.384 MS/s (A/322 9.1) |
 | 17 | ~~Guard interval lengths~~ | `lib/ofdm/cp_removal.cc`, `cp_removal.v` | Resolved 2026-11-17 (fd027d5, af61ea1): lengths were scaled by FFT size; now A/322 Table 8.9 absolute lengths by Table 9.13 code | n/a |
 | 18 | ~~FFT carrier mapping~~ | `lib/ofdm/fft_engine.cc`, `fft_engine.v`, pilot extractor, estimator, equalizer | Resolved 2026-11-17 (af5d2f9, 747b38a): carriers were read from natural-order bins at (N - NoC)/2; now DC-centred output with carrier 0 at N/2 - (NoC - 1)/2 (A/322 Section 8.3) | n/a |
-| 19 | Pilot boosting | `lib/ofdm/pilot_extractor.cc`, `pilot_extractor.v`, `channel_estimator.v` | Resolved in lib 2026-11-17 (6af9597): pilot references were +-1, so H was A x H per pilot type; now +-1/A (Tables 8.5, 9.16) and a multiply. RTL follows | n/a |
+| 19 | ~~Pilot boosting~~ | `lib/ofdm/pilot_extractor.cc`, `pilot_extractor.v`, `channel_estimator.v` | Resolved 2026-11-17 (6af9597 lib; RTL with SCATTERED_PILOT_BOOST, register map v0.4.0): pilot references were +-1, so H was A x H per pilot type; now +-1/A (Tables 8.5, 9.16) and a multiply | n/a |
 
 ## Also non-spec, but load-bearing rather than swappable-later
 

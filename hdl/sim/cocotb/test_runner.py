@@ -61,7 +61,6 @@ BLOCKS = {
     "channel_estimator": (
         [
             "channel/channel_estimator.v",
-            "channel/complex_divider.v",
             "channel/linear_interp.v",
             "channel/h_average.v",
             "common/udiv_seq.v",

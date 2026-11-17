@@ -59,7 +59,10 @@ module pilot_extractor_formal (
     reg  [17:0] cfg_fft_size;
     reg  [3:0]  cfg_pilot_pattern;
     reg  [15:0] cfg_num_active_carriers;
+    reg  [2:0]  cfg_sp_boost;
     wire        cfg_fft_size_invalid, cfg_pattern_invalid, cfg_num_active_invalid;
+    wire        cfg_boost_invalid;
+    wire [15:0] inv_sp_probe;
     wire        framing_error;
 
     reg  [31:0] s_axis_tdata;
@@ -92,9 +95,11 @@ module pilot_extractor_formal (
         .cfg_fft_size            (cfg_fft_size),
         .cfg_pilot_pattern       (cfg_pilot_pattern),
         .cfg_num_active_carriers (cfg_num_active_carriers),
+        .cfg_sp_boost            (cfg_sp_boost),
         .cfg_fft_size_invalid    (cfg_fft_size_invalid),
         .cfg_pattern_invalid     (cfg_pattern_invalid),
         .cfg_num_active_invalid  (cfg_num_active_invalid),
+        .cfg_boost_invalid       (cfg_boost_invalid),
         .framing_error           (framing_error),
         .s_axis_tdata            (s_axis_tdata),
         .s_axis_tvalid           (s_axis_tvalid),
@@ -121,7 +126,8 @@ module pilot_extractor_formal (
         .\dut.add_en_r    (add_en_probe),
         .\dut.add0_r      (add0_probe),
         .\dut.add1_r      (add1_probe),
-        .\dut.add2_r      (add2_probe)
+        .\dut.add2_r      (add2_probe),
+        .\dut.inv_sp_r    (inv_sp_probe)
     );
 
     reg past_valid;
@@ -209,7 +215,7 @@ module pilot_extractor_formal (
     reg [2:0]  g_cred;
     reg [3:0]  g_pat;
     reg [7:0]  g_dx, g_dy;
-    reg        g_fft_bad, g_pat_bad, g_num_bad;
+    reg        g_fft_bad, g_pat_bad, g_num_bad, g_boost_bad;
     always @(posedge clk) begin
         if (rst) begin
             g_fft     <= c_fft;
@@ -226,6 +232,7 @@ module pilot_extractor_formal (
                           cfg_fft_size != 18'd32768);
             g_pat_bad <= !c_pat_ok;
             g_num_bad <= !c_num_ok;
+            g_boost_bad <= (cfg_sp_boost > 3'd4);
         end
     end
     wire [15:0] g_period = g_dx * g_dy;
@@ -283,7 +290,8 @@ module pilot_extractor_formal (
     wire [7:0]  g_type  = g_sp ? `PILOT_TYPE_SCATTERED :
                           g_cp ? `PILOT_TYPE_CONTINUAL : `PILOT_TYPE_EDGE;
 
-    reg        prev_rst, prev_fire, prev_pilot, prev_last;
+    reg        prev_rst, prev_fire, prev_pilot, prev_last, prev_common;
+    reg [15:0] prev_inv_sp;
     reg        prev_m_valid, prev_m_ready, prev_m_last;
     reg [95:0] prev_m_data;
     reg [7:0]  prev_type;
@@ -294,6 +302,8 @@ module pilot_extractor_formal (
         prev_fire    <= fire && !rst;
         prev_pilot   <= g_pilot;
         prev_type    <= g_type;
+        prev_common  <= g_cpc && !g_sp;  // common CP: boosted to A_CP
+        prev_inv_sp  <= inv_sp_probe;
         prev_last    <= (gk == g_last);
         prev_gk      <= gk;
         prev_s_data  <= s_axis_tdata;
@@ -324,7 +334,10 @@ module pilot_extractor_formal (
                     assert (m_axis_tdata[`PILOT_SYMBOL_TYPE_HI:`PILOT_SYMBOL_TYPE_LO] == prev_type);
                     assert (m_axis_tdata[`PILOT_SYMBOL_REFERENCE_IM_HI:`PILOT_SYMBOL_REFERENCE_IM_LO]
                             == 16'd0);
-                    assert (ref_re == 16'h7FFF || ref_re == 16'h8001);
+                    // +-1/A: 1/A_CP (12287) for a common CP, else the
+                    // latched 1/A_SP (Table 9.16 values, checked in sim)
+                    assert (ref_re == (prev_common ? 16'd12287 : inv_sp_probe) ||
+                            ref_re == 16'd0 - (prev_common ? 16'd12287 : inv_sp_probe));
                     assert (m_axis_tdata[95:88] == 8'd0);
                     assert (m_axis_tlast == prev_last);
                 end
@@ -341,6 +354,16 @@ module pilot_extractor_formal (
             assert (cfg_fft_size_invalid == g_fft_bad);
             assert (cfg_pattern_invalid == g_pat_bad);
             assert (cfg_num_active_invalid == g_num_bad);
+            assert (cfg_boost_invalid == g_boost_bad);
+        end
+        // Held or fresh, a valid record carries +-1/A_CP or +-1/A_SP.
+        if (past_valid && !rst && m_axis_tvalid) begin
+            assert (ref_re == 16'd12287 || ref_re == 16'd0 - 16'd12287 ||
+                    ref_re == inv_sp_probe || ref_re == 16'd0 - inv_sp_probe);
+        end
+        // 1/A_SP is latched at reset (its Table 9.16 value is checked in sim)
+        if (past_valid && !prev_rst) begin
+            assert (inv_sp_probe == prev_inv_sp);
         end
     end
 

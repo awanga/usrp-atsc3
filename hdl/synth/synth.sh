@@ -39,7 +39,7 @@ declare -A SOURCES=(
     [constellation_demapper]="ofdm/constellation_demapper.v"
     [equalizer]="channel/equalizer.v common/udiv_seq.v"
     [h_average]="channel/h_average.v"
-    [channel_estimator]="channel/channel_estimator.v channel/complex_divider.v channel/linear_interp.v channel/h_average.v common/udiv_seq.v"
+    [channel_estimator]="channel/channel_estimator.v channel/linear_interp.v channel/h_average.v common/udiv_seq.v"
 )
 # Extra Yosys commands run after reading the sources, per top.
 declare -A SETUP=(
