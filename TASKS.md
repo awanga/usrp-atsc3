@@ -29,26 +29,21 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
   gap: BCH, bit/frequency/CTI/HTI/cell de-interleavers, BBP, L1-Basic/
   L1-Detail, A/321 bootstrap, bootstrap-driven FrameSync, Table 8.9/9.13
   guard intervals (lib, Atsc3Config, `cp_removal.v`, register map
-  v0.2.0), rational resampler. Pushed through 1522ade; a32d7cb..8368cf1
-  local. Tip float 769/769, fxp 772/772 unit+integration; cppcheck and
-  clang-format clean; cp_removal RTL lint/synth/formal/2 sims/mutants.
-- RTL done through 9.9 plus `cp_removal.v` (guard interval code). Stale
-  against the golden model (benches fail visibly): `bootstrap_detector.v`,
-  `frame_sync*.v` + `frame_correlator.v` (retired: FrameSync has no
-  sample path; `frame_sync_gen` always fails).
+  v0.2.0), rational resampler, DC-centred carrier mapping (A/322 8.3),
+  pilot boosting +-1/A (lib and RTL, register map v0.4.0), preamble
+  layout + demodulator, QPSK labels (Table C.1.1, lib and RTL). Float
+  827/827 unit+integration (hardware tests skipped), fxp unit 769/769.
+- RTL done through 9.9 plus `cp_removal.v`; frame_sync/frame_correlator
+  RTL deleted (6aedd94, register map v0.3.0). Stale against the golden
+  model (bench fails visibly): `bootstrap_detector.v`.
 
 ## Next
 
-1. Pilot boosting (spec gap, found 2026-11-17): every pilot's reference
-   is +-1, so H = A x H at pilots (A_SP Table 9.16 by pattern and
-   L1D_scattered_pilot_boost; A_CP 8.52 dB; preamble Table 8.6) and the
-   types disagree. Plan: pilot extractor emits sign/A (Q1.15) and the
-   estimator multiplies (H = Y x ref) instead of dividing. RTL needs an
-   SP-boost config (register map: ask) and drops channel_estimator.v's
-   divider. Then preamble demod (layout done: lib/ofdm/preamble).
-2. Receive-chain wiring: preamble demod + L1-Basic demap/decode,
-   L1-Detail, data symbols/PLP cells, GR blocks.
-3. Then re-port bootstrap RTL, 9.10 de-interleavers, 9.11 LDPC, 9.12
+1. Receive-chain wiring: L1-Basic demap/decode (cells from
+   PreambleDemodulator, mode = preamble_structure % 5 + 1), L1-Detail,
+   data symbols/PLP cells, GR blocks. Docs (compliance.md, README) need
+   the carrier mapping, boosting, preamble and QPSK changes (approval).
+2. Then re-port bootstrap RTL, 9.10 de-interleavers, 9.11 LDPC, 9.12
    BCH, 9.13 L1 + config sequencer, 9.14 ALP, 9.15 AXI4-Lite, 9.16
    end-to-end, 9.17 throughput. Test bed: `hdl/docs/hg_xcku5p_testbed.md`.
 
@@ -56,8 +51,6 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 - FrameSync: time-aligned frame length only. Resampler: 512x64 Q1.15
   branches = 64 KB ROM for an RTL port; revisit when porting.
-- Delete the retired frame_sync/frame_correlator RTL, benches, formal
-  and mutants? (kept, failing visibly, pending a decision).
 - Not done in lib: CDL (inter-subframe HTI); nothing fills
   `Atsc3Config`; cell block r=0, time block CTI-only until the PLP chain;
   register map `c_source` cites removed `l1_decoder.h` (needs approval).

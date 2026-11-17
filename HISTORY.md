@@ -301,6 +301,18 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   harness. Resampler added (lib/dsp); its fixed-point build first failed
   at -16 dB because a unit tap (branch 0 at a Nyquist cutoff) overflows
   Q1.15 -- DC gain is now 32767/32768.
+- **Later still:** FFT output DC-centred (RTL: XOR of the unload address
+  MSB), carrier 0 at N/2 - (NoC - 1)/2 (A/322 8.3; was off by one bin).
+  Pilot references were +-1 (H came out A x H); now +-1/A with A_SP from
+  Table 9.16 and A_CP 8.52 dB, in lib and RTL; the estimator multiplies,
+  dropping the divider (register map v0.4.0, approved). Preamble layout
+  (Tables 7.1/7.2/8.4/8.6) and PreambleDemodulator added. frame_sync and
+  frame_correlator RTL deleted (approved). QPSK labels were (!y1, !y0)
+  against Table C.1.1; fixed in lib and RTL. Formal lessons: the latched
+  1/A_SP made pilot_extractor induction time out until a per-cycle
+  invariant on held records was added (then 198 s, was 517 s); every
+  table entry is checked in sim from the first record of a symbol,
+  which is cheaper than proving the table.
 - **Next:** see TASKS.md.
 
 ## Archive: the plan as it stood on 2026-10-01
