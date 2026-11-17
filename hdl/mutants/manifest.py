@@ -201,6 +201,20 @@ MUTANTS = [
         replace="wire in_cp   = (cnt <= cp_length);",
         killers=["sim:cp_removal", "formal:cp_removal"],
     ),
+    dict(
+        name="cp_gi12_wrong_length",
+        file="ofdm/cp_removal.v",
+        find="4'd12:   gi_samples_now = 13'd4864;",
+        replace="4'd12:   gi_samples_now = 13'd4096;",
+        killers=["sim:cp_removal", "formal:cp_removal"],
+    ),
+    dict(
+        name="cp_gi8_allowed_at_8k",
+        file="ofdm/cp_removal.v",
+        find="(cfg_guard_interval <= 4'd11 && fft_size_now != `ATSC3_FFT_8K) ||",
+        replace="(cfg_guard_interval <= 4'd11) ||",
+        killers=["sim:cp_removal", "formal:cp_removal"],
+    ),
     # --- fft_engine --------------------------------------------------------
     dict(
         name="fft_unload_skips_settle",

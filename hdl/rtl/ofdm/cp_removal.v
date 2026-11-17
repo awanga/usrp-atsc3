@@ -24,16 +24,15 @@
 // implementation freedom bootstrap_detector.v takes (a multi-cycle
 // divider/CORDIC pipeline vs. the C++'s single-call-per-sample model).
 //
-// cp_length_ = fft_size * cp_fraction / 8192 in the C++
-// (compute_cp_length(), lib/ofdm/cp_removal.h). Since fft_size is always
-// a multiple of 8192 for the three defined sizes, fft_size/8192 is
-// exactly 1, 2, or 4 with no remainder, so this RTL computes the
-// identical product as cp_fraction * (fft_size >> 13) -- an exact
-// integer multiply, no divider needed anywhere in this block.
+// The guard interval is configured by its A/322 Table 9.13 code, as L1
+// signals it; its length in samples comes from Table 8.9 and is the same
+// for every FFT size (lib/config/atsc3_config.h guard_interval_samples()).
+// A 12-entry table, no arithmetic: the length is looked up once, at
+// reset, and latched.
 //
-// Config is validated/clamped and LATCHED while rst is high, the same
+// Config is validated/defaulted and LATCHED while rst is high, the same
 // pattern as bootstrap_detector.v's cfg_averaging_window/win_n: the C++
-// only ever changes fft_size/cp_fraction via its constructor or
+// only ever changes fft_size/guard_interval via its constructor or
 // reconfigure() (which resets buffer_idx_), never mid-symbol, so there is
 // no golden-model behavior to match for a live config change anyway.
 // Latching also makes "the position counter never exceeds the max
@@ -45,14 +44,17 @@
 // to corrupt) but also isn't a provable invariant. Reconfigure by
 // resetting the block, same as bootstrap_detector.v's averaging window.
 //
-// Invalid config is clamped with a sticky flag latched alongside it, the
-// same pattern as bootstrap_detector.v's cfg_window_clamped:
+// Invalid config falls back to a default with a sticky flag latched
+// alongside it, the same pattern as bootstrap_detector.v's
+// cfg_window_clamped (the C++ throws instead):
 //   - cfg_fft_size not one of {8K, 16K, 32K} -> use 8K, flag
 //     cfg_fft_size_invalid.
-//   - cfg_cp_fraction_numerator > 4096 (the largest defined CpFraction,
-//     k4096_8192) -> clamp to 4096, flag cfg_cp_numerator_clamped.
-// Both clamps keep cp_length + fft_size within MAX_SYMBOL_LEN by
-// construction, which is what the formal proof checks.
+//   - cfg_guard_interval reserved (0, 13-15) or not allowed with the
+//     (possibly defaulted) FFT size by Table 8.9 (GI8-GI11 with 8K, GI12
+//     with 8K or 16K) -> use GI5_1024, allowed at every size, flag
+//     cfg_guard_interval_invalid.
+// Both keep cp_length + fft_size within MAX_SYMBOL_LEN by construction,
+// which is what the formal proof checks.
 //
 // AXI4-S: TDATA=ci16 in and out (Q1.15, pass-through, no arithmetic);
 // TLAST out marks the last sample of each FFT-length symbol. TLAST in is
@@ -68,9 +70,9 @@ module cp_removal #(
     input  wire         rst,  // synchronous, active-high
 
     input  wire [17:0]  cfg_fft_size,             // literal sample count: 8192/16384/32768
-    input  wire [12:0]  cfg_cp_fraction_numerator, // literal numerator over 8192 (192..4096)
+    input  wire [3:0]   cfg_guard_interval,       // A/322 Table 9.13 code, GI1..GI12 = 1..12
     output reg          cfg_fft_size_invalid,
-    output reg          cfg_cp_numerator_clamped,
+    output reg          cfg_guard_interval_invalid,
 
     `AXI4S_SLAVE(s_axis, `ATSC3_SAMPLE_WIDTH),
     `AXI4S_MASTER(m_axis, `ATSC3_SAMPLE_WIDTH)
@@ -78,28 +80,53 @@ module cp_removal #(
 
     // $clog2 is not Verilog-2001.
     localparam CNT_WIDTH = (MAX_SYMBOL_LEN <= 65536) ? 16 : 17;
-    localparam [12:0] MAX_CP_NUMERATOR = 13'd4096;  // CpFraction::k4096_8192
+    localparam [12:0] DEFAULT_GI_SAMPLES = 13'd1024;  // GI5_1024
     // A macro-expanded decimal literal can't be bit-sliced directly; a
     // sized localparam gives it this block's counter width.
     localparam [CNT_WIDTH-1:0] DEFAULT_FFT_SIZE = `ATSC3_FFT_8K;
 
     //--------------------------------------------------------------------
-    // Config validation / clamping / latching, resolved once per reset
+    // Config validation / defaulting / latching, resolved once per reset
     // (see header comment for why this isn't read live).
     //--------------------------------------------------------------------
 
     wire fft_size_valid_now = (cfg_fft_size == `ATSC3_FFT_8K) ||
                               (cfg_fft_size == `ATSC3_FFT_16K) ||
                               (cfg_fft_size == `ATSC3_FFT_32K);
-    wire cp_numerator_clamped_now = (cfg_cp_fraction_numerator > MAX_CP_NUMERATOR);
+    wire [CNT_WIDTH-1:0] fft_size_now = fft_size_valid_now ? cfg_fft_size[CNT_WIDTH-1:0] :
+                                                             DEFAULT_FFT_SIZE;
+
+    // A/322 Table 8.9 length of the Table 9.13 code; 0 for a reserved code.
+    reg [12:0] gi_samples_now;
+    always @(*) begin
+        case (cfg_guard_interval)
+            4'd1:    gi_samples_now = 13'd192;
+            4'd2:    gi_samples_now = 13'd384;
+            4'd3:    gi_samples_now = 13'd512;
+            4'd4:    gi_samples_now = 13'd768;
+            4'd5:    gi_samples_now = 13'd1024;
+            4'd6:    gi_samples_now = 13'd1536;
+            4'd7:    gi_samples_now = 13'd2048;
+            4'd8:    gi_samples_now = 13'd2432;
+            4'd9:    gi_samples_now = 13'd3072;
+            4'd10:   gi_samples_now = 13'd3648;
+            4'd11:   gi_samples_now = 13'd4096;
+            4'd12:   gi_samples_now = 13'd4864;
+            default: gi_samples_now = 13'd0;
+        endcase
+    end
+
+    // Table 8.9: GI1-GI7 at every size, GI8-GI11 not with 8K, GI12 only
+    // with 32K.
+    wire gi_allowed_now = (gi_samples_now != 13'd0) &&
+                          ((cfg_guard_interval <= 4'd7) ||
+                           (cfg_guard_interval <= 4'd11 && fft_size_now != `ATSC3_FFT_8K) ||
+                           (fft_size_now == `ATSC3_FFT_32K));
 
     reg [CNT_WIDTH-1:0] fft_size_r;
-    reg [12:0]          cp_numerator_r;
+    reg [12:0]          cp_length_r;
 
-    // fft_size_r / 8192 is exactly 1, 2, or 4 for the three valid sizes
-    // -- a plain right shift by 13, no remainder.
-    wire [2:0]            fft_scale  = fft_size_r[CNT_WIDTH-1:13];  // always 1, 2, or 4
-    wire [CNT_WIDTH-1:0]  cp_length  = cp_numerator_r * fft_scale;  // max 4096*4 = 16384
+    wire [CNT_WIDTH-1:0]  cp_length  = {{(CNT_WIDTH-13){1'b0}}, cp_length_r};  // max 4864
     wire [CNT_WIDTH-1:0]  symbol_len = fft_size_r + cp_length;
 
     //--------------------------------------------------------------------
@@ -121,13 +148,11 @@ module cp_removal #(
 
     always @(posedge clk) begin
         if (rst) begin
-            cfg_fft_size_invalid     <= !fft_size_valid_now;
-            fft_size_r               <= fft_size_valid_now ? cfg_fft_size[CNT_WIDTH-1:0] :
-                                         DEFAULT_FFT_SIZE;
+            cfg_fft_size_invalid       <= !fft_size_valid_now;
+            fft_size_r                 <= fft_size_now;
 
-            cfg_cp_numerator_clamped <= cp_numerator_clamped_now;
-            cp_numerator_r           <= cp_numerator_clamped_now ? MAX_CP_NUMERATOR :
-                                         cfg_cp_fraction_numerator;
+            cfg_guard_interval_invalid <= !gi_allowed_now;
+            cp_length_r                <= gi_allowed_now ? gi_samples_now : DEFAULT_GI_SAMPLES;
 
             cnt <= {CNT_WIDTH{1'b0}};
         end else if (fire_in) begin

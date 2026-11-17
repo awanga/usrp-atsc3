@@ -17,15 +17,18 @@ smtbmc z3
 # Stage 1: elaborate cp_removal_bare (a plain single-instance wrapper
 # around cp_removal), flatten it, and expose the internal
 # latched-config/position registers the white-box checks in
-# cp_removal_formal.v need (cnt, fft_size_r, cp_numerator_r) as ordinary
+# cp_removal_formal.v need (cnt, fft_size_r, cp_length_r) as ordinary
 # output ports. See hdl/docs/formal_conventions.md for why this
 # flatten+expose flow replaces a `bind`-based checker.
 read_verilog -formal -I. cp_removal.v
 read_verilog -formal -I. cp_removal_bare.v
 hierarchy -top cp_removal_bare
-proc
+# -norom: keep the guard interval case as logic. As a ROM it becomes a
+# memory whose contents are free state under induction (spurious CTIs
+# with lengths outside Table 8.9).
+proc -norom
 flatten
-expose -dff w:\dut.cnt w:\dut.fft_size_r w:\dut.cp_numerator_r
+expose -dff w:\dut.cnt w:\dut.fft_size_r w:\dut.cp_length_r
 write_verilog gen_cp_removal_bare.v
 
 # Stage 2: reset the design and re-elaborate from the generated,
@@ -36,11 +39,9 @@ read_verilog -formal -I. gen_cp_removal_bare.v
 read_verilog -formal -I. cp_removal_formal.v
 prep -top cp_removal_formal
 
-# cp_removal's only arithmetic is a 13x3-bit multiply (cp_numerator_r *
-# fft_scale) and 16-bit compares/adds -- far smaller than
-# bootstrap_detector's 64-bit datapath, so unlike that block this proof
-# does not need `cutpoint t:$mul` or ABC PDR; plain smtbmc k-induction
-# closes it directly.
+# cp_removal's only arithmetic is a 16-bit counter add and compares (the
+# guard interval length is a 12-entry table latched at reset), so plain
+# smtbmc k-induction closes it without cutpoints or ABC PDR.
 
 [files]
 axi4s_types.vh ../rtl/include/axi4s_types.vh

@@ -11,8 +11,9 @@
 // fft_size-th output beat of each symbol. A ghost counter numbers output
 // beats within the symbol and is pinned to the DUT's position counter so
 // k-induction closes. Supplementary: the position counter never exceeds
-// the longest defined symbol, config clamping and its flags, reset, and
-// AXI4-S output stability.
+// the longest defined symbol, the latched guard interval length and FFT
+// size against an independent copy of A/322 Tables 8.9 and 9.13, the
+// invalid-config flags and defaults, reset, and AXI4-S output stability.
 //
 // Assumptions, each encoding a caller contract:
 //   - cfg_* are stable while not in reset (cp_removal.v's header:
@@ -26,7 +27,7 @@
 // here. Non-vacuity of the framing and counter properties comes from
 // committed mutants (hdl/mutants: counter never wraps, TLAST one beat
 // early, one extra CP beat dropped), and test_cp_removal.py exercises
-// whole symbols at every CP fraction. White-box probes come from the
+// whole symbols at every guard interval and FFT size. White-box probes come from the
 // flatten+expose flow; see hdl/docs/formal_conventions.md.
 //
 // Run: hdl/formal/run_formal.sh cp_removal
@@ -42,9 +43,9 @@ module cp_removal_formal (
     localparam MAX_SYMBOL_LEN = `ATSC3_FFT_32K + `ATSC3_FFT_32K / 2;  // 49152
 
     reg  [17:0] cfg_fft_size;
-    reg  [12:0] cfg_cp_fraction_numerator;
+    reg  [3:0]  cfg_guard_interval;
     wire        cfg_fft_size_invalid;
-    wire        cfg_cp_numerator_clamped;
+    wire        cfg_guard_interval_invalid;
 
     reg  [31:0] s_axis_tdata;
     reg         s_axis_tvalid;
@@ -61,15 +62,15 @@ module cp_removal_formal (
     // cp_removal_bare -- see that file's header.
     wire [CNT_WIDTH-1:0] cnt_probe;
     wire [CNT_WIDTH-1:0] fft_size_r_probe;
-    wire [12:0]          cp_numerator_r_probe;
+    wire [12:0]          cp_length_r_probe;
 
     cp_removal_bare dut_top (
         .clk                       (clk),
         .rst                       (rst),
         .cfg_fft_size              (cfg_fft_size),
-        .cfg_cp_fraction_numerator (cfg_cp_fraction_numerator),
-        .cfg_fft_size_invalid      (cfg_fft_size_invalid),
-        .cfg_cp_numerator_clamped  (cfg_cp_numerator_clamped),
+        .cfg_guard_interval         (cfg_guard_interval),
+        .cfg_fft_size_invalid       (cfg_fft_size_invalid),
+        .cfg_guard_interval_invalid (cfg_guard_interval_invalid),
         .s_axis_tdata              (s_axis_tdata),
         .s_axis_tvalid             (s_axis_tvalid),
         .s_axis_tready             (s_axis_tready),
@@ -80,7 +81,7 @@ module cp_removal_formal (
         .m_axis_tlast              (m_axis_tlast),
         .\dut.cnt            (cnt_probe),
         .\dut.fft_size_r     (fft_size_r_probe),
-        .\dut.cp_numerator_r (cp_numerator_r_probe)
+        .\dut.cp_length_r   (cp_length_r_probe)
     );
 
     // s_axis_*/m_axis_tready/cfg_* are `reg` with no always-block driver
@@ -100,17 +101,17 @@ module cp_removal_formal (
 
     reg                   prev_rst;
     reg  [17:0]            prev_cfg_fft_size;
-    reg  [12:0]            prev_cfg_cp_fraction_numerator;
+    reg  [3:0]             prev_cfg_guard_interval;
     reg                   prev_s_valid, prev_s_ready, prev_s_tlast;
     reg  [31:0]            prev_s_tdata;
     reg                   prev_m_valid, prev_m_ready, prev_m_tlast;
     reg  [31:0]            prev_m_tdata;
-    reg                   prev_cfg_fft_size_invalid, prev_cfg_cp_numerator_clamped;
+    reg                   prev_cfg_fft_size_invalid, prev_cfg_guard_interval_invalid;
 
     always @(posedge clk) begin
         prev_rst                       <= rst;
         prev_cfg_fft_size               <= cfg_fft_size;
-        prev_cfg_cp_fraction_numerator  <= cfg_cp_fraction_numerator;
+        prev_cfg_guard_interval         <= cfg_guard_interval;
         prev_s_valid                   <= s_axis_tvalid;
         prev_s_ready                   <= s_axis_tready;
         prev_s_tdata                    <= s_axis_tdata;
@@ -120,7 +121,7 @@ module cp_removal_formal (
         prev_m_tdata                    <= m_axis_tdata;
         prev_m_tlast                   <= m_axis_tlast;
         prev_cfg_fft_size_invalid      <= cfg_fft_size_invalid;
-        prev_cfg_cp_numerator_clamped  <= cfg_cp_numerator_clamped;
+        prev_cfg_guard_interval_invalid <= cfg_guard_interval_invalid;
     end
 
     //--------------------------------------------------------------------
@@ -130,7 +131,7 @@ module cp_removal_formal (
     always @(*) begin
         if (past_valid && !rst && !prev_rst) begin
             assume (cfg_fft_size == prev_cfg_fft_size);
-            assume (cfg_cp_fraction_numerator == prev_cfg_cp_fraction_numerator);
+            assume (cfg_guard_interval == prev_cfg_guard_interval);
         end
     end
 
@@ -155,28 +156,58 @@ module cp_removal_formal (
     end
 
     //--------------------------------------------------------------------
-    // Clamp correctness: fft_size_r/cp_numerator_r are always in range.
-    // The invalid/clamped flags only update on the cycle following a
-    // reset cycle (they're written solely in cp_removal.v's `if (rst)`
-    // branch, held otherwise) -- so they must exactly reflect the config
-    // sampled *during* that reset cycle when prev_rst was 1, and stay
-    // unchanged (held) on every other cycle.
+    // Latched config against an independent copy of A/322 Table 8.9
+    // (length per Table 9.13 code, allowed FFT sizes). The flags and
+    // latched values only change on the cycle after a reset cycle, so
+    // they must reflect the config sampled during that reset cycle when
+    // prev_rst is 1, and hold on every other cycle.
     //--------------------------------------------------------------------
+    // A ternary chain, not a case: stage 2's prep would turn a case into a
+    // ROM whose contents are free state under induction.
+    function [12:0] table_8_9_len;
+        input [3:0] code;
+        begin
+            table_8_9_len = (code == 4'd1)  ? 13'd192  :
+                            (code == 4'd2)  ? 13'd384  :
+                            (code == 4'd3)  ? 13'd512  :
+                            (code == 4'd4)  ? 13'd768  :
+                            (code == 4'd5)  ? 13'd1024 :
+                            (code == 4'd6)  ? 13'd1536 :
+                            (code == 4'd7)  ? 13'd2048 :
+                            (code == 4'd8)  ? 13'd2432 :
+                            (code == 4'd9)  ? 13'd3072 :
+                            (code == 4'd10) ? 13'd3648 :
+                            (code == 4'd11) ? 13'd4096 :
+                            (code == 4'd12) ? 13'd4864 : 13'd0;
+        end
+    endfunction
+
+    wire prev_fft_valid = (prev_cfg_fft_size == `ATSC3_FFT_8K) ||
+                          (prev_cfg_fft_size == `ATSC3_FFT_16K) ||
+                          (prev_cfg_fft_size == `ATSC3_FFT_32K);
+    // FFT size actually used: the default 8K when the request is invalid.
+    wire is_8k  = !prev_fft_valid || prev_cfg_fft_size == `ATSC3_FFT_8K;
+    wire is_32k = prev_fft_valid && prev_cfg_fft_size == `ATSC3_FFT_32K;
+    wire [3:0] g = prev_cfg_guard_interval;
+    wire prev_gi_allowed = (g >= 4'd1 && g <= 4'd7) || (g >= 4'd8 && g <= 4'd11 && !is_8k) ||
+                           (g == 4'd12 && is_32k);
+
     always @(posedge clk) begin
         if (past_valid) begin
             assert (fft_size_r_probe == `ATSC3_FFT_8K || fft_size_r_probe == `ATSC3_FFT_16K ||
                     fft_size_r_probe == `ATSC3_FFT_32K);
-            assert (cp_numerator_r_probe <= 13'd4096);
+            assert (cp_length_r_probe <= 13'd4864);
         end
         if (past_valid && prev_rst) begin
-            assert (cfg_fft_size_invalid == !(prev_cfg_fft_size == `ATSC3_FFT_8K ||
-                                               prev_cfg_fft_size == `ATSC3_FFT_16K ||
-                                               prev_cfg_fft_size == `ATSC3_FFT_32K));
-            assert (cfg_cp_numerator_clamped == (prev_cfg_cp_fraction_numerator > 13'd4096));
+            assert (cfg_fft_size_invalid == !prev_fft_valid);
+            assert (fft_size_r_probe == (prev_fft_valid ? prev_cfg_fft_size[CNT_WIDTH-1:0] :
+                                                         `ATSC3_FFT_8K));
+            assert (cfg_guard_interval_invalid == !prev_gi_allowed);
+            assert (cp_length_r_probe == (prev_gi_allowed ? table_8_9_len(g) : 13'd1024));
         end
         if (past_valid && !prev_rst) begin
             assert (cfg_fft_size_invalid == prev_cfg_fft_size_invalid);
-            assert (cfg_cp_numerator_clamped == prev_cfg_cp_numerator_clamped);
+            assert (cfg_guard_interval_invalid == prev_cfg_guard_interval_invalid);
         end
     end
 
@@ -185,14 +216,13 @@ module cp_removal_formal (
     // recomputed independently from the exposed registers rather than
     // re-reading the DUT's own cp_length/symbol_len/in_cp wires.
     //--------------------------------------------------------------------
-    wire [2:0]            fft_scale_chk  = fft_size_r_probe[CNT_WIDTH-1:13];
-    wire [CNT_WIDTH-1:0]  cp_length_chk  = cp_numerator_r_probe * fft_scale_chk;
+    wire [CNT_WIDTH-1:0]  cp_length_chk  = {3'b000, cp_length_r_probe};
     wire [CNT_WIDTH-1:0]  symbol_len_chk = fft_size_r_probe + cp_length_chk;
     wire                  in_cp_chk      = (cnt_probe < cp_length_chk);
 
     always @(*) begin
         if (past_valid) begin
-            assert (cp_length_chk <= 16'd16384);
+            assert (cp_length_chk <= 16'd4864);
             assert (symbol_len_chk <= MAX_SYMBOL_LEN[CNT_WIDTH-1:0]);
             assert (cnt_probe < symbol_len_chk);
             assert (cnt_probe <= MAX_SYMBOL_LEN[CNT_WIDTH-1:0] - 1'b1);
@@ -246,22 +276,24 @@ module cp_removal_formal (
     //--------------------------------------------------------------------
     // Non-vacuity: every interesting mode is actually reachable.
     //--------------------------------------------------------------------
-    // m_axis_tvalid && m_axis_tlast (completing a whole symbol) is
-    // deliberately not covered here: the smallest real cp_length is 192
-    // (CpFraction::k192_8192 at FFT_8K), so reaching it needs a BMC trace
+    // No output beat is covered here: the shortest guard interval is 192
+    // beats (GI1_192), so even the first output beat, let alone a whole
+    // symbol, needs a BMC trace
     // hundreds to tens of thousands of cycles deep depending on config --
     // impractical to unroll and not what formal is for here (see
     // hdl/docs/formal_conventions.md's small-parameterization section:
     // "bit-exact numerical correctness is cocotb's job... not formal's",
     // and the same reasoning extends to "ran a whole realistic symbol").
     // test_cp_removal.py's cocotb suite exercises this concretely, at
-    // real cp_length/fft_size, dozens of times over.
+    // real cp_length/fft_size, dozens of times over. The output-side
+    // assertions are still proved for every state by induction; the
+    // committed framing mutants (formal killers) show they are not vacuous.
     always @(posedge clk) begin
         if (past_valid) begin
             cover (in_cp_chk);
-            cover (!in_cp_chk && m_axis_tvalid);
             cover (cfg_fft_size_invalid);
-            cover (cfg_cp_numerator_clamped);
+            cover (cfg_guard_interval_invalid);
+            cover (cp_length_r_probe == 13'd4864);
             cover (fft_size_r_probe == `ATSC3_FFT_16K);
             cover (fft_size_r_probe == `ATSC3_FFT_32K);
         end

@@ -1,6 +1,6 @@
 # OpenATSC3 HDL AXI4-Lite Register Map
 
-> Generated from `config/hdl_register_map.json` (v0.1.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
+> Generated from `config/hdl_register_map.json` (v0.2.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
 
 Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.
 
@@ -31,12 +31,6 @@ Source of truth for the RTL control plane's default-reset values and host/L1-seq
 
 Found while cross-referencing every block's C++ config defaults against each other to build this register map. Not fixed here -- flagged as candidate `lib/` fixes for a future bugfix branch.
 
-### `cp_length / cp_fraction at 8K`
-
-Three C++ structs default this to two different values. lib/sync/frame_sync.h FrameSyncConfig::frame_params.cp_length = 512 (1/16, comment says '1/16 of 8K'). lib/ofdm/cp_removal.h CpRemovalConfig::cp_fraction = CpFraction::k1024_8192 (1024, 1/8) and lib/framing/l1_decoder.h L1Pre::cp_length = CpLength::CP_1024_8192 (also 1/8) agree with each other but not with FrameSyncConfig.
-
-**Resolution used in this register map:** l1_status.cp_length below uses 1024 (1/8), matching CpRemovalConfig and L1Pre (2 of 3 sources, and the actual CP-removal RTL target). FrameSyncConfig's frame_params default is the outlier -- flagged as a candidate lib/ fix, not corrected here (out of this deliverable's scope; not one of the original 7 bugs on bugfix/hdl-golden-model-fixes).
-
 ### `modulation (demapper vs. PLP)`
 
 lib/ofdm/constellation_demapper.h DemapperConfig::modulation defaults to QAM64. lib/config/atsc3_config.h PlpConfig::modulation (the L1-signaled per-PLP value the demapper is actually supposed to run with) defaults to QPSK.
@@ -59,7 +53,7 @@ Canonical mirror of L1-Pre/L1-Post/active-PLP decode results (lib/framing/l1_dec
 |---|---|---|---|---|---|
 | `L1PRE_VERSION` | `0x00` | uint32 | `0` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::version`)* |
 | `FFT_SIZE` | `0x04` | enum | `FFT_8K` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::fft_size (config::FftSize)`)* |
-| `CP_LENGTH` | `0x08` | enum | `CP_1024_8192` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::cp_length (config::CpLength); see known_default_inconsistencies`)* |
+| `GUARD_INTERVAL` | `0x08` | enum | `GI5_1024` | l1 | A/322 Table 9.13 code (L1B_first_sub_guard_interval / L1D_guard_interval); length in samples per Table 8.9, independent of FFT size. *(`lib/config/atsc3_config.h:Atsc3Config::guard_interval (config::GuardInterval)`)* |
 | `PILOT_PATTERN` | `0x0C` | enum | `SP6_4` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::pilot_pattern (config::PilotPattern)`)* |
 | `L1_POST_SIZE_CELLS` | `0x10` | uint32 | `0` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::l1_post_size_cells`)* |
 | `L1_POST_MODULATION` | `0x14` | enum | `QPSK` | l1 | *(`lib/framing/l1_decoder.h:L1Pre::l1_post_modulation (config::Modulation)`)* |
@@ -126,7 +120,7 @@ Base address: `0x3000`
 | Register | Offset | Format | Reset | Writable by | Notes |
 |---|---|---|---|---|---|
 | `FFT_SIZE` | `0x00` | enum | `FFT_8K` | l1 | Wired from l1_status.FFT_SIZE, not independently stored. *(`lib/ofdm/cp_removal.h:CpRemovalConfig::fft_size`)* |
-| `CP_LENGTH` | `0x04` | enum | `CP_1024_8192` | l1 | Wired from l1_status.CP_LENGTH, not independently stored. *(`lib/ofdm/cp_removal.h:CpRemovalConfig::cp_fraction (CpFraction, encoded as the literal sample count)`)* |
+| `GUARD_INTERVAL` | `0x04` | enum | `GI5_1024` | l1 | Wired from l1_status.GUARD_INTERVAL, not independently stored. Reserved codes and patterns Table 8.9 does not allow with the FFT size fall back to GI5_1024 and raise cfg_guard_interval_invalid. *(`lib/ofdm/cp_removal.h:CpRemovalConfig::guard_interval (config::GuardInterval)`)* |
 
 ### `fft_engine`
 

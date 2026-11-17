@@ -10,8 +10,8 @@
 //
 // No parameter override: MAX_SYMBOL_LEN stays at cp_removal.v's real-spec
 // default (CNT_WIDTH = 16). Unlike bootstrap_detector's 64-bit dividers
-// and correlation products, this block's only arithmetic is a 13x3-bit
-// multiply and a 16-bit counter compare -- small enough for smtbmc/z3 to
+// and correlation products, this block's only arithmetic is a 16-bit
+// counter add and compare -- small enough for smtbmc/z3 to
 // handle directly at full width, so there is no need to shrink it (see
 // cp_removal.sby).
 //
@@ -22,9 +22,9 @@ module cp_removal_bare (
     input  wire         rst,
 
     input  wire [17:0]  cfg_fft_size,
-    input  wire [12:0]  cfg_cp_fraction_numerator,
+    input  wire [3:0]   cfg_guard_interval,
     output wire         cfg_fft_size_invalid,
-    output wire         cfg_cp_numerator_clamped,
+    output wire         cfg_guard_interval_invalid,
 
     input  wire [31:0]  s_axis_tdata,
     input  wire         s_axis_tvalid,
@@ -41,9 +41,9 @@ module cp_removal_bare (
         .clk                       (clk),
         .rst                       (rst),
         .cfg_fft_size              (cfg_fft_size),
-        .cfg_cp_fraction_numerator (cfg_cp_fraction_numerator),
-        .cfg_fft_size_invalid      (cfg_fft_size_invalid),
-        .cfg_cp_numerator_clamped  (cfg_cp_numerator_clamped),
+        .cfg_guard_interval         (cfg_guard_interval),
+        .cfg_fft_size_invalid       (cfg_fft_size_invalid),
+        .cfg_guard_interval_invalid (cfg_guard_interval_invalid),
         .s_axis_tdata              (s_axis_tdata),
         .s_axis_tvalid             (s_axis_tvalid),
         .s_axis_tready             (s_axis_tready),

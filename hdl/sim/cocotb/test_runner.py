@@ -128,10 +128,6 @@ INTEGRATION = {
             "channel/complex_divider.v",
             "channel/linear_interp.v",
             "channel/h_average.v",
-            "sync/frame_sync.v",
-            "sync/frame_sync_fsm.v",
-            "sync/frame_correlator.v",
-            "common/isqrt_seq.v",
             "common/udiv_seq.v",
         ],
         {

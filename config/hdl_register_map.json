@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "OpenATSC3 HDL AXI4-Lite Register Map",
     "description": "Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "conventions": {
         "address_layout": "One 0x1000-aligned region per block, in RTL signal-chain order (bootstrap detector through ALP demux). Register offsets within a region are 4-byte aligned.",
         "writable_by": {
@@ -24,11 +24,6 @@
     },
     "known_default_inconsistencies": [
         {
-            "field": "cp_length / cp_fraction at 8K",
-            "description": "Three C++ structs default this to two different values. lib/sync/frame_sync.h FrameSyncConfig::frame_params.cp_length = 512 (1/16, comment says '1/16 of 8K'). lib/ofdm/cp_removal.h CpRemovalConfig::cp_fraction = CpFraction::k1024_8192 (1024, 1/8) and lib/framing/l1_decoder.h L1Pre::cp_length = CpLength::CP_1024_8192 (also 1/8) agree with each other but not with FrameSyncConfig.",
-            "resolution": "l1_status.cp_length below uses 1024 (1/8), matching CpRemovalConfig and L1Pre (2 of 3 sources, and the actual CP-removal RTL target). FrameSyncConfig's frame_params default is the outlier -- flagged as a candidate lib/ fix, not corrected here (out of this deliverable's scope; not one of the original 7 bugs on bugfix/hdl-golden-model-fixes)."
-        },
-        {
             "field": "modulation (demapper vs. PLP)",
             "description": "lib/ofdm/constellation_demapper.h DemapperConfig::modulation defaults to QAM64. lib/config/atsc3_config.h PlpConfig::modulation (the L1-signaled per-PLP value the demapper is actually supposed to run with) defaults to QPSK.",
             "resolution": "l1_status.modulation below uses QPSK, matching PlpConfig (the true L1-derived source). DemapperConfig's own QAM64 default only matters when the demapper is unit-tested standalone outside the L1 pipeline; flagged as a candidate lib/ fix, not corrected here."
@@ -45,7 +40,7 @@
         "registers": [
             {"name": "L1PRE_VERSION", "offset": "0x00", "width": 8, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::version"},
             {"name": "FFT_SIZE", "offset": "0x04", "width": 8, "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::fft_size (config::FftSize)"},
-            {"name": "CP_LENGTH", "offset": "0x08", "width": 8, "format": "enum", "enum_values": {"CP_192_8192": 0, "CP_384_8192": 1, "CP_512_8192": 2, "CP_768_8192": 3, "CP_1024_8192": 4, "CP_1536_8192": 5, "CP_2048_8192": 6, "CP_2432_8192": 7, "CP_3072_8192": 8, "CP_3648_8192": 9, "CP_4096_8192": 10}, "reset": "CP_1024_8192", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::cp_length (config::CpLength); see known_default_inconsistencies"},
+            {"name": "GUARD_INTERVAL", "offset": "0x08", "width": 4, "format": "enum", "enum_values": {"GI1_192": 1, "GI2_384": 2, "GI3_512": 3, "GI4_768": 4, "GI5_1024": 5, "GI6_1536": 6, "GI7_2048": 7, "GI8_2432": 8, "GI9_3072": 9, "GI10_3648": 10, "GI11_4096": 11, "GI12_4864": 12}, "reset": "GI5_1024", "writable_by": "l1", "c_source": "lib/config/atsc3_config.h:Atsc3Config::guard_interval (config::GuardInterval)", "notes": "A/322 Table 9.13 code (L1B_first_sub_guard_interval / L1D_guard_interval); length in samples per Table 8.9, independent of FFT size."},
             {"name": "PILOT_PATTERN", "offset": "0x0C", "width": 8, "format": "enum", "enum_values": {"SP3_2": 0, "SP3_4": 1, "SP4_2": 2, "SP4_4": 3, "SP6_2": 4, "SP6_4": 5, "SP8_2": 6, "SP8_4": 7, "SP12_2": 8, "SP12_4": 9, "SP16_2": 10, "SP16_4": 11, "SP24_2": 12, "SP24_4": 13, "SP32_2": 14, "SP32_4": 15}, "reset": "SP6_4", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::pilot_pattern (config::PilotPattern)"},
             {"name": "L1_POST_SIZE_CELLS", "offset": "0x10", "width": 16, "format": "uint32", "reset": 0, "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_size_cells"},
             {"name": "L1_POST_MODULATION", "offset": "0x14", "width": 8, "format": "enum", "enum_values": {"QPSK": 0, "QAM16": 1, "QAM64": 2, "QAM256": 3, "QAM1024": 4, "QAM4096": 5, "NUC_QPSK": 6, "NUC_16": 7, "NUC_64": 8, "NUC_256": 9, "NUC_1024": 10, "NUC_4096": 11}, "reset": "QPSK", "writable_by": "l1", "c_source": "lib/framing/l1_decoder.h:L1Pre::l1_post_modulation (config::Modulation)"},
@@ -104,7 +99,7 @@
             "base_address": "0x3000",
             "registers": [
                 {"name": "FFT_SIZE", "offset": "0x00", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/ofdm/cp_removal.h:CpRemovalConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE, not independently stored."},
-                {"name": "CP_LENGTH", "offset": "0x04", "format": "enum", "enum_values": {"CP_192_8192": 192, "CP_384_8192": 384, "CP_512_8192": 512, "CP_768_8192": 768, "CP_1024_8192": 1024, "CP_1536_8192": 1536, "CP_2048_8192": 2048, "CP_2432_8192": 2432, "CP_3072_8192": 3072, "CP_3648_8192": 3648, "CP_4096_8192": 4096}, "reset": "CP_1024_8192", "writable_by": "l1", "c_source": "lib/ofdm/cp_removal.h:CpRemovalConfig::cp_fraction (CpFraction, encoded as the literal sample count)", "notes": "Wired from l1_status.CP_LENGTH, not independently stored."}
+                {"name": "GUARD_INTERVAL", "offset": "0x04", "format": "enum", "enum_values": {"GI1_192": 1, "GI2_384": 2, "GI3_512": 3, "GI4_768": 4, "GI5_1024": 5, "GI6_1536": 6, "GI7_2048": 7, "GI8_2432": 8, "GI9_3072": 9, "GI10_3648": 10, "GI11_4096": 11, "GI12_4864": 12}, "reset": "GI5_1024", "writable_by": "l1", "c_source": "lib/ofdm/cp_removal.h:CpRemovalConfig::guard_interval (config::GuardInterval)", "notes": "Wired from l1_status.GUARD_INTERVAL, not independently stored. Reserved codes and patterns Table 8.9 does not allow with the FFT size fall back to GI5_1024 and raise cfg_guard_interval_invalid."}
             ]
         },
         "fft_engine": {
