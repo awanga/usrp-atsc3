@@ -85,39 +85,6 @@
 // 16-bit field; 32 bits carries the C++ int32_t unchanged.
 
 //------------------------------------------------------------------------------
-// FrameEvent (lib/sync/frame_sync.h:90-103) -- frame-sync status.
-// Belongs to frame_sync, not timing_recovery (corrected in the HDL port
-// plan from an earlier draft).
-//------------------------------------------------------------------------------
-
-`define FRAME_EVENT_WIDTH 136
-
-`define FRAME_EVENT_TYPE_HI 7
-`define FRAME_EVENT_TYPE_LO 0
-`define FRAME_EVENT_TYPE_FRAME_START    8'd0
-`define FRAME_EVENT_TYPE_SUBFRAME_START 8'd1
-`define FRAME_EVENT_TYPE_SYMBOL_START   8'd2
-
-`define FRAME_EVENT_SAMPLE_INDEX_HI 55
-`define FRAME_EVENT_SAMPLE_INDEX_LO 8
-// Same 48-bit / wraparound reasoning as BOOTSTRAP_DETECTION_SAMPLE_INDEX.
-
-`define FRAME_EVENT_FRAME_NUMBER_HI 87
-`define FRAME_EVENT_FRAME_NUMBER_LO 56
-
-`define FRAME_EVENT_SUBFRAME_NUMBER_HI 103
-`define FRAME_EVENT_SUBFRAME_NUMBER_LO 88
-
-`define FRAME_EVENT_SYMBOL_NUMBER_HI 119
-`define FRAME_EVENT_SYMBOL_NUMBER_LO 104
-
-`define FRAME_EVENT_CONFIDENCE_HI 135
-`define FRAME_EVENT_CONFIDENCE_LO 120
-// q1_15. lib/sync/frame_sync.cc's normalization is sqrt-based (the shared
-// CORDIC core's vectoring mode covers this -- unlike BootstrapDetection's snr_db,
-// nothing here depends on the not-yet-covered log10/hyperbolic case.
-
-//------------------------------------------------------------------------------
 // Absolute <-> relative subcarrier indexing (pinned once, applies wherever
 // PILOT_SYMBOL_SUBCARRIER_INDEX meets a relative-indexed on-chip array):
 //

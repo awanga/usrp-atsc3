@@ -30,7 +30,6 @@ SIMULATORS = ["verilator", "icarus"]
 BLOCKS = {
     "axi4s_skid_buffer": (["common/axi4s_skid_buffer.v"], [], {"DATA_WIDTH": 8}),
     "udiv_seq": (["common/udiv_seq.v"], [], {"WIDTH": 16, "CNT_WIDTH": 5}),
-    "isqrt_seq": (["common/isqrt_seq.v"], [], {}),
     "cordic": (["common/cordic.v"], [], {}),
     "bootstrap_detector": (
         ["sync/bootstrap_detector.v", "common/cordic.v", "common/udiv_seq.v"],
@@ -53,18 +52,6 @@ BLOCKS = {
         ["sync/freq_correction.v", "common/cordic.v"],
         [],
         {},
-    ),
-    "frame_sync": (
-        [
-            "sync/frame_sync.v",
-            "sync/frame_sync_fsm.v",
-            "sync/frame_correlator.v",
-            "common/isqrt_seq.v",
-            "common/cordic.v",
-            "common/udiv_seq.v",
-        ],
-        ["sync"],
-        {"ADDR_W": 11},
     ),
     "complex_divider": (
         ["channel/complex_divider.v", "common/udiv_seq.v"],
@@ -105,15 +92,6 @@ BLOCKS = {
 # Integration benches: top module hdl/sim/cocotb/tb/<bench>.v, testbench
 # test_<bench>.py -> (RTL sources relative to RTL, parameters)
 INTEGRATION = {
-    "frame_correlator_tb": (
-        [
-            "sync/frame_correlator.v",
-            "common/isqrt_seq.v",
-            "common/cordic.v",
-            "common/udiv_seq.v",
-        ],
-        {},
-    ),
     "ofdm_frontend_tb": (
         [
             "sync/freq_correction.v",

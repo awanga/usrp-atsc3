@@ -2,15 +2,17 @@
 
 > See the HDL port plan's bullet on
 > `PilotSymbol`, `BootstrapDetection`, `FrameEvent`, `DemapResult`, and
-> L1Pre/L1Post field packing). Bit-range constants live in
+> L1Pre/L1Post field packing; `FrameEvent` was dropped with the retired
+> frame_sync RTL, 2026-11-17). Bit-range constants live in
 > `hdl/rtl/include/status_words.vh`; this doc is the rationale.
 
 ## Which lib/ structs get a packed wire layout, and which don't
 
-Four of the five structs the plan named are small, fixed-size, output-once-
-per-event structs -- real sideband/status words that need a bit-packed RTL
-representation: `PilotSymbol`, `BootstrapDetection`, `FrameEvent`, and (see
-below) L1Pre/L1Post. **`DemapResult` does not get one.** Its dominant field,
+The structs that are small, fixed-size, output-once-per-event -- real
+sideband/status words that need a bit-packed RTL representation -- are
+`PilotSymbol`, `BootstrapDetection` and (see below) L1Pre/L1Post.
+(`FrameEvent` no longer has an RTL producer: FrameSync tracks validated
+bootstraps in software.) **`DemapResult` does not get one.** Its dominant field,
 `llr` (`std::vector<int8_t>`), *is* the `int8_t`(LLR) AXI4-S stream already
 specified in `hdl/stubs/README.md` and the HDL port plan's constellation-demapper section --
 one LLR per beat, `TLAST` per symbol/codeword boundary. Packing `DemapResult`
@@ -64,10 +66,7 @@ design the plan explicitly scopes out this milestone (same reasoning as
 `config/hdl_register_map.json`'s excluded `lib/metrics/*` registers). This
 is the same exclusion class, just discovered in a non-metrics file: the
 line isn't "which directory is it in," it's "does producing this value
-need log/exp." `FrameEvent.confidence`, by contrast, comes from
-`frame_sync.cc`'s `sqrt`-based normalization (per the HDL port plan's
-frame-sync section) -- vectoring-mode CORDIC covers `sqrt`, so it's included
-as a normal `q1_15` field with no asterisk.
+need log/exp."
 
 If a future block's status word has a field computed via `log10`/`exp`,
 apply this same test before deciding whether it belongs in a `.vh` layout
@@ -117,24 +116,23 @@ spacings from the centre, hence the formula (640 for 8K NoCmax).
 |---|---|---|---|
 | `PilotSymbol` | `PILOT_SYMBOL_WIDTH` | 96 bits (12 B) | index + 2×complex + type + 1 reserved byte |
 | `BootstrapDetection` | `BOOTSTRAP_DETECTION_WIDTH` | 120 bits (15 B) | `snr_db` excluded (log10, see above); `metric` is 32-bit, not q1_15: the C++ int32_t peak metric can reach 65536 (2.0) through rounding |
-| `FrameEvent` | `FRAME_EVENT_WIDTH` | 136 bits (17 B) | belongs to frame_sync, not timing_recovery -- corrected in the HDL port plan from an earlier draft |
 | `DemapResult` | *(none)* | -- | already the existing `int8_t`(LLR) AXI4-S stream; see above |
 | L1Pre / L1Post | *(none)* | -- | already `config/hdl_register_map.json`'s `l1_status` bank |
 
-Actual AXI4-S `TDATA` bus width for `PilotSymbol`/`BootstrapDetection`/
-`FrameEvent` may pad these up to a rounder bus width (e.g. 128/144 bits)
-when each producing block (pilot extractor, bootstrap detector, frame
-sync) is actually integrated -- that's an integration-time decision for
+Actual AXI4-S `TDATA` bus width for `PilotSymbol`/`BootstrapDetection`
+may pad these up to a rounder bus width (e.g. 128 bits) when each
+producing block (pilot extractor, bootstrap detector) is actually
+integrated -- that's an integration-time decision for
 those blocks, not fixed here. The byte-aligned minimal widths above are
 what matters for this deliverable: every field has an unambiguous offset
 and width today.
 
 ## 48-bit sample counters: a wraparound check worth keeping
 
-`BootstrapDetection.sample_index` and `FrameEvent.sample_index` are 48
+`BootstrapDetection.sample_index` is 48
 bits, not the seemingly-natural 32. At the plan's nominal 6.25 MS/s, a
 32-bit counter wraps in `2^32 / 6.25e6 ≈ 687 s ≈ 11.5 minutes` --
 clearly wrong for a receiver meant to run continuously. 48 bits gives
-`2^48 / 6.25e6 ≈ 4.5×10^7 s ≈ 1.4 years`. Worth restating if either
+`2^48 / 6.25e6 ≈ 4.5×10^7 s ≈ 1.4 years`. Worth restating if the
 sample counter's width is ever "optimized" back down without re-deriving
 this bound.

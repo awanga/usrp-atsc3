@@ -11,7 +11,6 @@ RTL change and update this table; a large jump is a regression to explain.
 |---|---:|---:|---:|
 | axi4s_skid_buffer | 214 | 0 | 0 |
 | udiv_seq | 1,183 | 0 | 0 |
-| isqrt_seq | 1,757 | 0 | 0 |
 | cp_removal | 608 | 0 | 0 |
 | pilot_extractor | 1,525 | 3 | 46,848 |
 | cordic | 4,245 | 1 | 196 |
@@ -19,9 +18,7 @@ RTL change and update this table; a large jump is a regression to explain.
 | freq_correction | 11,084 | 1 | 196 |
 | fft_engine | 16,850 | 3 | 2,621,440 |
 | timing_recovery | 17,725 | 2 | 12,288 |
-| frame_correlator | 31,365 | 2 | 708 |
 | bootstrap_detector | 42,446 | 3 | 98,500 |
-| frame_sync | 55,036 | 3 | 2,097,860 |
 | linear_interp | 4,548 | 0 | 0 |
 | h_average | 8,195 | 1 | 1,048,576 |
 | complex_divider | 12,411 | 0 | 0 |

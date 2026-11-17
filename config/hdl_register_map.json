@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "OpenATSC3 HDL AXI4-Lite Register Map",
     "description": "Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "conventions": {
         "address_layout": "One 0x1000-aligned region per block, in RTL signal-chain order (bootstrap detector through ALP demux). Register offsets within a region are 4-byte aligned.",
         "writable_by": {
@@ -135,22 +135,6 @@
                 {"name": "PHASE_TRACKER_FFT_SIZE", "offset": "0x10", "format": "enum", "enum_values": {"FFT_8K": 0, "FFT_16K": 1, "FFT_32K": 2}, "reset": "FFT_8K", "writable_by": "l1", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
                 {"name": "PHASE_TRACKER_AVERAGING_WINDOW", "offset": "0x14", "format": "uint32", "reset": 4, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::averaging_window"},
                 {"name": "PHASE_TRACKER_UNWRAP_THRESHOLD", "offset": "0x18", "format": "angle_tbd", "reset_float": 3.14159265358979, "reset": null, "writable_by": "host", "c_source": "lib/sync/freq_correction.h:PilotPhaseTrackerConfig::unwrap_threshold", "notes": "Default is exactly M_PI, which is why this can't use q1_15 (out of [-1,1) range) -- needs the CORDIC angle convention to be finalized before this register's format/reset can be finalized."}
-            ]
-        },
-        "frame_sync": {
-            "base_address": "0x7000",
-            "registers": [
-                {"name": "SAMPLE_RATE_HZ", "offset": "0x00", "format": "uint32", "reset": 6250000, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::sample_rate_hz"},
-                {"name": "FFT_SIZE", "offset": "0x04", "format": "uint32", "reset": 8192, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.fft_size", "notes": "Wired from l1_status.FFT_SIZE."},
-                {"name": "CP_LENGTH", "offset": "0x08", "format": "uint32", "reset": 1024, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.cp_length", "notes": "Wired from l1_status.CP_LENGTH (1024); see known_default_inconsistencies for why this isn't FrameParams's own literal default of 512."},
-                {"name": "SYMBOLS_PER_SUBFRAME", "offset": "0x0C", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.symbols_per_subframe"},
-                {"name": "SUBFRAMES_PER_FRAME", "offset": "0x10", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.subframes_per_frame", "notes": "Wired from l1_status.NUM_SUBFRAMES."},
-                {"name": "PREAMBLE_SYMBOLS", "offset": "0x14", "format": "uint32", "reset": 1, "writable_by": "l1", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::frame_params.preamble_symbols"},
-                {"name": "DETECTION_THRESHOLD", "offset": "0x18", "format": "q1_15", "reset_float": 0.7, "reset": 22937, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::detection_threshold"},
-                {"name": "LOCK_ACQUIRE_COUNT", "offset": "0x1C", "format": "uint32", "reset": 3, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::lock_acquire_count"},
-                {"name": "LOCK_LOSS_COUNT", "offset": "0x20", "format": "uint32", "reset": 5, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::lock_loss_count"},
-                {"name": "HOLDOVER_FRAMES", "offset": "0x24", "format": "uint32", "reset": 10, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::holdover_frames"},
-                {"name": "SEARCH_WINDOW", "offset": "0x28", "format": "uint32", "reset": 64, "writable_by": "host", "c_source": "lib/sync/frame_sync.h:FrameSyncConfig::search_window", "notes": "Directly sizes the acquisition correlator's search width -- see the HDL port plan's frame-sync cycle-budget note (~2M complex MACs/call at default width, largest correlator in the design)."}
             ]
         },
         "channel_estimator": {

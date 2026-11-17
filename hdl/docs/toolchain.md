@@ -96,10 +96,6 @@ Generated RTL data:
 - `hdl/rtl/ofdm/pilot_additional_cp_lut.v`: `build-fxp/hdl/sim/golden/pilot_additional_cp_gen > hdl/rtl/ofdm/pilot_additional_cp_lut.v`
   (additional continual pilots of Tables D.1.4/D.1.5, keyed by FFT size,
   pattern and carrier reduction).
-- `hdl/rtl/sync/frame_sync_ref.vh`: from `echo Z |
-  build-fxp/hdl/sim/golden/frame_sync_gen`, reformatted as the `case`
-  table (header of the file); `test_frame_correlator_tb.py` fails if it
-  drifts from the model.
 - `hdl/rtl/sync/timing_recovery_coeffs.vh`: from `echo ROM |
   build-fxp/hdl/sim/golden/timing_recovery_gen`; `test_polyphase_fir.py`
   fails if it drifts from the running filter design.

@@ -118,8 +118,10 @@ does not meet the "firmware controls the USRP" goal; use it as step 1.
 
 ## Status LEDs (8 on the board)
 
-Proposed, from signals the RTL already exposes (frame_sync monitors,
-packet counters); final pinout after the schematic is read:
+Proposed, from signals the RTL already exposes (packet counters,
+bootstrap detection) and frame lock from FrameSync, which tracks validated
+bootstraps in software and reaches the LEDs over the control link; final
+pinout after the schematic is read:
 
 | LED | Meaning | Source |
 |---|---|---|
@@ -127,9 +129,9 @@ packet counters); final pinout after the schematic is read:
 | 1 | Samples arriving | depacketizer |
 | 2 | Drop seen (sticky, clear with a key) | sequence gap / FIFO overflow |
 | 3 | Bootstrap detected | bootstrap_detector |
-| 4 | frame_sync ACQUIRING or LOCKED | `mon_state` |
-| 5 | frame_sync LOCKED | `mon_state` |
-| 6-7 | Signal quality bar (4 levels) from `mon_confidence` | frame_sync |
+| 4 | FrameSync ACQUIRING or LOCKED | control link |
+| 5 | FrameSync LOCKED | control link |
+| 6-7 | Signal quality bar (4 levels) | control link (RSSI, below) |
 
 Signal-strength numbers (RSSI in dBm, SNR in dB) need `log10`, which the
 RTL deliberately excludes; take RSSI from the N2x0 sensor over the control

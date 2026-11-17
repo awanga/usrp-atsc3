@@ -1,6 +1,6 @@
 # OpenATSC3 HDL AXI4-Lite Register Map
 
-> Generated from `config/hdl_register_map.json` (v0.2.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
+> Generated from `config/hdl_register_map.json` (v0.3.0) by `hdl/docs/generate_register_map.py`. Edit the JSON, not this file, and re-run the script.
 
 Source of truth for the RTL control plane's default-reset values and host/L1-sequencer write ownership. Generated doc: hdl/docs/axi4lite_register_map.md via hdl/docs/generate_register_map.py. See the HDL port plan for background.
 
@@ -162,24 +162,6 @@ Base address: `0x6000`
 | `PHASE_TRACKER_FFT_SIZE` | `0x10` | enum | `FFT_8K` | l1 | Wired from l1_status.FFT_SIZE. *(`lib/sync/freq_correction.h:PilotPhaseTrackerConfig::fft_size`)* |
 | `PHASE_TRACKER_AVERAGING_WINDOW` | `0x14` | uint32 | `4` | host | *(`lib/sync/freq_correction.h:PilotPhaseTrackerConfig::averaging_window`)* |
 | `PHASE_TRACKER_UNWRAP_THRESHOLD` | `0x18` | angle_tbd | *(TBD)* | host | Default is exactly M_PI, which is why this can't use q1_15 (out of [-1,1) range) -- needs the CORDIC angle convention to be finalized before this register's format/reset can be finalized. *(`lib/sync/freq_correction.h:PilotPhaseTrackerConfig::unwrap_threshold`)* |
-
-### `frame_sync`
-
-Base address: `0x7000`
-
-| Register | Offset | Format | Reset | Writable by | Notes |
-|---|---|---|---|---|---|
-| `SAMPLE_RATE_HZ` | `0x00` | uint32 | `6250000` | host | *(`lib/sync/frame_sync.h:FrameSyncConfig::sample_rate_hz`)* |
-| `FFT_SIZE` | `0x04` | uint32 | `8192` | l1 | Wired from l1_status.FFT_SIZE. *(`lib/sync/frame_sync.h:FrameSyncConfig::frame_params.fft_size`)* |
-| `CP_LENGTH` | `0x08` | uint32 | `1024` | l1 | Wired from l1_status.CP_LENGTH (1024); see known_default_inconsistencies for why this isn't FrameParams's own literal default of 512. *(`lib/sync/frame_sync.h:FrameSyncConfig::frame_params.cp_length`)* |
-| `SYMBOLS_PER_SUBFRAME` | `0x0C` | uint32 | `1` | l1 | *(`lib/sync/frame_sync.h:FrameSyncConfig::frame_params.symbols_per_subframe`)* |
-| `SUBFRAMES_PER_FRAME` | `0x10` | uint32 | `1` | l1 | Wired from l1_status.NUM_SUBFRAMES. *(`lib/sync/frame_sync.h:FrameSyncConfig::frame_params.subframes_per_frame`)* |
-| `PREAMBLE_SYMBOLS` | `0x14` | uint32 | `1` | l1 | *(`lib/sync/frame_sync.h:FrameSyncConfig::frame_params.preamble_symbols`)* |
-| `DETECTION_THRESHOLD` | `0x18` | q1_15 | `22937` (0.7) | host | *(`lib/sync/frame_sync.h:FrameSyncConfig::detection_threshold`)* |
-| `LOCK_ACQUIRE_COUNT` | `0x1C` | uint32 | `3` | host | *(`lib/sync/frame_sync.h:FrameSyncConfig::lock_acquire_count`)* |
-| `LOCK_LOSS_COUNT` | `0x20` | uint32 | `5` | host | *(`lib/sync/frame_sync.h:FrameSyncConfig::lock_loss_count`)* |
-| `HOLDOVER_FRAMES` | `0x24` | uint32 | `10` | host | *(`lib/sync/frame_sync.h:FrameSyncConfig::holdover_frames`)* |
-| `SEARCH_WINDOW` | `0x28` | uint32 | `64` | host | Directly sizes the acquisition correlator's search width -- see the HDL port plan's frame-sync cycle-budget note (~2M complex MACs/call at default width, largest correlator in the design). *(`lib/sync/frame_sync.h:FrameSyncConfig::search_window`)* |
 
 ### `channel_estimator`
 
