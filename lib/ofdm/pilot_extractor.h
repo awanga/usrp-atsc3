@@ -44,13 +44,18 @@ enum class PilotType {
 };
 
 // Single pilot observation
+//
+// A pilot is transmitted as X = 2 A (1/2 - r_k) = +-A (Section 8.1), with
+// A > 1 for every boosted pilot type. inverse_reference holds 1/X (real,
+// +-1/A), which fits Q1.15 where X does not, so the channel estimate is a
+// multiply: H = Y / X = Y x inverse_reference.
 struct PilotSymbol {
-    size_t subcarrier_index;   // FFT bin index
-    sample_t reference_value;  // Known pilot value (BPSK sequence)
-    sample_t received_value;   // Observed value from FFT output
-    PilotType type;            // Type of pilot
+    size_t subcarrier_index;     // FFT bin index
+    sample_t inverse_reference;  // 1 / transmitted pilot value (real)
+    sample_t received_value;     // Observed value from FFT output
+    PilotType type;              // Type of pilot
 
-    // Compute channel estimate at this pilot (H = Y / X)
+    // Channel estimate at this pilot: H = received x inverse_reference
     sample_t estimate_channel() const;
 
     // Get phase error (for tracking)
@@ -96,7 +101,19 @@ struct PilotExtractorConfig {
     // (0 = centred).
     size_t first_active_carrier = 0;
     size_t num_active_carriers = 0;
+
+    // L1D_scattered_pilot_boost (0..4): with the pattern, sets the
+    // scattered, edge and additional continual pilot amplitude A_SP
+    // (Section 8.1.3.2, Table 9.16).
+    unsigned scattered_pilot_boost = 0;
 };
+
+// Table 9.16: scattered pilot power in dB for a pattern and
+// L1D_scattered_pilot_boost; false for a boost of 5..7 (reserved).
+bool scattered_pilot_power_db(PilotPattern pattern, unsigned boost, double* db);
+
+// Table 8.5: common continual pilot power, every FFT size.
+constexpr double kContinualPilotPowerDb = 8.52;
 
 // Pilot Extractor
 //
@@ -155,7 +172,7 @@ public:
     // Check if a subcarrier is a continual pilot
     bool is_continual_pilot(size_t subcarrier) const;
 
-    // Get reference value for a pilot
+    // inverse_reference of the pilot at this bin (1 / transmitted value)
     sample_t get_reference(size_t subcarrier, size_t symbol_index) const;
 
     // Update configuration
@@ -172,8 +189,15 @@ private:
     // Cached pattern parameters
     PilotPatternParams params_;
 
-    // Continual pilot positions (pre-computed for FFT size)
+    // Continual pilot positions (pre-computed for FFT size); the common
+    // subset is boosted to A_CP, the additional ones to A_SP.
     std::vector<size_t> continual_positions_;
+    std::vector<size_t> common_continual_positions_;
+
+    // 1 / A for scattered (also edge and additional CP) and common CP pilots
+    sample_t::value_type inv_amp_sp_{};
+    sample_t::value_type inv_amp_cp_{};
+    sample_t inverse_reference(int8_t sign, bool common_cp) const;
 
     // Reference sequence r_k as +1 / -1 (r_k = 0 / 1), indexed by relative carrier
     std::vector<int8_t> pilot_sequence_;

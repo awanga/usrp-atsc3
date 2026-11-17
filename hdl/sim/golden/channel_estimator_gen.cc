@@ -87,7 +87,8 @@ int main() {
                 }
                 PilotSymbol p;
                 p.subcarrier_index = carrier;
-                p.reference_value = sample_t(static_cast<int16_t>(v[0]), static_cast<int16_t>(v[1]));
+                p.inverse_reference =
+                    sample_t(static_cast<int16_t>(v[0]), static_cast<int16_t>(v[1]));
                 p.received_value = sample_t(static_cast<int16_t>(v[2]), static_cast<int16_t>(v[3]));
                 p.type = atsc3::ofdm::PilotType::SCATTERED;
                 pilots.push_back(p);

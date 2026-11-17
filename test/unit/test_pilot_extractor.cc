@@ -279,17 +279,74 @@ TEST(PilotExtractorTest, ReferenceSequenceRestartsEverySymbolAtTheFirstActiveCar
     }
 }
 
-TEST(PilotExtractorTest, ReferenceValuesAreBipolarReal) {
-    PilotExtractor extractor(make_config(8192, PilotPattern::SP6_4));
-    auto symbol = zero_symbol(8192);
-    for (const auto& pilot : extractor.extract(symbol.data(), 0)) {
+// Pilots are transmitted at +-A with A from the spec: A_SP from Table 9.16
+// (SP6_4: 0 / 5.40 dB at boost 0 / 3) for scattered and edge pilots, A_CP =
+// 8.52 dB (Table 8.5) for common continual pilots. Through a flat channel
+// H, every pilot's estimate must come back as H, whatever its type.
+TEST(PilotExtractorTest, EstimateUndoesPilotBoosting) {
+    const double h_re = 0.21, h_im = -0.13;
+    for (unsigned boost : {0u, 3u}) {
+        PilotExtractorConfig cfg = make_config(8192, PilotPattern::SP6_4);
+        cfg.scattered_pilot_boost = boost;
+        PilotExtractor extractor(cfg);
+        const double a_sp = std::pow(10.0, (boost == 0 ? 0.0 : 5.40) / 20.0);
+        const double a_cp = std::pow(10.0, 8.52 / 20.0);
+        std::vector<sample_t> symbol = zero_symbol(8192);
+        std::vector<PilotSymbol> pilots = extractor.extract(symbol.data(), 0);
+        ASSERT_FALSE(pilots.empty());
+        // Table D.1.4: SP6_4 at 8K adds CPs at relative carriers 1734, 2892
+        // and 5730, boosted like scattered pilots; the other CONTINUAL
+        // pilots are common (A_CP).
+        const size_t first = extractor.get_pattern_params().first_active;
+        size_t additional = 0;
+        for (PilotSymbol& p : pilots) {
+            const size_t rel = p.subcarrier_index - first;
+            const bool extra = rel == 1734 || rel == 2892 || rel == 5730;
+            additional += (p.type == PilotType::CONTINUAL && extra) ? 1 : 0;
+            double a = (p.type == PilotType::CONTINUAL && !extra) ? a_cp : a_sp;
+            double x = a * reference_sign(p.inverse_reference);
+            double y_re = h_re * x, y_im = h_im * x;
 #ifdef ATSC3_FIXED_POINT
-        EXPECT_EQ(std::abs(pilot.reference_value.real()), 32767);
+            p.received_value = sample_t(float_to_q15(static_cast<float>(y_re * 0.25)),
+                                        float_to_q15(static_cast<float>(y_im * 0.25)));
+            sample_t h = p.estimate_channel();
+            EXPECT_NEAR(q15_to_float(h.real()), h_re * 0.25, 2e-4) << p.subcarrier_index;
+            EXPECT_NEAR(q15_to_float(h.imag()), h_im * 0.25, 2e-4) << p.subcarrier_index;
 #else
-        EXPECT_EQ(std::abs(pilot.reference_value.real()), 1.0f);
+            p.received_value = sample_t(static_cast<float>(y_re), static_cast<float>(y_im));
+            sample_t h = p.estimate_channel();
+            EXPECT_NEAR(h.real(), h_re, 1e-5) << p.subcarrier_index;
+            EXPECT_NEAR(h.imag(), h_im, 1e-5) << p.subcarrier_index;
 #endif
-        EXPECT_EQ(pilot.reference_value.imag(), 0);
+        }
+        EXPECT_EQ(additional, 3u);
     }
+}
+
+// The Q1.15 product Y x (1/X) rounds half up: (y r + 2^14) >> 15.
+TEST(PilotExtractorTest, EstimateRoundsHalfUp) {
+    PilotSymbol p{};
+#ifdef ATSC3_FIXED_POINT
+    const int16_t cases[][4] = {// y, r, expected re (y r rounded), expected im (-y r)
+                                {12345, 12287, 4629, -4629},
+                                {7, 16384, 4, -3},
+                                {32767, 32767, 32766, -32766}};
+    for (const auto& c : cases) {
+        p.received_value = sample_t(c[0], static_cast<int16_t>(-c[0]));
+        p.inverse_reference = sample_t(c[1], 0);
+        EXPECT_EQ(p.estimate_channel(), sample_t(c[2], c[3])) << c[0] << " " << c[1];
+    }
+#else
+    p.received_value = sample_t(0.75f, -0.5f);
+    p.inverse_reference = sample_t(-0.375f, 0.0f);
+    EXPECT_EQ(p.estimate_channel(), sample_t(-0.28125f, 0.1875f));
+#endif
+}
+
+TEST(PilotExtractorTest, RejectsReservedScatteredPilotBoost) {
+    PilotExtractorConfig cfg = make_config(8192, PilotPattern::SP6_4);
+    cfg.scattered_pilot_boost = 5;
+    EXPECT_THROW(PilotExtractor e(cfg), std::invalid_argument);
 }
 
 //==============================================================================
@@ -527,7 +584,7 @@ TEST(PilotExtractorTest, ExtractedReferenceFollowsTheRelativeCarrierIndex) {
     const size_t first = extractor.get_pattern_params().first_active;
     auto symbol = zero_symbol(8192);
     for (const auto& pilot : extractor.extract(symbol.data(), 2)) {
-        EXPECT_EQ(pilot.reference_value, extractor.get_reference(pilot.subcarrier_index, 2));
+        EXPECT_EQ(pilot.inverse_reference, extractor.get_reference(pilot.subcarrier_index, 2));
     }
     // The edge pilot on relative carrier 0 uses r_0 = 1: -A
     EXPECT_EQ(reference_sign(extractor.get_reference(first, 0)), -1);
@@ -544,10 +601,10 @@ TEST(PilotSymbolTest, EstimateChannelUnity) {
     // Reference = +1, Received = +1+j0 -> Channel = +1+j0
 #ifdef ATSC3_FIXED_POINT
     // Use 32767 (max Q15) instead of float_to_q15(1.0f) to avoid overflow
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
 
@@ -568,10 +625,10 @@ TEST(PilotSymbolTest, EstimateChannelWithPhase) {
 
     // Reference = +1, Received = 0+j1 -> Channel = 0+j1 (90 deg rotation)
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(0, 32767);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, 1.0f);
 #endif
 
@@ -592,10 +649,10 @@ TEST(PilotSymbolTest, EstimateChannelNegativeRef) {
 
     // Reference = -1, Received = -1+j0 -> Channel = +1+j0
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(-32767, 0);
+    pilot.inverse_reference = sample_t(-32767, 0);
     pilot.received_value = sample_t(-32767, 0);
 #else
-    pilot.reference_value = sample_t(-1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(-1.0f, 0.0f);
     pilot.received_value = sample_t(-1.0f, 0.0f);
 #endif
 
@@ -620,10 +677,10 @@ TEST(PilotSymbolTest, PhaseErrorZero) {
 
     // Reference = +1, Received = +1+j0 -> No phase error
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
 
@@ -637,10 +694,10 @@ TEST(PilotSymbolTest, PhaseError90Degrees) {
 
     // Reference = +1, Received = 0+j1 -> 90 degree phase error (pi/2)
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(0, 32767);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, 1.0f);
 #endif
 
@@ -654,10 +711,10 @@ TEST(PilotSymbolTest, PhaseErrorMinus90Degrees) {
 
     // Reference = +1, Received = 0-j1 -> -90 degree phase error (-pi/2)
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(0, -32767);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, -1.0f);
 #endif
 

@@ -371,11 +371,11 @@ float Equalizer::estimate_residual_phase(const sample_t* received,
 #ifdef ATSC3_FIXED_POINT
         float eq_re = q15_to_float(eq.real());
         float eq_im = q15_to_float(eq.imag());
-        float ref_re = q15_to_float(pilot.reference_value.real());
+        float ref_re = q15_to_float(pilot.inverse_reference.real());
 #else
         float eq_re = eq.real();
         float eq_im = eq.imag();
-        float ref_re = pilot.reference_value.real();
+        float ref_re = pilot.inverse_reference.real();
 #endif
 
         // For BPSK: expected = ref_re (real-valued)

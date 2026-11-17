@@ -215,10 +215,8 @@ ChannelEstimator::compute_ls_estimate(const std::vector<ofdm::PilotSymbol>& pilo
     h_estimates.reserve(pilots.size());
 
     for (const auto& pilot : pilots) {
-        // LS estimate: H = Y / X (received / reference)
-        // For BPSK pilots, reference is real-valued, so this simplifies
-        sample_t h = safe_complex_divide(pilot.received_value, pilot.reference_value);
-        h_estimates.push_back(h);
+        // LS estimate H = Y / X, a multiply by the pilot's 1 / X.
+        h_estimates.push_back(pilot.estimate_channel());
     }
 
     return h_estimates;
@@ -472,11 +470,11 @@ float ChannelEstimator::compute_mean_phase_error(
 
     for (const auto& pilot : pilots) {
 #ifdef ATSC3_FIXED_POINT
-        float ref_re = q15_to_float(pilot.reference_value.real());
+        float ref_re = q15_to_float(pilot.inverse_reference.real());
         float rec_re = q15_to_float(pilot.received_value.real());
         float rec_im = q15_to_float(pilot.received_value.imag());
 #else
-        float ref_re = pilot.reference_value.real();
+        float ref_re = pilot.inverse_reference.real();
         float rec_re = pilot.received_value.real();
         float rec_im = pilot.received_value.imag();
 #endif

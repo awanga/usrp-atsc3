@@ -80,7 +80,7 @@ int main() {
         std::cout << "S " << symbol_index << '\n';
         for (const auto& p : extractor.extract(symbol.data(), symbol_index)) {
             std::cout << p.subcarrier_index << ' ' << static_cast<int>(p.type) << ' '
-                      << p.reference_value.real() << ' ' << p.reference_value.imag() << ' '
+                      << p.inverse_reference.real() << ' ' << p.inverse_reference.imag() << ' '
                       << p.received_value.real() << ' ' << p.received_value.imag() << '\n';
         }
     }

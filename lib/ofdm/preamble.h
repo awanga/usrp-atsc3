@@ -20,7 +20,8 @@
 //
 // Pilot values: 2 A (1/2 - r_k) on the real axis, r_k the Section 8.1.2
 // reference sequence (pilot_reference_sequence()), A from Table 8.6 for
-// preamble pilots and A_CP = 8.52 dB (Table 8.5) for continual pilots.
+// preamble pilots and kContinualPilotPowerDb (pilot_extractor.h, Table
+// 8.5) for continual pilots.
 //
 // Reference: ATSC A/322:2026 Sections 7.2.3, 7.2.5, 7.2.6.2, 8.1, Tables
 // 7.1, 7.2, 8.4-8.6, H.1.1
@@ -52,9 +53,6 @@ bool preamble_layout(size_t fft_size, size_t dx, unsigned cred_coeff, PreambleLa
 // Table 8.6: preamble pilot power in dB (amplitude 10^(dB/20)). False for
 // a pair that Table H.1.1 does not use.
 bool preamble_pilot_power_db(size_t fft_size, size_t dx, double* db);
-
-// Table 8.5: common continual pilot power, every FFT size.
-constexpr double kContinualPilotPowerDb = 8.52;
 
 }  // namespace ofdm
 }  // namespace atsc3

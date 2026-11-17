@@ -133,10 +133,10 @@ TEST(ChannelEstimatorTest, EstimateUnityChannel) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);  // +1
-    pilot.received_value = sample_t(32767, 0);   // +1
+    pilot.inverse_reference = sample_t(32767, 0);  // +1
+    pilot.received_value = sample_t(32767, 0);     // +1
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -158,10 +158,10 @@ TEST(ChannelEstimatorTest, EstimateAtPilotsUnityChannel) {
         pilot.subcarrier_index = 700 + k * 100;
 
 #ifdef ATSC3_FIXED_POINT
-        pilot.reference_value = sample_t(32767, 0);
+        pilot.inverse_reference = sample_t(32767, 0);
         pilot.received_value = sample_t(32767, 0);
 #else
-        pilot.reference_value = sample_t(1.0f, 0.0f);
+        pilot.inverse_reference = sample_t(1.0f, 0.0f);
         pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
         pilot.type = ofdm::PilotType::SCATTERED;
@@ -193,10 +193,10 @@ TEST(ChannelEstimatorTest, EstimateWithPhaseRotation) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);  // +1
-    pilot.received_value = sample_t(0, 32767);   // +j (received = H * ref = j * 1)
+    pilot.inverse_reference = sample_t(32767, 0);  // +1
+    pilot.received_value = sample_t(0, 32767);     // +j (received = H * ref = j * 1)
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, 1.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -224,10 +224,10 @@ TEST(ChannelEstimatorTest, EstimateWithAttenuation) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);  // +1
-    pilot.received_value = sample_t(16384, 0);   // +0.5
+    pilot.inverse_reference = sample_t(32767, 0);  // +1
+    pilot.received_value = sample_t(16384, 0);     // +0.5
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.5f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -255,10 +255,10 @@ TEST(ChannelEstimatorTest, EstimateWithNegativeReference) {
     pilot.subcarrier_index = 1000;
 
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(-32767, 0);  // -1
-    pilot.received_value = sample_t(-26214, 0);   // -0.8 (~-0.8 * 32768)
+    pilot.inverse_reference = sample_t(-32767, 0);  // -1
+    pilot.received_value = sample_t(-26214, 0);     // -0.8 (~-0.8 * 32768)
 #else
-    pilot.reference_value = sample_t(-1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(-1.0f, 0.0f);
     pilot.received_value = sample_t(-0.8f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -297,10 +297,10 @@ TEST(ChannelEstimatorTest, InterpolationLinearBetweenPilots) {
     ofdm::PilotSymbol pilot1;
     pilot1.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot1.reference_value = sample_t(32767, 0);
+    pilot1.inverse_reference = sample_t(32767, 0);
     pilot1.received_value = sample_t(32767, 0);
 #else
-    pilot1.reference_value = sample_t(1.0f, 0.0f);
+    pilot1.inverse_reference = sample_t(1.0f, 0.0f);
     pilot1.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot1.type = ofdm::PilotType::SCATTERED;
@@ -310,10 +310,10 @@ TEST(ChannelEstimatorTest, InterpolationLinearBetweenPilots) {
     ofdm::PilotSymbol pilot2;
     pilot2.subcarrier_index = first_active + 200;
 #ifdef ATSC3_FIXED_POINT
-    pilot2.reference_value = sample_t(32767, 0);
+    pilot2.inverse_reference = sample_t(32767, 0);
     pilot2.received_value = sample_t(16384, 0);
 #else
-    pilot2.reference_value = sample_t(1.0f, 0.0f);
+    pilot2.inverse_reference = sample_t(1.0f, 0.0f);
     pilot2.received_value = sample_t(0.5f, 0.0f);
 #endif
     pilot2.type = ofdm::PilotType::SCATTERED;
@@ -345,10 +345,10 @@ TEST(ChannelEstimatorTest, InterpolationFlatChannel) {
         ofdm::PilotSymbol pilot;
         pilot.subcarrier_index = first_active + 100 + i * 200;
 #ifdef ATSC3_FIXED_POINT
-        pilot.reference_value = sample_t(32767, 0);
+        pilot.inverse_reference = sample_t(32767, 0);
         pilot.received_value = sample_t(32767, 0);
 #else
-        pilot.reference_value = sample_t(1.0f, 0.0f);
+        pilot.inverse_reference = sample_t(1.0f, 0.0f);
         pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
         pilot.type = ofdm::PilotType::SCATTERED;
@@ -387,10 +387,10 @@ TEST(ChannelEstimatorTest, AveragingDisabled) {
     ofdm::PilotSymbol pilot;
     pilot.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -431,10 +431,10 @@ TEST(ChannelEstimatorTest, AveragingEnabled) {
     ofdm::PilotSymbol pilot;
     pilot.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -472,10 +472,10 @@ TEST(ChannelEstimatorTest, Reset) {
     ofdm::PilotSymbol pilot;
     pilot.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -503,10 +503,10 @@ TEST(ChannelEstimatorTest, SnrEstimationHighSnr) {
         ofdm::PilotSymbol pilot;
         pilot.subcarrier_index = first_active + 100 + i * 50;
 #ifdef ATSC3_FIXED_POINT
-        pilot.reference_value = sample_t(32767, 0);
+        pilot.inverse_reference = sample_t(32767, 0);
         pilot.received_value = sample_t(32767, 0);
 #else
-        pilot.reference_value = sample_t(1.0f, 0.0f);
+        pilot.inverse_reference = sample_t(1.0f, 0.0f);
         pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
         pilot.type = ofdm::PilotType::SCATTERED;
@@ -535,13 +535,13 @@ TEST(ChannelEstimatorTest, SnrEstimationLowSnr) {
         // Alternating +/- 0.3 imaginary gives ~10dB SNR
         float noise_im = (i % 2 == 0) ? 0.3f : -0.3f;
 #ifdef ATSC3_FIXED_POINT
-        pilot.reference_value = sample_t(32767, 0);
+        pilot.inverse_reference = sample_t(32767, 0);
         // Received has unity real (signal) + imaginary noise
         int16_t sig_val = 32767;
         int16_t noise_val = float_to_q15(noise_im);
         pilot.received_value = sample_t(sig_val, noise_val);
 #else
-        pilot.reference_value = sample_t(1.0f, 0.0f);
+        pilot.inverse_reference = sample_t(1.0f, 0.0f);
         pilot.received_value = sample_t(1.0f, noise_im);
 #endif
         pilot.type = ofdm::PilotType::SCATTERED;
@@ -569,10 +569,10 @@ TEST(ChannelEstimatorTest, MeanPhaseErrorZero) {
     ofdm::PilotSymbol pilot;
     pilot.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(32767, 0);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(1.0f, 0.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -593,10 +593,10 @@ TEST(ChannelEstimatorTest, MeanPhaseError90Degrees) {
     ofdm::PilotSymbol pilot;
     pilot.subcarrier_index = first_active + 100;
 #ifdef ATSC3_FIXED_POINT
-    pilot.reference_value = sample_t(32767, 0);
+    pilot.inverse_reference = sample_t(32767, 0);
     pilot.received_value = sample_t(0, 32767);
 #else
-    pilot.reference_value = sample_t(1.0f, 0.0f);
+    pilot.inverse_reference = sample_t(1.0f, 0.0f);
     pilot.received_value = sample_t(0.0f, 1.0f);
 #endif
     pilot.type = ofdm::PilotType::SCATTERED;
@@ -686,14 +686,16 @@ TEST(ChannelEstimatorTest, IntegrationWithPilotExtractor) {
     ce_config.fft_size = 8192;
     ChannelEstimator estimator(ce_config);
 
-    // Create FFT output that matches pilot reference values (unity channel)
-    // For unity channel: received = reference (H = 1)
+    // Flat channel H = 0.25: each pilot bin receives 0.25 X, X the
+    // transmitted (boosted) pilot, X = 1 / inverse_reference.
     std::vector<sample_t> fft_output(8192);
     for (size_t i = 0; i < 8192; ++i) {
-        // Get the reference value at this position (BPSK: +1 or -1)
-        auto ref = extractor.get_reference(i, 0);
-        // For unity channel, received = reference
-        fft_output[i] = ref;
+        auto inv = extractor.get_reference(i, 0);
+#ifdef ATSC3_FIXED_POINT
+        fft_output[i] = sample_t(float_to_q15(0.25f / q15_to_float(inv.real())), 0);
+#else
+        fft_output[i] = sample_t(0.25f / inv.real(), 0.0f);
+#endif
     }
 
     // Extract pilots
@@ -706,13 +708,12 @@ TEST(ChannelEstimatorTest, IntegrationWithPilotExtractor) {
     EXPECT_TRUE(result.is_valid);
     EXPECT_EQ(result.h_estimate.size(), estimator.get_num_active_carriers());
 
-    // All channel estimates should be unity (H = received / ref = ref / ref = 1)
-    // Check a few estimates in the middle
+    // Every pilot type, boosted or not, gives the same H = 0.25
     size_t mid = result.h_estimate.size() / 2;
 #ifdef ATSC3_FIXED_POINT
-    EXPECT_NEAR(q15_to_float(result.h_estimate[mid].real()), 1.0f, 0.1f);
+    EXPECT_NEAR(q15_to_float(result.h_estimate[mid].real()), 0.25f, 0.01f);
 #else
-    EXPECT_NEAR(result.h_estimate[mid].real(), 1.0f, 0.01f);
+    EXPECT_NEAR(result.h_estimate[mid].real(), 0.25f, 0.001f);
 #endif
 
     // High SNR expected for perfect channel

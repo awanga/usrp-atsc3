@@ -158,50 +158,61 @@ std::vector<size_t> common_cp_absolute(size_t fft_size) {
 
 }  // namespace
 
-// Maximum Q15 value (slightly less than 1.0 to avoid overflow)
-constexpr float kQ15MaxValue = 0.999969482421875f;  // (32767/32768)
+// Table 9.16: scattered pilot power (dB) per pattern (Table 9.14 order)
+// and L1D_scattered_pilot_boost 0..4.
+constexpr double kSpBoostDb[16][5] = {
+    {0.00, 0.00, 1.40, 2.20, 2.90}, {0.00, 1.40, 2.90, 3.80, 4.40},  // SP3_2, SP3_4
+    {0.00, 0.60, 2.10, 3.00, 3.60}, {0.00, 2.10, 3.60, 4.40, 5.10},  // SP4_2, SP4_4
+    {0.00, 1.60, 3.10, 4.00, 4.60}, {0.00, 3.00, 4.50, 5.40, 6.00},  // SP6_2, SP6_4
+    {0.00, 2.20, 3.80, 4.60, 5.30}, {0.00, 3.60, 5.10, 6.00, 6.60},  // SP8_2, SP8_4
+    {0.00, 3.20, 4.70, 5.60, 6.20}, {0.00, 4.50, 6.00, 6.90, 7.50},  // SP12_2, SP12_4
+    {0.00, 3.80, 5.30, 6.20, 6.80}, {0.00, 5.20, 6.70, 7.60, 8.20},  // SP16_2, SP16_4
+    {0.00, 4.70, 6.20, 7.10, 7.70}, {0.00, 6.10, 7.60, 8.50, 9.10},  // SP24_2, SP24_4
+    {0.00, 5.40, 6.90, 7.70, 8.40}, {0.00, 6.70, 8.20, 9.10, 9.70},  // SP32_2, SP32_4
+};
 
-// Convert +/-1 integer to sample_t (handles Q15 range properly)
-inline sample_t make_bpsk_sample(int8_t sign) {
+// 1 / A for a power in dB: Q1.15 (32767 for A = 1) or float.
+static sample_t::value_type inverse_amplitude(double db) {
+    double inv = std::pow(10.0, -db / 20.0);
 #ifdef ATSC3_FIXED_POINT
-    // Use 32767 for +1, -32767 for -1 to avoid overflow
-    return sample_t(sign > 0 ? 32767 : -32767, 0);
+    return static_cast<int16_t>(std::min(32767.0, std::round(inv * 32768.0)));
 #else
-    return sample_t(static_cast<float>(sign), 0.0f);
+    return static_cast<float>(inv);
 #endif
+}
+
+bool scattered_pilot_power_db(PilotPattern pattern, unsigned boost, double* db) {
+    const size_t idx = static_cast<size_t>(pattern);
+    if (idx >= 16 || boost > 4) {
+        return false;
+    }
+    *db = kSpBoostDb[idx][boost];
+    return true;
 }
 
 // PilotSymbol methods
 sample_t PilotSymbol::estimate_channel() const {
-    // H = Y / X = received / reference
-    // For BPSK pilots, reference is real-valued (+1 or -1)
+    // H = Y / X = Y x inverse_reference (real).
 #ifdef ATSC3_FIXED_POINT
-    // Get sign of reference (+1 or -1)
-    int ref_sign = (reference_value.real() > 0) ? 1 : -1;
-
-    // H = Y * sign(X) for BPSK
-    // Use 32-bit intermediate to avoid overflow
-    int32_t h_re = static_cast<int32_t>(received_value.real()) * ref_sign;
-    int32_t h_im = static_cast<int32_t>(received_value.imag()) * ref_sign;
-
-    // Clamp to int16_t range
-    h_re = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_re));
-    h_im = std::max<int32_t>(-32767, std::min<int32_t>(32767, h_im));
-
-    return sample_t(static_cast<int16_t>(h_re), static_cast<int16_t>(h_im));
+    auto mul = [](int16_t y, int16_t r) {
+        int32_t v = (int32_t{y} * r + (1 << 14)) >> 15;  // round half up
+        return static_cast<int16_t>(std::max<int32_t>(-32767, std::min<int32_t>(32767, v)));
+    };
+    return sample_t(mul(received_value.real(), inverse_reference.real()),
+                    mul(received_value.imag(), inverse_reference.real()));
 #else
-    float ref = reference_value.real();
-    return sample_t(received_value.real() * ref, received_value.imag() * ref);
+    float r = inverse_reference.real();
+    return sample_t(received_value.real() * r, received_value.imag() * r);
 #endif
 }
 
 double PilotSymbol::get_phase_error() const {
 #ifdef ATSC3_FIXED_POINT
-    float ref_re = q15_to_float(reference_value.real());
+    float ref_re = q15_to_float(inverse_reference.real());
     float rec_re = q15_to_float(received_value.real());
     float rec_im = q15_to_float(received_value.imag());
 #else
-    float ref_re = reference_value.real();
+    float ref_re = inverse_reference.real();
     float rec_re = received_value.real();
     float rec_im = received_value.imag();
 #endif
@@ -219,6 +230,12 @@ PilotExtractor::PilotExtractor(const PilotExtractorConfig& config) : config_(con
 PilotExtractor::~PilotExtractor() = default;
 
 void PilotExtractor::init() {
+    double sp_db = 0.0;
+    if (!scattered_pilot_power_db(config_.pattern, config_.scattered_pilot_boost, &sp_db)) {
+        throw std::invalid_argument("Invalid pattern or scattered pilot boost (Table 9.16)");
+    }
+    inv_amp_sp_ = inverse_amplitude(sp_db);
+    inv_amp_cp_ = inverse_amplitude(kContinualPilotPowerDb);
     compute_pattern_params();
     generate_continual_positions();
     generate_pilot_sequence();
@@ -266,9 +283,11 @@ void PilotExtractor::generate_continual_positions() {
     std::vector<size_t> relative;
 
     // Common CPs outside the configured carriers are not transmitted
+    common_continual_positions_.clear();
     for (size_t abs_index : common_cp_absolute(config_.fft_size)) {
         if (abs_index >= shift && abs_index - shift < noc) {
             relative.push_back(abs_index - shift);
+            common_continual_positions_.push_back(params_.first_active + abs_index - shift);
         }
     }
 
@@ -355,7 +374,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_scattered(const sample_t* fft_o
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
         int8_t prbs = get_prbs_bit(k - params_.first_active);
-        pilot.reference_value = make_bpsk_sample(prbs);
+        pilot.inverse_reference = inverse_reference(prbs, false);
 
         pilots.push_back(pilot);
     }
@@ -375,7 +394,9 @@ std::vector<PilotSymbol> PilotExtractor::extract_continual(const sample_t* fft_o
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
         int8_t prbs = get_prbs_bit(k - params_.first_active);
-        pilot.reference_value = make_bpsk_sample(prbs);
+        pilot.inverse_reference =
+            inverse_reference(prbs, std::binary_search(common_continual_positions_.begin(),
+                                                       common_continual_positions_.end(), k));
 
         pilots.push_back(pilot);
     }
@@ -401,7 +422,7 @@ std::vector<PilotSymbol> PilotExtractor::extract_edge(const sample_t* fft_output
 
         // Reference value from PRBS (use helper to avoid Q15 overflow)
         int8_t prbs = get_prbs_bit(k - params_.first_active);
-        pilot.reference_value = make_bpsk_sample(prbs);
+        pilot.inverse_reference = inverse_reference(prbs, false);
 
         pilots.push_back(pilot);
     }
@@ -455,9 +476,16 @@ bool PilotExtractor::is_continual_pilot(size_t subcarrier) const {
     return std::binary_search(continual_positions_.begin(), continual_positions_.end(), subcarrier);
 }
 
+sample_t PilotExtractor::inverse_reference(int8_t sign, bool common_cp) const {
+    sample_t::value_type a = common_cp ? inv_amp_cp_ : inv_amp_sp_;
+    return sample_t(static_cast<sample_t::value_type>(sign > 0 ? a : -a), 0);
+}
+
 sample_t PilotExtractor::get_reference(size_t subcarrier, size_t /* symbol_index */) const {
     int8_t prbs = get_prbs_bit(subcarrier - params_.first_active);
-    return make_bpsk_sample(prbs);
+    return inverse_reference(prbs,
+                             std::binary_search(common_continual_positions_.begin(),
+                                                common_continual_positions_.end(), subcarrier));
 }
 
 void PilotExtractor::set_config(const PilotExtractorConfig& config) {
