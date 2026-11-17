@@ -13,6 +13,7 @@ set(LIB_TEST_SOURCES
     test_simd.cc
     test_cordic.cc
     test_resampler.cc
+    test_preamble.cc
     test_bootstrap_signal.cc
     test_bootstrap_detector.cc
     test_bootstrap_decoder.cc

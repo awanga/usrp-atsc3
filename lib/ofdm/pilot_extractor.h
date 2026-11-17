@@ -194,6 +194,10 @@ private:
     int8_t get_prbs_bit(size_t relative_carrier) const;
 };
 
+// Reference sequence r_0 .. r_{length-1} (Section 8.1.2), indexed by
+// relative carrier; every pilot type modulates 1 - 2 r_k by its amplitude.
+std::vector<uint8_t> pilot_reference_sequence(size_t length);
+
 // Common continual pilot set for an FFT size, ascending absolute carrier
 // indices (Section 8.1.4.1: CP32 for 32K, every 2nd / 4th entry halved /
 // quartered, rounded up, for 16K / 8K). Used to generate the RTL's ROM.

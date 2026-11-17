@@ -156,20 +156,6 @@ std::vector<size_t> common_cp_absolute(size_t fft_size) {
     return out;
 }
 
-// Reference sequence r_k (Section 8.1.2): 13-bit generator with
-// G(x) = 1 + x^9 + x^10 + x^12 + x^13, initial sequence 0000 0000 1101 1,
-// reloaded at the start of every symbol. Values 0..12 are the initial
-// sequence read from x13 back to x1; later values follow the recurrence
-// s[n] = s[n-9] ^ s[n-10] ^ s[n-12] ^ s[n-13].
-std::vector<uint8_t> reference_sequence(size_t length) {
-    static constexpr uint8_t kInitial[13] = {1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0};
-    std::vector<uint8_t> s(length);
-    for (size_t n = 0; n < length; ++n) {
-        s[n] = (n < 13) ? kInitial[n] : (s[n - 9] ^ s[n - 10] ^ s[n - 12] ^ s[n - 13]);
-    }
-    return s;
-}
-
 }  // namespace
 
 // Maximum Q15 value (slightly less than 1.0 to avoid overflow)
@@ -303,7 +289,7 @@ void PilotExtractor::generate_continual_positions() {
 }
 
 void PilotExtractor::generate_pilot_sequence() {
-    const std::vector<uint8_t> r = reference_sequence(config_.num_active_carriers);
+    const std::vector<uint8_t> r = pilot_reference_sequence(config_.num_active_carriers);
     pilot_sequence_.resize(r.size());
     for (size_t k = 0; k < r.size(); ++k) {
         // Re{c} = 2 A (1/2 - r_k): r_k = 0 is +A, r_k = 1 is -A
@@ -480,6 +466,20 @@ void PilotExtractor::set_config(const PilotExtractorConfig& config) {
 }
 
 // Utility functions
+// Reference sequence r_k (Section 8.1.2): 13-bit generator with
+// G(x) = 1 + x^9 + x^10 + x^12 + x^13, initial sequence 0000 0000 1101 1,
+// reloaded at the start of every symbol. Values 0..12 are the initial
+// sequence read from x13 back to x1; later values follow the recurrence
+// s[n] = s[n-9] ^ s[n-10] ^ s[n-12] ^ s[n-13].
+std::vector<uint8_t> pilot_reference_sequence(size_t length) {
+    static constexpr uint8_t kInitial[13] = {1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<uint8_t> s(length);
+    for (size_t n = 0; n < length; ++n) {
+        s[n] = (n < 13) ? kInitial[n] : (s[n - 9] ^ s[n - 10] ^ s[n - 12] ^ s[n - 13]);
+    }
+    return s;
+}
+
 std::vector<size_t> common_continual_pilots(size_t fft_size) {
     fft_def(fft_size);  // validates the size
     return common_cp_absolute(fft_size);
