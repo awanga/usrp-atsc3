@@ -6,6 +6,8 @@
 #include "atsc3_ofdm_demod_impl.h"
 
 #include <gnuradio/io_signature.h>
+#include <stdexcept>
+#include <string>
 
 namespace gr {
 namespace atsc3 {
@@ -39,32 +41,14 @@ ofdm_demod_impl::ofdm_demod_impl(int fft_size, int cp_length)
 ofdm_demod_impl::~ofdm_demod_impl() = default;
 
 void ofdm_demod_impl::reconfigure() {
-    // Configure CP removal - map cp_length to nearest CpFraction enum
+    // cp_length must be an A/322 Table 8.9 guard interval allowed with
+    // fft_size; CpRemoval rejects the rest.
     ::atsc3::ofdm::CpRemovalConfig cp_config;
     cp_config.fft_size = static_cast<size_t>(fft_size_);
-
-    // Scale cp_length relative to 8192-point FFT for fraction lookup
-    int scaled_cp = (cp_length_ * 8192) / fft_size_;
-    if (scaled_cp >= 3648) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k4096_8192;
-    } else if (scaled_cp >= 2752) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k3072_8192;
-    } else if (scaled_cp >= 2240) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k2432_8192;
-    } else if (scaled_cp >= 1792) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k2048_8192;
-    } else if (scaled_cp >= 1280) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k1536_8192;
-    } else if (scaled_cp >= 896) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k1024_8192;
-    } else if (scaled_cp >= 640) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k768_8192;
-    } else if (scaled_cp >= 448) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k512_8192;
-    } else if (scaled_cp >= 288) {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k384_8192;
-    } else {
-        cp_config.cp_fraction = ::atsc3::ofdm::CpFraction::k192_8192;
+    if (cp_length_ < 0 || !::atsc3::ofdm::guard_interval_from_samples(
+                              static_cast<size_t>(cp_length_), &cp_config.guard_interval)) {
+        throw std::invalid_argument("atsc3 ofdm_demod: cp_length " + std::to_string(cp_length_) +
+                                    " is not an A/322 guard interval length");
     }
     cp_removal_ = std::make_unique<::atsc3::ofdm::CpRemoval>(cp_config);
 

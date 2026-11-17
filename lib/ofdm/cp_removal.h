@@ -6,59 +6,71 @@
 // CP Removal — Cyclic Prefix Stripping for OFDM Symbols
 //
 // Removes the cyclic prefix from incoming OFDM symbols to extract
-// the FFT window. CP length is configurable based on L1 signaling.
+// the FFT window. The guard interval is signaled in L1 (A/322 Table
+// 9.13); its length in samples is fixed by A/322 Table 8.9, whatever the
+// FFT size. Time-aligned frames add excess samples to the guard
+// intervals (A/322 Section 8.5.1); that is not handled here yet.
 //
 // AXI4-S Interface Contract:
 //   Input:  TDATA=cf32, TVALID, TREADY (streaming samples with CP)
 //   Output: TDATA=cf32, TVALID, TREADY, TLAST (FFT-length symbols)
 //
-// Reference: ATSC A/322 Section 7
+// Reference: ATSC A/322:2026 Section 8.5, Tables 8.9 and 9.13
 
 #include "types.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
 namespace atsc3 {
 namespace ofdm {
 
-// Supported CP fractions (as numerator/8192, scaled by FFT size)
-enum class CpFraction : size_t {
-    k192_8192 = 192,    // 1/42.67
-    k384_8192 = 384,    // 1/21.33
-    k512_8192 = 512,    // 1/16
-    k768_8192 = 768,    // 1/10.67
-    k1024_8192 = 1024,  // 1/8
-    k1536_8192 = 1536,  // 1/5.33
-    k2048_8192 = 2048,  // 1/4
-    k2432_8192 = 2432,  // 19/64
-    k3072_8192 = 3072,  // 3/8
-    k3648_8192 = 3648,  // 57/128
-    k4096_8192 = 4096   // 1/2
+// Guard interval patterns, numbered by their A/322 Table 9.13 code
+// (L1B_first_sub_guard_interval, L1D_guard_interval); codes 0 and 13-15
+// are reserved.
+enum class GuardInterval : uint8_t {
+    GI1_192 = 1,
+    GI2_384 = 2,
+    GI3_512 = 3,
+    GI4_768 = 4,
+    GI5_1024 = 5,
+    GI6_1536 = 6,
+    GI7_2048 = 7,
+    GI8_2432 = 8,
+    GI9_3072 = 9,
+    GI10_3648 = 10,
+    GI11_4096 = 11,
+    GI12_4864 = 12
 };
+
+// A/322 Table 8.9: the guard interval length in samples, the same for
+// every FFT size; 0 for a reserved code.
+size_t guard_interval_samples(GuardInterval gi);
+
+// The pattern with that length in samples; false if Table 8.9 has none.
+bool guard_interval_from_samples(size_t samples, GuardInterval* gi);
+
+// A/322 Table 8.9: whether gi may be used with fft_size (GI8-GI11 need
+// 16K or 32K, GI12 needs 32K). False for a reserved code or an FFT size
+// other than 8192, 16384, 32768.
+bool guard_interval_allowed(GuardInterval gi, size_t fft_size);
 
 // CP Removal configuration
 struct CpRemovalConfig {
     // FFT size (8192, 16384, 32768)
     size_t fft_size = 8192;
 
-    // CP fraction numerator (over 8192)
-    CpFraction cp_fraction = CpFraction::k1024_8192;
+    GuardInterval guard_interval = GuardInterval::GI5_1024;
 };
-
-// Compute CP length from configuration
-inline size_t compute_cp_length(size_t fft_size, CpFraction cp_fraction) {
-    // CP length = fft_size * (cp_fraction / 8192)
-    return (fft_size * static_cast<size_t>(cp_fraction)) / 8192;
-}
 
 // CP Removal processor
 //
 // Usage:
 //   CpRemovalConfig config;
 //   config.fft_size = 8192;
-//   config.cp_fraction = CpFraction::k1024_8192;  // CP = 1024 samples
+//   config.guard_interval = GuardInterval::GI5_1024;  // 1024 samples
 //   CpRemoval cp_remover(config);
 //
 //   // Set callback for complete symbols
@@ -74,6 +86,7 @@ public:
     // Callback for complete symbols (FFT length)
     using OutputCallback = std::function<void(const sample_t* symbol, size_t len)>;
 
+    // Throws std::invalid_argument unless guard_interval_allowed().
     explicit CpRemoval(const CpRemovalConfig& config);
     ~CpRemoval();
 

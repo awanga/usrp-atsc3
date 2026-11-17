@@ -3,7 +3,8 @@
 //
 // test_cp_removal.cc — Unit tests for lib/ofdm/cp_removal.h
 //
-// Tests cyclic prefix stripping for all defined CP fractions
+// Guard interval lengths and the FFT sizes each may be used with are from
+// A/322 Table 8.9; the pattern numbering is the Table 9.13 L1 code.
 
 #include "cp_removal.h"
 
@@ -15,35 +16,50 @@ namespace atsc3 {
 namespace ofdm {
 namespace {
 
-// Test compute_cp_length helper function
-TEST(CpRemovalTest, ComputeCpLength) {
-    // For 8K FFT
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k192_8192), 192u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k384_8192), 384u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k512_8192), 512u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k768_8192), 768u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k1024_8192), 1024u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k1536_8192), 1536u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k2048_8192), 2048u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k2432_8192), 2432u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k3072_8192), 3072u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k3648_8192), 3648u);
-    EXPECT_EQ(compute_cp_length(8192, CpFraction::k4096_8192), 4096u);
+// A/322 Table 8.9 lengths, the same for every FFT size; Table 9.13 codes
+// 0 and 13-15 are reserved.
+TEST(CpRemovalTest, GuardIntervalSamplesFollowTable89) {
+    const size_t samples[13] = {0,    192,  384,  512,  768,  1024, 1536,
+                                2048, 2432, 3072, 3648, 4096, 4864};
+    for (unsigned code = 0; code <= 15; ++code) {
+        size_t expected = code <= 12 ? samples[code] : 0;
+        EXPECT_EQ(guard_interval_samples(static_cast<GuardInterval>(code)), expected)
+            << "code " << code;
+    }
+}
 
-    // For 16K FFT (CP lengths double)
-    EXPECT_EQ(compute_cp_length(16384, CpFraction::k1024_8192), 2048u);
-    EXPECT_EQ(compute_cp_length(16384, CpFraction::k2048_8192), 4096u);
+TEST(CpRemovalTest, GuardIntervalFromSamples) {
+    const size_t samples[13] = {0,    192,  384,  512,  768,  1024, 1536,
+                                2048, 2432, 3072, 3648, 4096, 4864};
+    for (unsigned code = 1; code <= 12; ++code) {
+        GuardInterval gi = GuardInterval::GI1_192;
+        ASSERT_TRUE(guard_interval_from_samples(samples[code], &gi)) << samples[code];
+        EXPECT_EQ(static_cast<unsigned>(gi), code);
+    }
+    GuardInterval gi = GuardInterval::GI1_192;
+    for (size_t bad : {size_t{0}, size_t{191}, size_t{193}, size_t{8192}}) {
+        EXPECT_FALSE(guard_interval_from_samples(bad, &gi)) << bad;
+    }
+}
 
-    // For 32K FFT (CP lengths quadruple)
-    EXPECT_EQ(compute_cp_length(32768, CpFraction::k1024_8192), 4096u);
-    EXPECT_EQ(compute_cp_length(32768, CpFraction::k2048_8192), 8192u);
+// A/322 Table 8.9: GI1-GI7 for every FFT size, GI8-GI11 not with 8K,
+// GI12 only with 32K.
+TEST(CpRemovalTest, GuardIntervalAllowedFollowsTable89) {
+    for (unsigned code = 0; code <= 15; ++code) {
+        GuardInterval gi = static_cast<GuardInterval>(code);
+        bool defined = code >= 1 && code <= 12;
+        EXPECT_EQ(guard_interval_allowed(gi, 8192), defined && code <= 7) << code;
+        EXPECT_EQ(guard_interval_allowed(gi, 16384), defined && code <= 11) << code;
+        EXPECT_EQ(guard_interval_allowed(gi, 32768), defined) << code;
+        EXPECT_FALSE(guard_interval_allowed(gi, 2048)) << code;
+    }
 }
 
 // Test basic construction
 TEST(CpRemovalTest, Construction) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
@@ -57,7 +73,7 @@ TEST(CpRemovalTest, Construction) {
 TEST(CpRemovalTest, InvalidFftSizeThrows) {
     CpRemovalConfig config;
     config.fft_size = 4096;  // Bootstrap size, not valid for CP removal
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     EXPECT_THROW(CpRemoval cp_removal(config), std::invalid_argument);
 }
@@ -65,7 +81,7 @@ TEST(CpRemovalTest, InvalidFftSizeThrows) {
 // Test valid FFT sizes
 TEST(CpRemovalTest, ValidFftSizes) {
     CpRemovalConfig config;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     config.fft_size = 8192;
     EXPECT_NO_THROW(CpRemoval cp8k(config));
@@ -81,7 +97,7 @@ TEST(CpRemovalTest, ValidFftSizes) {
 TEST(CpRemovalTest, CallbackInvocation) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
@@ -136,7 +152,7 @@ TEST(CpRemovalTest, CallbackInvocation) {
 TEST(CpRemovalTest, MultipleSymbols) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k512_8192;  // 512 sample CP
+    config.guard_interval = GuardInterval::GI3_512;
 
     CpRemoval cp_removal(config);
 
@@ -160,7 +176,7 @@ TEST(CpRemovalTest, MultipleSymbols) {
 TEST(CpRemovalTest, PartialSymbol) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
@@ -184,7 +200,7 @@ TEST(CpRemovalTest, PartialSymbol) {
 TEST(CpRemovalTest, SampleBySample) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k192_8192;  // Smallest CP for faster test
+    config.guard_interval = GuardInterval::GI1_192;
 
     CpRemoval cp_removal(config);
 
@@ -207,7 +223,7 @@ TEST(CpRemovalTest, SampleBySample) {
 TEST(CpRemovalTest, Reset) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
@@ -235,7 +251,7 @@ TEST(CpRemovalTest, Reset) {
 TEST(CpRemovalTest, Reconfigure) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
@@ -245,7 +261,7 @@ TEST(CpRemovalTest, Reconfigure) {
     // Reconfigure to different CP
     CpRemovalConfig new_config;
     new_config.fft_size = 8192;
-    new_config.cp_fraction = CpFraction::k2048_8192;
+    new_config.guard_interval = GuardInterval::GI7_2048;
 
     cp_removal.reconfigure(new_config);
 
@@ -258,61 +274,71 @@ TEST(CpRemovalTest, Reconfigure) {
 TEST(CpRemovalTest, ReconfigureInvalidThrows) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
     CpRemovalConfig bad_config;
     bad_config.fft_size = 1024;  // Invalid
-    bad_config.cp_fraction = CpFraction::k1024_8192;
+    bad_config.guard_interval = GuardInterval::GI5_1024;
 
     EXPECT_THROW(cp_removal.reconfigure(bad_config), std::invalid_argument);
 }
 
-// Test all CP fractions work with 8K FFT
-TEST(CpRemovalTest, AllCpFractions8K) {
-    std::vector<CpFraction> fractions = {
-        CpFraction::k192_8192,  CpFraction::k384_8192,  CpFraction::k512_8192,
-        CpFraction::k768_8192,  CpFraction::k1024_8192, CpFraction::k1536_8192,
-        CpFraction::k2048_8192, CpFraction::k2432_8192, CpFraction::k3072_8192,
-        CpFraction::k3648_8192, CpFraction::k4096_8192};
+// Every allowed FFT size / guard interval pair strips exactly the Table
+// 8.9 length; the others are rejected.
+TEST(CpRemovalTest, EveryTable89Combination) {
+    const size_t samples[13] = {0,    192,  384,  512,  768,  1024, 1536,
+                                2048, 2432, 3072, 3648, 4096, 4864};
+    for (size_t fft : {size_t{8192}, size_t{16384}, size_t{32768}}) {
+        for (unsigned code = 1; code <= 12; ++code) {
+            CpRemovalConfig config;
+            config.fft_size = fft;
+            config.guard_interval = static_cast<GuardInterval>(code);
+            bool allowed = code <= 7 || (code <= 11 && fft >= 16384) || fft == 32768;
+            if (!allowed) {
+                EXPECT_THROW(CpRemoval c(config), std::invalid_argument) << fft << " GI" << code;
+                continue;
+            }
+            CpRemoval cp_removal(config);
+            EXPECT_EQ(cp_removal.get_cp_length(), samples[code]) << fft << " GI" << code;
 
-    for (CpFraction frac : fractions) {
-        CpRemovalConfig config;
-        config.fft_size = 8192;
-        config.cp_fraction = frac;
-
-        CpRemoval cp_removal(config);
-
-        size_t expected_cp = compute_cp_length(8192, frac);
-        EXPECT_EQ(cp_removal.get_cp_length(), expected_cp)
-            << "Mismatch for CP fraction " << static_cast<size_t>(frac);
-
-        // Process one symbol
-        size_t callback_count = 0;
-        cp_removal.set_output_callback([&](const sample_t*, size_t len) {
-            EXPECT_EQ(len, 8192u);
-            ++callback_count;
-        });
-
-        std::vector<sample_t> input(cp_removal.get_symbol_length(), sample_t(0, 0));
-        cp_removal.process(input.data(), input.size());
-
-        EXPECT_EQ(callback_count, 1u)
-            << "No callback for CP fraction " << static_cast<size_t>(frac);
+            // Mark the last guard sample and the first useful one.
+            std::vector<sample_t> input(samples[code] + fft, sample_t(0, 0));
+            input[samples[code] - 1] = sample_t(7, 7);
+            input[samples[code]] = sample_t(1, 1);
+            size_t callbacks = 0;
+            cp_removal.set_output_callback([&](const sample_t* sym, size_t len) {
+                EXPECT_EQ(len, fft);
+                EXPECT_EQ(sym[0], sample_t(1, 1)) << fft << " GI" << code;
+                ++callbacks;
+            });
+            cp_removal.process(input.data(), input.size());
+            EXPECT_EQ(callbacks, 1u) << fft << " GI" << code;
+        }
     }
+}
+
+TEST(CpRemovalTest, ReconfigureRejectsDisallowedGuardInterval) {
+    CpRemovalConfig config;
+    CpRemoval cp_removal(config);
+    CpRemovalConfig bad;
+    bad.fft_size = 8192;
+    bad.guard_interval = GuardInterval::GI8_2432;  // N/A for 8K
+    EXPECT_THROW(cp_removal.reconfigure(bad), std::invalid_argument);
+    EXPECT_EQ(cp_removal.get_cp_length(), 1024u);
 }
 
 // Test 16K FFT
 TEST(CpRemovalTest, Fft16K) {
     CpRemovalConfig config;
     config.fft_size = 16384;
-    config.cp_fraction = CpFraction::k1024_8192;  // = 2048 for 16K
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 
-    EXPECT_EQ(cp_removal.get_cp_length(), 2048u);
-    EXPECT_EQ(cp_removal.get_symbol_length(), 18432u);
+    EXPECT_EQ(cp_removal.get_cp_length(), 1024u);
+    EXPECT_EQ(cp_removal.get_symbol_length(), 17408u);
 
     size_t callback_count = 0;
     cp_removal.set_output_callback([&](const sample_t*, size_t len) {
@@ -320,7 +346,7 @@ TEST(CpRemovalTest, Fft16K) {
         ++callback_count;
     });
 
-    std::vector<sample_t> input(18432, sample_t(0, 0));
+    std::vector<sample_t> input(17408, sample_t(0, 0));
     cp_removal.process(input.data(), input.size());
 
     EXPECT_EQ(callback_count, 1u);
@@ -330,7 +356,7 @@ TEST(CpRemovalTest, Fft16K) {
 TEST(CpRemovalTest, Fft32K) {
     CpRemovalConfig config;
     config.fft_size = 32768;
-    config.cp_fraction = CpFraction::k512_8192;  // = 2048 for 32K
+    config.guard_interval = GuardInterval::GI7_2048;
 
     CpRemoval cp_removal(config);
 
@@ -353,7 +379,7 @@ TEST(CpRemovalTest, Fft32K) {
 TEST(CpRemovalTest, NoCallbackSet) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
     // No callback set
@@ -369,7 +395,7 @@ TEST(CpRemovalTest, NoCallbackSet) {
 TEST(CpRemovalTest, DataIntegrity) {
     CpRemovalConfig config;
     config.fft_size = 8192;
-    config.cp_fraction = CpFraction::k1024_8192;
+    config.guard_interval = GuardInterval::GI5_1024;
 
     CpRemoval cp_removal(config);
 

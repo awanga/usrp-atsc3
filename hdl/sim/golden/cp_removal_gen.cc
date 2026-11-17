@@ -18,7 +18,8 @@
 // beats -- no timing is implied.
 //
 // Input (stdin):
-//   C <fft_size> <cp_fraction_numerator>   -- first line
+//   C <fft_size> <gi_samples>              -- first line; gi_samples is
+//                                             an A/322 Table 8.9 length
 //   <re> <im>                              -- one per input sample, until EOF
 //
 // Output (stdout), one block per complete symbol the golden model emits:
@@ -48,15 +49,20 @@ int main() {
     std::istringstream cfg_in(line);
     char tag = 0;
     size_t fft_size = 0;
-    size_t cp_fraction_numerator = 0;
-    if (!(cfg_in >> tag >> fft_size >> cp_fraction_numerator) || tag != 'C') {
+    size_t gi_samples = 0;
+    if (!(cfg_in >> tag >> fft_size >> gi_samples) || tag != 'C') {
         std::cerr << "cp_removal_gen: bad config line: " << line << '\n';
         return 1;
     }
 
     CpRemovalConfig config;
     config.fft_size = fft_size;
-    config.cp_fraction = static_cast<atsc3::ofdm::CpFraction>(cp_fraction_numerator);
+    if (!atsc3::ofdm::guard_interval_from_samples(gi_samples, &config.guard_interval) ||
+        !atsc3::ofdm::guard_interval_allowed(config.guard_interval, fft_size)) {
+        std::cerr << "cp_removal_gen: " << gi_samples << "-sample guard interval with FFT "
+                  << fft_size << " is not allowed by A/322 Table 8.9\n";
+        return 1;
+    }
     CpRemoval remover(config);
 
     size_t symbol_index = 0;
