@@ -25,7 +25,7 @@ has an end-to-end conformance test.
 | Bootstrap detection | A/321 5.4 | Receiver design | test_bootstrap_detector, test_iq_replay | CAB repetition metric, fractional CFO |
 | Bootstrap decoding | A/321 5.2-5.4, Annex A | From spec | test_bootstrap_decoder, test_iq_replay | Timing, integer CFO, fields, termination |
 | Frame sync | A/321 6.1.1.1; A/322 7.2, 9.2 | From spec | test_frame_sync, test_iq_replay | Bootstrap-driven; time-aligned frame length only |
-| Resampling to 6.144 / (N+16) x 0.384 MS/s | A/321 5.1; A/322 9.1 | Not implemented | — | N210 rates differ from both |
+| Resampling to 6.144 / (N+16) x 0.384 MS/s | A/321 5.1; A/322 9.1 | Receiver design | test_resampler | Rational polyphase; not yet in a chain |
 | Preamble demodulation | A/322 8, Annex H | Not implemented | — | Preamble FFT/GI and pilots not wired |
 | L1-Basic / L1-Detail FEC | A/322 6.5 | From spec | test_l1_fec | Not wired to preamble cells |
 | L1-Basic / L1-Detail fields | A/322 9.2, 9.3 | From spec | test_l1_signaling | Nothing fills `Atsc3Config` from them yet |

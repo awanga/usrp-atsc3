@@ -126,9 +126,9 @@ No layer may import from a layer above it. Violations caught by `cmake --graphvi
 ## Signal Chain
 
 ATSC 3.0 receive chain: the inverse of the A/322 transmitter (Figures 4.1,
-6.1, 7.1), preceded by A/321 bootstrap acquisition. Blocks marked
-*(not yet)* are missing; the others are implemented and unit-tested but
-not yet joined into one receiver (see `docs/compliance.md`).
+6.1, 7.1), preceded by A/321 bootstrap acquisition. The blocks are
+implemented and unit-tested but not yet joined into one receiver (see
+`docs/compliance.md`).
 
 ```
 RF In (6 MHz channel)
@@ -139,7 +139,7 @@ RF In (6 MHz channel)
 │  (TVRX/UHD)      │   N210: 6.25 MS/s
 └──────┬───────────┘
        ▼
-┌──────────────────┐   (not yet)
+┌──────────────────┐   lib/dsp/resampler
 │  Resample        │   to the bootstrap rate, 6.144 MS/s (A/321 5.1)
 └──────┬───────────┘
        ▼
@@ -152,7 +152,7 @@ RF In (6 MHz channel)
 │  Frame sync      │   frame boundaries = validated bootstraps
 └──────┬───────────┘
        ▼
-┌──────────────────┐   (not yet)
+┌──────────────────┐   lib/dsp/resampler
 │  Resample        │   to (bsr_coefficient + 16) x 0.384 MS/s
 │                  │   (6.912 MS/s for 6 MHz, A/322 9.1)
 └──────┬───────────┘
@@ -250,6 +250,13 @@ Concrete implementations:
   against min_time_to_next and the L1 frame length; short holdover.
 - `timing_recovery` — Gardner timing error detector; polyphase interpolator
   for fractional sample correction.
+
+### `lib/dsp/` — Shared DSP Primitives
+
+- `cordic` — Shift-add rotation and vectoring (NCO, magnitude/phase).
+- `resampler` — Rational polyphase resampler (exact position accumulator,
+  Kaiser windowed sinc) from the radio rate to 6.144 MS/s and to
+  (bsr_coefficient + 16) x 0.384 MS/s.
 
 ### `lib/ofdm/` — OFDM Engine
 
