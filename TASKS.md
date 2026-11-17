@@ -39,19 +39,23 @@ legality errors, races and weak tests (see HISTORY.md, 2026-10-01).
 
 ## Next
 
-1. User: approve README/compliance resampler rows (resampling done).
-2. Receive-chain wiring: preamble demodulation (Table 7.2 cells, 8.1.6
-   pilots, first symbol at minimum NoC, frequency de-interleave), L1-Basic
-   demap + decode, L1-Detail, then data symbols/PLP cells, GR blocks.
+1. Pilot boosting (spec gap, found 2026-11-17): every pilot's reference
+   is +-1, so H = A x H at pilots (A_SP Table 9.16 by pattern and
+   L1D_scattered_pilot_boost; A_CP 8.52 dB; preamble Table 8.6) and the
+   types disagree. Plan: pilot extractor emits sign/A (Q1.15) and the
+   estimator multiplies (H = Y x ref) instead of dividing. RTL needs an
+   SP-boost config (register map: ask) and drops channel_estimator.v's
+   divider. Then preamble demod (layout done: lib/ofdm/preamble).
+2. Receive-chain wiring: preamble demod + L1-Basic demap/decode,
+   L1-Detail, data symbols/PLP cells, GR blocks.
 3. Then re-port bootstrap RTL, 9.10 de-interleavers, 9.11 LDPC, 9.12
    BCH, 9.13 L1 + config sequencer, 9.14 ALP, 9.15 AXI4-Lite, 9.16
    end-to-end, 9.17 throughput. Test bed: `hdl/docs/hg_xcku5p_testbed.md`.
 
 ## Open
 
-- FrameSync handles time-aligned frame length only (symbol-aligned
-  needs the L1 symbol layout). Resampler: 512x64 Q1.15 branches is a
-  64 KB ROM for an RTL port; revisit size when porting.
+- FrameSync: time-aligned frame length only. Resampler: 512x64 Q1.15
+  branches = 64 KB ROM for an RTL port; revisit when porting.
 - Delete the retired frame_sync/frame_correlator RTL, benches, formal
   and mutants? (kept, failing visibly, pending a decision).
 - Not done in lib: CDL (inter-subframe HTI); nothing fills
