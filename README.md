@@ -125,101 +125,91 @@ No layer may import from a layer above it. Violations caught by `cmake --graphvi
 
 ## Signal Chain
 
-ATSC 3.0 (ATSC A/322) physical layer signal chain implemented in `lib/`:
+ATSC 3.0 receive chain: the inverse of the A/322 transmitter (Figures 4.1,
+6.1, 7.1), preceded by A/321 bootstrap acquisition. Blocks marked
+*(not yet)* are missing; the others are implemented and unit-tested but
+not yet joined into one receiver (see `docs/compliance.md`).
 
 ```
 RF In (6 MHz channel)
       │
       ▼
-┌─────────────┐   hal/IQSource
-│  RF Frontend │   set_freq(), set_gain(), set_rate()
-│  (TVRX/UHD) │   AGC feedback loop
-└──────┬──────┘
-       │ complex float32  @ 6.25–12.5 MS/s
-       ▼
-┌─────────────────┐   lib/sync/
-│ Bootstrap Detect │   Fixed-param 4K OFDM preamble detection
-│ + Coarse Sync    │   Schmidl-Cox correlator + CP autocorrelation
-└──────┬──────────┘
-       │ frame-aligned IQ
-       ▼
-┌─────────────────┐   lib/sync/
-│  Frame Timing   │   Symbol timing recovery (Gardner TED)
-│  & Frame Sync   │   SFN detection, superframe alignment
-└──────┬──────────┘
-       │
-       ▼
-┌─────────────────┐   lib/ofdm/
-│   CP Removal    │   Configurable CP length (1/4, 19/128, 3/16 ...)
-│   + Windowing   │   Raised-cosine windowing to reduce ISI
-└──────┬──────────┘
-       │
-       ▼
-┌─────────────────┐   lib/ofdm/
-│   FFT Engine    │   FFTW3f or built-in back-end; 8K/16K/32K point configurable
-│                 │   Pilot extraction (scattered + continual + edge)
-└──────┬──────────┘
-       │ frequency-domain symbols
-       ▼
-┌─────────────────────┐   lib/channel/
-│ Channel Estimation  │   Least-squares on scattered pilots
-│ (LS → MMSE refine)  │   Time/freq 2D interpolation (Wiener filter)
-└──────┬──────────────┘
-       │ H(f) estimate
-       ▼
-┌─────────────────┐   lib/channel/
-│  Equalization   │   Single-tap FDE (divide by H(f))
-│  (FDE + PEQ)    │   Phase error correction per symbol
-└──────┬──────────┘
-       │ equalized QAM symbols
-       ▼
-┌──────────────────┐   lib/ofdm/
-│  Demapping       │   Soft LLR output: QPSK/16/64/256/1024/4096-QAM
-│  (LLR output)    │   NUC constellation tables (non-uniform)
+┌──────────────────┐   hal/IQSource
+│  RF Frontend     │   set_freq(), set_gain(), set_rate(); AGC loop
+│  (TVRX/UHD)      │   N210: 6.25 MS/s
 └──────┬───────────┘
-       │ LLRs (bit soft values)
        ▼
-┌──────────────────┐   lib/ofdm/
-│ De-interleaving  │   Time de-interleaver (TDI)
-│                  │   Frequency de-interleaver (FDI)
-│                  │   Cell de-interleaver
+┌──────────────────┐   (not yet)
+│  Resample        │   to the bootstrap rate, 6.144 MS/s (A/321 5.1)
 └──────┬───────────┘
-       │
        ▼
-┌──────────────────┐   lib/fec/
-│  LDPC Decoder    │   64800-bit or 16200-bit codewords
-│  (Belief Prop.)  │   Min-sum algorithm (hardware-friendly approx.)
-│                  │   Configurable iteration count (default: 50)
+┌──────────────────┐   lib/sync/bootstrap_*
+│ Bootstrap detect │   2048-point FFT, 3072-sample CAB/BCA symbols;
+│ + decode         │   timing, CFO, version 0.0 signaling fields
 └──────┬───────────┘
-       │
        ▼
-┌──────────────────┐   lib/fec/
-│  BCH Decoder     │   Outer code; t=12 error correction
+┌──────────────────┐   lib/sync/frame_sync
+│  Frame sync      │   frame boundaries = validated bootstraps
 └──────┬───────────┘
-       │ decoded bits (PLPs)
        ▼
-┌──────────────────┐   lib/framing/
-│  ALP Framing     │   Application Link Protocol demux
-│  ROUTE/DASH      │   IP datagram reassembly, service discovery
+┌──────────────────┐   (not yet)
+│  Resample        │   to (bsr_coefficient + 16) x 0.384 MS/s
+│                  │   (6.912 MS/s for 6 MHz, A/322 9.1)
 └──────┬───────────┘
-       │ HEVC/AC-4 elementary streams
        ▼
-┌──────────────────┐   av/
-│  FFmpeg Decode   │   HEVC video (libx265), AC-4 / HE-AAC audio
+┌──────────────────┐   lib/ofdm/cp_removal, fft_engine
+│  GI removal, FFT │   A/322 Table 8.9 guard intervals; 8K/16K/32K
 └──────┬───────────┘
-       │ raw YUV / PCM
        ▼
-┌──────────────────┐   av/
-│ GStreamer Player │   appsrc → hevcparse → avdec_h265 → autovideosink
-└──────────────────┘   appsrc → aacparse → avdec_aac → autoaudiosink
+┌──────────────────┐   lib/ofdm/pilot_extractor, lib/channel/
+│ Channel estimate │   scattered/continual/edge pilots; LS + Wiener
+│ + equalize       │   interpolation; single-tap equalizer
+└──────┬───────────┘
+       ▼
+┌──────────────────┐   lib/ofdm/freq_deinterleaver
+│ Freq de-interlv  │   A/322 7.3
+└──────┬───────────┘
+       ├───────────────────────────────┐
+       ▼ preamble cells                ▼ data cells
+┌──────────────────┐   lib/framing/   ┌──────────────────┐   lib/ofdm/
+│ L1-Basic,        │   l1_fec,        │ Time de-interlv  │   time_ / cell_
+│ L1-Detail decode │   l1_signaling   │ (CTI / HTI)      │   deinterleaver
+└──────┬───────────┘                  └──────┬───────────┘
+       │ configures every block              ▼
+       │ after the bootstrap        ┌──────────────────┐   lib/ofdm/
+       └──────────────────────────► │ Demap (QAM/NUC)  │   constellation_demapper
+                                    │ soft LLRs        │
+                                    └──────┬───────────┘
+                                           ▼
+                                    ┌──────────────────┐   lib/fec/
+                                    │ Bit de-interlv   │   bit_deinterleaver
+                                    │ LDPC (min-sum)   │   ldpc_decoder
+                                    │ BCH / CRC-32     │   bch_decoder
+                                    └──────┬───────────┘
+                                           ▼
+                                    ┌──────────────────┐   lib/framing/
+                                    │ Baseband packets │   baseband_packet
+                                    │ ALP demux        │   alp_demux
+                                    │ ROUTE/DASH       │   route_parser
+                                    └──────┬───────────┘
+                                           ▼ HEVC / AC-4
+                                    ┌──────────────────┐   av/
+                                    │ FFmpeg decode    │
+                                    │ GStreamer player │
+                                    └──────────────────┘
 ```
 
-### L1 Signaling (Preamble)
+### L1 Signaling
 
-The bootstrap and preamble carry L1-Pre and L1-Post signaling tables that
-configure every parameter above (FFT size, CP, modulation, LDPC rate, pilot
-pattern, etc.). The framing layer decodes these before the data path configures
-itself dynamically per ATSC A/322 §6.
+The bootstrap's last symbol signals the preamble structure (A/322 Table
+H.1.1): FFT size, guard interval, pilot spacing and L1-Basic FEC mode of
+the preamble. The preamble carries L1-Basic (fixed 200 bits) and
+L1-Detail (variable), each protected by BCH + LDPC with shortening and
+puncturing (A/322 Section 6.5). Their fields (A/322 Sections 9.2, 9.3)
+configure everything after the preamble: frame length, subframes, FFT
+size, guard interval, pilots, and per-PLP modulation, code rate and time
+interleaving. `lib/framing/l1_fec` and `l1_signaling` implement both;
+nothing yet feeds them preamble cells or applies their output.
 
 ---
 
@@ -250,26 +240,35 @@ Concrete implementations:
 
 ### `lib/sync/` — Synchronization
 
-- `bootstrap_detector` — Schmidl-Cox metric over 4K bootstrap symbol;
-  outputs frame start sample index and coarse CFO estimate.
+- `bootstrap_signal` — A/321 bootstrap sequences (Zadoff-Chu x PN), Gray
+  demapping and signaling fields; A/322 preamble structure table.
+- `bootstrap_detector` — Finds bootstrap symbol 0 from its CAB
+  repetitions at 6.144 MS/s; outputs its start sample and fractional CFO.
+- `bootstrap_decoder` — Correlates each symbol with its known sequence:
+  timing, integer CFO, signaling fields, last-symbol check.
+- `frame_sync` — Frame boundaries from validated bootstraps, checked
+  against min_time_to_next and the L1 frame length; short holdover.
 - `timing_recovery` — Gardner timing error detector; polyphase interpolator
   for fractional sample correction.
-- `frame_sync` — Superframe and subframe boundary tracking using preamble
-  correlation.
 
 ### `lib/ofdm/` — OFDM Engine
 
-- `cp_removal` — Strips cyclic prefix; length from L1 configuration.
+- `cp_removal` — Strips the guard interval (A/322 Table 8.9 lengths,
+  pattern from L1).
 - `fft_engine` — FFTW3f when available, else a built-in radix-2 FFT
-  (`-DATSC3_USE_FFTW=OFF` forces it); supports 8192, 16384, 32768 point transforms.
+  (`-DATSC3_USE_FFTW=OFF` forces it); 2048 (bootstrap), 8192, 16384 and
+  32768 point transforms.
   In `FIXED_POINT` mode, uses fixed-point Cooley-Tukey reference implementation
   for numerical equivalence testing against RTL.
 - `pilot_extractor` — Extracts scattered pilots (SP), continual pilots (CP),
-  and edge pilots per ATSC A/322 §8.1 and Annex D (sixteen scattered patterns SP3_2 to SP32_4,
-  CP32-derived continual pilots, carrier reduction).
+  and edge pilots per ATSC A/322 §8.1, Annex D (continual) and Annex E
+  (sixteen scattered patterns SP3_2 to SP32_4), with carrier reduction.
 - `constellation_demapper` — Produces soft LLRs; includes NUC lookup tables
-  for all defined constellations.
-- `deinterleaver` — Cell, time (TDI), and frequency (FDI) de-interleavers.
+  for all defined constellations (NUC tables generated from A/322 Annex C).
+- `freq_deinterleaver`, `time_deinterleaver`, `cell_deinterleaver` —
+  Inverses of the A/322 frequency interleaver (7.3), CTI and HTI time
+  interleavers (7.1.4, 7.1.5; no inter-subframe CDL yet) and cell
+  interleaver (7.1.5.2).
 
 ### `lib/channel/` — Channel Processing
 
@@ -281,12 +280,19 @@ Concrete implementations:
 ### `lib/fec/` — Forward Error Correction
 
 - `ldpc_decoder` — Min-sum belief propagation decoder. Parity check matrices
-  for all ATSC 3.0 code rates (2/15 through 13/15) stored as sparse arrays.
-  Isolated from all GR/UHD dependencies; directly portable to RTL.
-- `bch_decoder` — Binary BCH outer code, GF(2^16), t=12.
+  for all ATSC 3.0 code rates (2/15 through 13/15), built from the A/322
+  Annex A tables and stored as sparse arrays.
+- `bch_decoder` — A/322 outer codes: 12-error-correcting BCH over GF(2^16)
+  (64800-bit LDPC) or GF(2^14) (16200-bit), and CRC-32.
+- `bit_deinterleaver` — Inverse of the A/322 bit interleaver (6.2; parity,
+  group-wise and block interleaving, Annex B tables).
 
 ### `lib/framing/` — Transport Framing
 
+- `l1_fec` — L1-Basic and L1-Detail FEC decoding (A/322 6.5).
+- `l1_signaling` — L1-Basic and L1-Detail field parsing (A/322 9.2, 9.3).
+- `baseband_packet` — Baseband packet descrambling and header parsing
+  (A/322 5.2).
 - `alp_demux` — ALP (Application Link Protocol) header parsing and PLP
   demultiplexing.
 - `route_parser` — ROUTE/DASH session announcement and segment reassembly.
