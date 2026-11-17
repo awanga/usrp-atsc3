@@ -115,6 +115,10 @@ bool scattered_pilot_power_db(PilotPattern pattern, unsigned boost, double* db);
 // Table 8.5: common continual pilot power, every FFT size.
 constexpr double kContinualPilotPowerDb = 8.52;
 
+// 1/A for a pilot power in dB: Q1.15 rounded and capped at 32767 (A = 1),
+// or float. The magnitude of PilotSymbol::inverse_reference.
+sample_t::value_type pilot_inverse_amplitude(double db);
+
 // Pilot Extractor
 //
 // Extracts pilot symbols from FFT output for channel estimation.

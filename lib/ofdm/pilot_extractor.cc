@@ -171,8 +171,7 @@ constexpr double kSpBoostDb[16][5] = {
     {0.00, 5.40, 6.90, 7.70, 8.40}, {0.00, 6.70, 8.20, 9.10, 9.70},  // SP32_2, SP32_4
 };
 
-// 1 / A for a power in dB: Q1.15 (32767 for A = 1) or float.
-static sample_t::value_type inverse_amplitude(double db) {
+sample_t::value_type pilot_inverse_amplitude(double db) {
     double inv = std::pow(10.0, -db / 20.0);
 #ifdef ATSC3_FIXED_POINT
     return static_cast<int16_t>(std::min(32767.0, std::round(inv * 32768.0)));
@@ -234,8 +233,8 @@ void PilotExtractor::init() {
     if (!scattered_pilot_power_db(config_.pattern, config_.scattered_pilot_boost, &sp_db)) {
         throw std::invalid_argument("Invalid pattern or scattered pilot boost (Table 9.16)");
     }
-    inv_amp_sp_ = inverse_amplitude(sp_db);
-    inv_amp_cp_ = inverse_amplitude(kContinualPilotPowerDb);
+    inv_amp_sp_ = pilot_inverse_amplitude(sp_db);
+    inv_amp_cp_ = pilot_inverse_amplitude(kContinualPilotPowerDb);
     compute_pattern_params();
     generate_continual_positions();
     generate_pilot_sequence();
