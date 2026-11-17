@@ -291,6 +291,16 @@ as `TASKS.md` (Decision / Reason / Status / Next / Open).
   the A/322 Table 8.9 guard intervals by FFT size (2x/4x at 16K/32K) and
   lacked GI12_4864; now Table 8.9/9.13 exact, 12/12 mutants killed.
   Tip: float 757/757, fxp 760/760 unit+integration.
+- **Later (same day):** docs approved and committed (1522ade, pushed).
+  Guard interval enum moved to config/atsc3_config.h (get_cp_samples()
+  had the same FFT-size scaling bug, visible in the L1 monitor block).
+  `cp_removal.v` now takes the Table 9.13 code (register map v0.2.0,
+  approved). Formal lesson: Yosys proc_rom turns a `case` table into a
+  memory whose contents are free state under induction (spurious CTIs):
+  use `proc -norom` in the expose stage and avoid `case` tables in the
+  harness. Resampler added (lib/dsp); its fixed-point build first failed
+  at -16 dB because a unit tap (branch 0 at a Nyquist cutoff) overflows
+  Q1.15 -- DC gain is now 32767/32768.
 - **Next:** see TASKS.md.
 
 ## Archive: the plan as it stood on 2026-10-01
